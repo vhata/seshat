@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Local configuration and secrets (examples remain trackable)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local.toml
+
+# Worktrees and agent scratch state
+.worktrees/
+.docket/
+
+# Local tool caches and evidence
+.cache/
+.runtime/
+.wrangler/
+.venv/
+__pycache__/
+node_modules/
+dist/
+coverage/
+test-results/
+browser-evidence/
