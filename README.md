@@ -1,3 +1,5 @@
+<img src="assets/seshat.svg" alt="Seshat project health dashboard logo" width="80" height="80">
+
 # Seshat
 
 A self-hosted dashboard for GitHub project health and open pull requests,
