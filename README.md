@@ -16,6 +16,15 @@ The project also aims to replace a manually maintained `PROJECTS.md` index.
 How to collect local context, classify projects and update that index remains
 open. See the [project brief](docs/BRIEF.md) for requirements and design questions.
 
+## Development workflow
+
+Read [AGENTS.md](AGENTS.md) and the [Docket contract](docket/CONTRACT.md).
+Run `bash scripts/setup.sh` to configure hooks and `bash scripts/check.sh` to
+validate the scaffold. Git and Bash are external prerequisites; no application
+dependencies are installed. Follow-ups live in [TODO.md](TODO.md), decisions in
+[docs/DECISIONS.md](docs/DECISIONS.md), and validation in
+[docs/QUALITY.md](docs/QUALITY.md).
+
 ## License
 
 [MIT](LICENSE), copyright 2026 Jonathan Hitchcock.
