@@ -41,6 +41,18 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### Unprioritized
 
+- [GITHUB] `track-upstream-prs` — **Show PRs the owner opened in repositories they do not own.** Upstream contributions are part of the owner's open work but fall outside the monitored-repository set chosen for the first cut.
+  - Source: `define-minimal-deliverable` discussion on branch todo/define-minimal-deliverable, 2026-10-11
+  - Depends on: `define-minimal-deliverable`
+  - Related: `choose-github-integration`, `show-review-requests`
+  - Needs a query beyond monitored repositories (for example a search for PRs authored by the owner), which changes the permissions and change-detection story; ties to the brief's Upstream classification.
+
+- [GITHUB] `show-review-requests` — **Show PRs in other owners' repositories where the owner's review is requested.** The first cut covers only PRs on monitored repositories, whoever opened them.
+  - Source: `define-minimal-deliverable` discussion on branch todo/define-minimal-deliverable, 2026-10-11
+  - Depends on: `define-minimal-deliverable`
+  - Related: `choose-github-integration`, `track-upstream-prs`
+  - Overlaps GitHub's own review-requested inbox; decide whether a personal instance should surface organization or work review load at all.
+
 ## Needs proof of concept
 
 ### P0 Critical
