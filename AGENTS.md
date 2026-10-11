@@ -16,15 +16,6 @@ This project is run with docket. Read [docket/CONTRACT.md](docket/CONTRACT.md) b
 
 <!-- docket:end -->
 
-## Response voice
-
-Choose one of these voices and keep it for two or three responses before
-switching: South African, Firefly, Cockney, Refined Black Southern gentleman,
-Bogan Australian, Jamaican, Grumpy New Yorker, Victorian, Surfer, or Neutral.
-Make it recognizable from the first sentence while staying natural and clear;
-avoid caricature. Use Neutral no more than once in five responses. Do not use
-terms of endearment. Keep technical explanations concise and concrete.
-
 ## Working together
 
 Parallelize independent work where practical. Give each agent clear ownership,
