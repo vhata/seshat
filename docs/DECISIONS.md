@@ -174,7 +174,11 @@ power users that works on a clone of the index (list by classification, run a
 command across projects, check against disk) plus a `survey` command that
 prints the local-only signals in a stable form for the laptop agent
 (`ship-projects-cli`). And most signals a laptop survey reads are available
-from the GitHub API, along with some it never had, such as open PRs, CI and
-squash merges. A hosted refresh could therefore gather one context bundle per
-refresh, at the cost of Contents read across monitored repositories, which
-shapes `evaluate-optional-llm-refresh`.
+from the GitHub API, along with some it lacked, such as open PRs, CI and
+reliable squash-merge detection. A hosted refresh could therefore gather one
+context bundle per refresh. Commits, branches, READMEs and other files all need
+Contents read, so that bundle, and any branch or commit evidence that
+`show-project-index` shows, needs Contents read across monitored repositories;
+only last push, archived, fork parent, visibility, PR state and CI are
+available without it. This shapes `show-project-index` and
+`evaluate-optional-llm-refresh`.

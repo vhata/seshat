@@ -53,6 +53,10 @@ The personal inventory is deliberately not copied into this public repository.
   and which signals mean that work is needed.
 - Define classifications, manual overrides, evidence and freshness. Decide
   whether deterministic signals, owner input or optional LLM summaries apply.
+  Partly decided 2026-10-12: the section an index entry sits under is the
+  authoritative classification and computed ones are only suggestions; see
+  [DECISIONS.md](DECISIONS.md#2026-10-12--project-index-source-of-truth). The
+  rest is `design-project-classifications` in [TODO.md](../TODO.md).
 - Decide the source of truth for replacing `PROJECTS.md`: dashboard data,
   Markdown in an owner-selected repository, or a synchronized combination.
   Decided 2026-10-12: Markdown in a dedicated private repository; see

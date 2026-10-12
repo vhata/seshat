@@ -29,8 +29,9 @@ refresh PR at a time, from an identity other than the owner's where the
 integration allows it, and otherwise as a draft.
 
 This needs no new credential on the laptop and keeps the file usable without
-Seshat. Seshat's extra GitHub access is reading one repository, and only that
-repository where the integration allows per-repository grants; see
+Seshat. Seshat needs Contents read for the index repository, which under the
+GitHub App chosen for the integration extends to every repository in the
+installation unless a separate App is used; see
 [GitHub access needs](#github-access-needs).
 
 ## The index today
@@ -80,8 +81,8 @@ hold secrets.
 
 | Evidence | Hosted GitHub data | Laptop survey |
 | --- | --- | --- |
-| Commits on pushed branches, with dates | Yes | Yes, as of the survey |
-| Remote branches, ahead/behind the default branch | Yes | Yes, as of the last fetch |
+| Commits on pushed branches, with dates | Yes, with Contents read | Yes, as of the survey |
+| Remote branches, ahead/behind the default branch | Yes, with Contents read | Yes, as of the last fetch |
 | Open and merged PRs, review and CI state | Yes | Only through the GitHub API |
 | Fork parent, archived flag, visibility, creation date | Yes | Partly |
 | Last push and other activity dates | Yes | Partly |
@@ -108,35 +109,48 @@ merged there, deploys, or TODO and queue files.
 | --- | --- | --- |
 | Whether a directory is a git repository | Local only | Covers local-only directories and repositories |
 | Checked-out branch | Local only | |
-| Most recent commit on any branch, with date and ref | GitHub for pushed branches; local for unpushed ones | |
-| Commit count, and commits since the last survey | GitHub for pushed history; local for unpushed commits | Counting with `--all` includes hidden refs that tooling creates; see below |
+| Most recent commit on any branch, with date and ref | GitHub for pushed branches, needs Contents read; local for unpushed ones | |
+| Commit count, and commits since the last survey | GitHub for pushed history, needs Contents read; local for unpushed commits | Counting with `--all` includes hidden refs that tooling creates; see below |
 | Uncommitted and untracked file counts | Local only | |
 | Commits ahead of upstream (unpushed) | Local only | |
 | Origin remote as `owner/name` | Local | The join key; GitHub lists repositories but cannot say which checkout is which |
-| Local branches other than the default | Local; GitHub shows only those that were pushed | |
-| Commit subjects since the last survey | GitHub for pushed commits | |
+| Local branches other than the default | Local; GitHub shows only those that were pushed, and needs Contents read | |
+| Commit subjects since the last survey | GitHub for pushed commits, needs Contents read | |
 | Start of the README, the source of summaries | GitHub, needs Contents read | |
 | Whether a repository vendors particular tooling directories | GitHub, needs Contents read | |
 | TODO and queue files | GitHub, needs Contents read | Not read by the survey |
-| Merged branches | GitHub PR state; locally `git branch --merged` | `--merged` misses squash merges, so the agent inferred them from `(#n)` in commit subjects. A merged PR with that head branch answers the question directly |
-| Open PRs and CI results | GitHub | Not read by the survey; the PR overview already needs them |
+| Merged branches | GitHub PR state, needs Pull requests read; locally `git branch --merged` | `--merged` misses squash merges, so the agent inferred them from `(#n)` in commit subjects. A merged PR with that head branch answers the question directly |
+| Open PRs and CI results | GitHub, needs Pull requests, Checks and Commit statuses read | Not read by the survey; the PR overview already needs them |
 | Loose files in the surveyed directory, by name | Local only | Kept out of the index by the survey prompt (see [Laptop-agent workflow](#laptop-agent-workflow)) |
 | Classification | Owner judgment | The agent's call from recency and the previous entry, never a script |
 | Next action | Owner judgment | Partly inferred from commit messages, partly carried over |
+
+Permissions follow GitHub's
+[permissions required for GitHub Apps](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps).
+Listing branches, listing and comparing commits, and reading the README or any
+file all need Contents. Repository metadata, including last push, archived,
+fork parent and visibility, needs only Metadata. PR state, including the head
+branch of a merged PR, needs Pull requests, and CI needs Checks and Commit
+statuses.
 
 Conclusions:
 
 - A hosted refresh could assemble most of a survey's context from the GitHub
   API in one bundle per refresh: commits, branches, PRs, CI, README and queue
-  files. It would also have signals the laptop survey never had, notably open
-  PRs, CI and squash merges.
-- That bundle needs Contents read across monitored repositories, not only the
-  index repository. Under a GitHub App, Contents read is installation-wide in
-  any case (see [GitHub access needs](#github-access-needs)), so if refresh is
-  adopted, the concern about limiting Contents to the index matters much less.
-  It also means private READMEs and queue files would go to the LLM provider.
-  These are notes for `evaluate-optional-llm-refresh` and
-  `choose-github-integration`, not decisions.
+  files. It would also have signals the laptop survey lacked, such as open
+  PRs, CI and reliable squash-merge detection.
+- Most of that bundle needs Contents read across monitored repositories, not
+  only the index repository. This is not only a refresh cost:
+  `show-project-index` needs the same to show branch and commit evidence,
+  unless it limits GitHub evidence to Metadata and PR signals (last push,
+  archived, fork parent, visibility, PR state and CI). The GitHub App chosen
+  for the first deliverable has no Contents permission; adding it applies to
+  every repository in the installation (see
+  [GitHub access needs](#github-access-needs)). Once Contents is added for
+  either purpose, confining it to the index repository matters much less.
+  Refresh would also send private READMEs and queue files to the LLM
+  provider. These are notes for `show-project-index` and
+  `evaluate-optional-llm-refresh`, not decisions.
 - The laptop survey's distinct value is the local-only rows: checked-out
   branch, uncommitted and untracked files, unpushed commits, local-only
   branches and local-only repositories. The `survey` command of the
@@ -188,8 +202,8 @@ the record. Seshat reads it.
   clones anywhere. It works with no Seshat instance, and the local script
   keeps working against a clone.
 - **Privacy:** protected by the repository's visibility. Seshat needs read
-  access to the file's contents in one more repository, which may widen its
-  access to other repositories depending on the integration (see
+  access to the file's contents in one more repository, which under a GitHub
+  App widens to every repository in the installation (see
   [GitHub access needs](#github-access-needs)). The laptop uses the owner's
   existing git credentials.
 - **Build cost:** moderate. A documented format, a parser that reports errors,
@@ -229,9 +243,9 @@ Both stores hold editable data and are kept in step.
 ### Index repository
 
 The owner selects one repository and one file path, defaulting to
-`PROJECTS.md` at the root. It should be dedicated to the index, so that
-where the integration allows per-repository grants, granting Seshat access to
-it exposes nothing else. Seshat shows the repository's visibility on its
+`PROJECTS.md` at the root. It should be dedicated to the index, so that if
+Contents is ever confined to it by a separate App, granting that access
+exposes nothing else. Seshat shows the repository's visibility on its
 settings page and warns prominently if it is public, because the file names
 private and local-only repositories.
 
@@ -253,7 +267,7 @@ laptop-observed fields. GitHub-derived fields are never stored in it.
 | Join key | Repository (`owner/name`), local path | The owner or the laptop agent | Used to join; shown as written |
 | Laptop observation | Stack, local last commit, local branches, unpushed commits, uncommitted changes | The laptop agent | Reported by the laptop survey on its date |
 | Survey date | `Surveyed: YYYY-MM-DD`, per entry | The laptop agent | The age of the laptop evidence |
-| GitHub evidence | Last push, remote branches, open PRs, fork parent, archived | Never written to the file | From GitHub, as of the last sync |
+| GitHub evidence | Last push, remote branches (Contents read), open PRs, fork parent, archived | Never written to the file | From GitHub, as of the last sync |
 
 The survey date is per entry, not only per file, because a survey may cover
 some checkouts and not others, for example when the owner has more than one
@@ -439,34 +453,39 @@ entry.
 
 ## GitHub access needs
 
-For `choose-github-integration`, which this decision does not settle:
+The owner chose the GitHub integration on 2026-10-12 in a separate decision: a
+per-instance GitHub App with read-only Metadata, Pull requests, Checks and
+Commit statuses permissions, and no Contents permission for the first
+deliverable. Permission names follow GitHub's
+[permissions required for GitHub Apps](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps).
+The index adds these needs:
 
-- **Now:** read the contents of one owner-selected repository, which may be
-  private and may be excluded from monitoring, and learn when its default
-  branch changes. Webhook push events or polling would both work.
-- **Later, only if hosted refresh is adopted:** create a branch, commit and
-  open or update a PR on that one repository. Seshat needs no write access to
-  monitored repositories for this.
-- **Scope constraint:** the aim is contents access to the index repository
-  alone, but not every mechanism can grant that. A GitHub App's permissions
-  apply to every repository in an installation, and an App has only one
-  installation per account, so adding contents read (or later write) for the
-  index would extend it to every monitored repository on the owner's account.
-  Because an App's permissions are set for the App as a whole, every
-  installation is asked to accept them, so contents access limited to the
-  index in practice needs a separate App for the index. An index repository
-  owned by another account, such as an organization, helps only if the
-  owner's own installation does not accept the added permission. An App can
-  narrow each installation token it requests to one repository and one
+- **Index repository:** Contents read for the owner-selected repository, which
+  may be private and may be excluded from monitoring, and a way to learn when
+  its default branch changes. A GitHub App receives push events only with
+  Contents read; polling is the alternative.
+- **Branch and commit evidence:** either `show-project-index` limits GitHub
+  evidence to Metadata and PR signals (last push, archived, fork parent,
+  visibility, PR state and CI), or it needs Contents read across monitored
+  repositories. `show-project-index` decides.
+- **Hosted refresh, only if adopted:** Contents read across monitored
+  repositories for the context bundle, and Contents write and Pull requests
+  write to create a branch, commit and open or update a PR on the index
+  repository. Seshat needs no write access to monitored repositories for this.
+- **Scope constraint:** a GitHub App's permissions are set for the App as a
+  whole, every installation is asked to approve a change to them, and an App
+  has one installation per account. Contents added to the App for the index,
+  read or write, therefore applies to every repository in the owner's
+  installation. Only a separate App for the index confines it. An index
+  repository owned by another account, such as an organization, helps only if
+  the owner's own installation does not accept the added permission. An App
+  can narrow each installation token it requests to one repository and one
   permission, which limits what Seshat itself does with a token, but not what
-  a leaked private key could reach. A classic OAuth token cannot be limited
-  to one repository at all. `choose-github-integration` should weigh this; if
-  per-repository scope is not available, the owner should be told how far the
-  extra access reaches.
-- **Authoring identity:** refresh PRs should come from an identity other than
-  the owner's account where the integration allows it, and otherwise open as
-  drafts (see above). A GitHub App's bot identity provides this naturally; a
-  user OAuth token would author the PRs as the owner, so they would be drafts.
+  a leaked private key could reach. Whoever adds Contents should tell the
+  owner how far it reaches.
+- **Authoring identity:** refresh PRs authored by the App's bot identity are
+  someone else's PRs in the overview and land in Awaiting your review. The
+  draft fallback applies only if refresh ever authors as the owner.
 - **Laptop:** the laptop agent uses the owner's existing local git and GitHub
   credentials and needs no Seshat credential.
 
@@ -474,8 +493,9 @@ For `choose-github-integration`, which this decision does not settle:
 
 The PR overview does not read the index, and nothing in this decision blocks
 it. Showing the project index is out of scope for the first deliverable per
-[DELIVERABLE.md](../DELIVERABLE.md#scope). The access needs above are listed
-so the integration choice does not rule the index out.
+[DELIVERABLE.md](../DELIVERABLE.md#scope). The access needs above are
+additions to the GitHub App chosen for the first deliverable, which works
+without them.
 
 Settled by this decision:
 
@@ -513,8 +533,8 @@ Left for the classifications design (`design-project-classifications`):
   already performed in the session, plus a PR in the overview after every
   survey. Kept as the mode for unattended runs.
 - **Keeping the file in a repository that also holds unrelated files:**
-  granting Seshat read access would expose the rest, even where the
-  integration allows per-repository grants.
+  granting Seshat read access would expose the rest, even if Contents were
+  confined to that repository.
 
 ## Owner decisions
 
