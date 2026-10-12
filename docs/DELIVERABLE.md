@@ -4,6 +4,8 @@ Decided with the owner on 2026-10-11 (see [DECISIONS.md](DECISIONS.md)). This
 defines what the first implementation must do and how it will be judged. It does
 not choose a stack, an authentication mechanism or a change-detection mechanism;
 those remain open in [TODO.md](../TODO.md) and must meet the requirements here.
+Visual references, which do not override this document, are in
+[design/README.md](design/README.md).
 
 ## Outcome
 

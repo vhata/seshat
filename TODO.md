@@ -38,7 +38,12 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 - [PRODUCT] `define-bucket-ordering` — **Decide how PRs are ordered within each overview bucket.** The first-deliverable definition fixes which bucket a PR lands in but not its position, and the prototype and the implementation both need one.
   - Source: Claude Design prompt drafted from the `define-minimal-deliverable` work, 2026-10-11
   - Blocked by: owner review of the Claude Design prototype, which was asked to propose an order
-  - Starting point: compare the prototype's proposal with longest-waiting first by last activity; record the result in docs/DELIVERABLE.md once that document is on main.
+  - Starting point: the prototype proposes longest waiting first in Needs you and latest activity first in Waiting, with sortable columns as an override ([docs/design/README.md](docs/design/README.md#ordering-proposal)); record the decision in [docs/DELIVERABLE.md](docs/DELIVERABLE.md).
+
+- [PRODUCT] `reconcile-prototype-bucket-rules` — **Decide whether the prototype's three bucketing differences change the deliverable.** The Claude Design prototype disagrees with the deliverable's rules on pending CI, mergeability still being checked, and approvals by other reviewers; the deliverable stands until the owner decides.
+  - Source: review of the Claude Design export on branch task/prototype-design-reference, 2026-10-12
+  - Related: `define-bucket-ordering`
+  - Starting point: the three cases in [docs/design/README.md](docs/design/README.md#where-it-differs-from-the-deliverable). Recommendation when filed: keep the deliverable's rules for the first two; the third (whether another reviewer's approval sends someone else's PR to Ready to land) is an owner judgment.
 
 ## Needs proof of concept
 
