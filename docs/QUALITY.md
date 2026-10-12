@@ -47,7 +47,9 @@ main runs are not. Jobs have five-minute timeouts and read-only permissions.
 - Review source paths: `scripts .githooks .github docs`; include `AGENTS.md`,
   `TODO.md`, `README.md` and the review index in documentation review.
 - Expected tracked content: Markdown, LICENSE, .gitignore, shell scripts,
-  executable hooks, YAML workflows and the verbatim vendored docket directory.
+  executable hooks, YAML workflows, the verbatim vendored docket directory,
+  logo artwork, and design references under `docs/design/` (exported prototype
+  HTML and PNG screenshots, without the Claude Design runtime).
 
 ## Review and schedules
 

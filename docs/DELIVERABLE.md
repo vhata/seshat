@@ -1,9 +1,12 @@
 # First deliverable: PR overview
 
-Decided with the owner on 2026-10-11 (see [DECISIONS.md](DECISIONS.md)). This
+Decided with the owner on 2026-10-11 and amended on 2026-10-12 (see
+[DECISIONS.md](DECISIONS.md)). This
 defines what the first implementation must do and how it will be judged. It does
 not choose a stack, an authentication mechanism or a change-detection mechanism;
 those remain open in [TODO.md](../TODO.md) and must meet the requirements here.
+Visual references, which do not override this document, are in
+[design/README.md](design/README.md).
 
 ## Outcome
 
@@ -72,14 +75,24 @@ what the refusal requires.
 - **Conflicts:** GitHub reports the PR as not mergeable because of conflicts.
   While GitHub has not yet computed mergeability, the PR is treated as having no
   conflicts and the row says that mergeability is being checked.
-- **Review state:** derived from each reviewer's latest approval or
+- **Trusted reviewer:** a person whose current permission on the repository
+  is write, maintain or admin, as GitHub reports it when the PR is bucketed.
+  The owner is a trusted reviewer on every repository they own; on an
+  organization repository they are trusted only with write permission or
+  higher. Reviews from anyone else, such as a passer-by on a public
+  repository, and reviews submitted by bots or GitHub Apps, are ignored for
+  review state. This matches whose approvals GitHub counts towards required
+  reviews. Trust does not limit *reviewed the current head*: any review the
+  owner submits counts there.
+- **Review state:** derived from each trusted reviewer's latest approval or
   changes-requested review, ignoring comment-only and dismissed reviews. It is
-  *changes requested* if any reviewer's latest such review requests changes,
-  otherwise *approved* if at least one reviewer's latest such review is an
-  approval submitted on the current head commit, otherwise *none*. A request for
-  changes stands until that reviewer reviews again or it is dismissed; an
-  approval lapses when new commits are pushed. Seshat derives this itself rather than using GitHub's review
-  decision, which GitHub reports only when branch protection requires reviews.
+  *changes requested* if any trusted reviewer's latest such review requests
+  changes, otherwise *approved* if at least one trusted reviewer's latest such
+  review is an approval submitted on the current head commit, otherwise *none*.
+  A request for changes stands until that reviewer reviews again or it is
+  dismissed; an approval lapses when new commits are pushed. Seshat derives
+  this itself rather than using GitHub's review decision, which GitHub reports
+  only when branch protection requires reviews.
 - **Reviewed the current head:** the owner submitted a review (approval,
   changes requested or comment) on the PR's current head commit. A push, including
   a force-push, changes the head, so earlier reviews no longer count.
@@ -107,12 +120,26 @@ Notes on the rules:
   times.
 - Pushing to someone else's PR after it was approved moves it back to awaiting
   your review, because the approval no longer covers the head commit.
+- Someone else's PR approved on its current head by a trusted reviewer, such as
+  a co-maintainer, is ready to land without the owner's own review. An approval
+  from a reviewer without write access leaves it awaiting your review.
 - The rules cover every combination of author, draft state, CI, conflicts,
   review state and whether the owner has reviewed the current head, so no PR is
   left unbucketed. Tests must show this.
 - Ready to land reflects Seshat's view, not GitHub's merge gate. On a repository
   whose branch protection requires an approval, the owner's own unapproved PR
   still shows as ready to land even though GitHub may block the merge.
+
+### Order within a bucket
+
+- In Needs you, rows are ordered longest waiting first: the oldest last
+  activity comes first.
+- In Waiting, rows are ordered by latest activity first.
+- Ties are broken by repository name, then PR number, so the order is
+  deterministic.
+
+Sorting by column, as the [prototype](design/README.md#ordering-proposal)
+offers, is not required for this deliverable.
 
 ### Stale flag
 
@@ -169,7 +196,9 @@ where practical and otherwise by a recorded manual scenario.
    the rules assign. Tests of the bucketing logic run on fixed sample PR data,
    with at least one case per rule, the precedence cases between rules, and a
    check that every combination of inputs lands in a bucket. Tests of the CI
-   and review-state derivations cover each mapping in [Terms](#terms).
+   and review-state derivations cover each mapping in [Terms](#terms),
+   including reviews from reviewers without write access being ignored. Rows
+   within each bucket follow [Order within a bucket](#order-within-a-bucket).
 4. Each row shows the contents listed under [Row contents](#row-contents).
 5. Each kind of change listed under [Freshness](#freshness) reaches an open
    overview within 60 seconds, with no reload.

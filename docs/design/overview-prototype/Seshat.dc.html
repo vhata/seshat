@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>html,body{margin:0;background:#101820}*{box-sizing:border-box}a{color:#7bc8f6;text-decoration:none}a:hover{color:#a9dcfa}button,select{font:inherit}</style>
+</helmet>
+<div style="--bg:#101820;--p1:#16232e;--p2:#1e303f;--line:#243a4c;--tx:#dbe5ec;--mu:#8d9da8;--sl:#61717d;--sky:#7bc8f6;--grn:#9addae;--amb:#ecc786;--cor:#ef9f97;--skyT:rgba(123,200,246,.16);min-height:100vh;font-family:'Instrument Sans',system-ui,sans-serif;font-size:13px;line-height:1.4">
+<div style="{{ themeStyle }}">
+<div ref="{{ appRef }}" style="{{ frameStyle }}">
+
+<sc-if value="{{ isSignin }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div style="width:300px;display:flex;flex-direction:column;align-items:center;gap:22px;text-align:center">
+      <img src="assets/seshat.svg" alt="Seshat" style="width:64px;height:64px">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="font-size:22px;font-weight:600;letter-spacing:.01em">Seshat</div>
+        <div style="color:var(--mu)">Private instance</div>
+      </div>
+      <button onClick="{{ signIn }}" style="width:100%;height:42px;border-radius:8px;border:1px solid var(--sky);background:var(--sky);color:#101820;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.08)">Sign in with GitHub</button>
+      <div style="color:var(--mu);font-size:12px">Only the owner of this instance can sign in.</div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isRefused }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div style="width:340px;display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center">
+      <img src="assets/seshat.svg" alt="Seshat" style="width:48px;height:48px">
+      <div style="font-size:18px;font-weight:600">Access not allowed</div>
+      <div style="color:var(--mu);text-wrap:pretty">You're signed in to GitHub as <span style="color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:12px">@quinn-ables</span>. This instance is private to its owner.</div>
+      <button onClick="{{ signOut }}" style="height:36px;padding:0 16px;border-radius:8px;border:1px solid var(--line);background:var(--p1);color:var(--tx);cursor:pointer" style-hover="border-color:var(--sl)">Sign out</button>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+  <div ref="{{ topRef }}" style="position:sticky;top:0;z-index:6">
+  <header style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;min-height:48px;padding:8px 16px;background:var(--p1);border-bottom:1px solid var(--line)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <img src="assets/seshat.svg" alt="" style="width:22px;height:22px">
+      <span style="font-weight:600;letter-spacing:.02em">Seshat</span>
+    </div>
+    <nav style="display:flex;gap:2px">
+      <button onClick="{{ goOverview }}" style="{{ navOverview }}">Overview</button>
+      <button onClick="{{ goRepos }}" style="{{ navRepos }}">Repositories</button>
+    </nav>
+    <div style="flex:1"></div>
+    <div title="{{ syncTitle }}" style="{{ syncPillStyle }}">
+      <span>{{ syncGlyph }}</span><span>{{ syncText }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="width:22px;height:22px;border-radius:50%;background:var(--p2);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--sky)">M</span>
+      <button onClick="{{ signOut }}" style="background:none;border:none;color:var(--mu);cursor:pointer;padding:0;font-size:12px" style-hover="color:var(--tx)">Sign out</button>
+    </div>
+  </header>
+
+  <sc-if value="{{ showBanner }}" hint-placeholder-val="{{ false }}">
+    <div style="{{ bannerStyle }}">
+      <span style="font-size:15px;line-height:1.2">{{ syncGlyph }}</span>
+      <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:2px">
+        <strong style="font-weight:600">{{ bannerTitle }}</strong>
+        <span style="color:var(--tx);text-wrap:pretty">{{ bannerBody }}</span>
+      </div>
+      <button onClick="{{ retry }}" style="height:30px;padding:0 12px;border-radius:6px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;white-space:nowrap">{{ retryLabel }}</button>
+    </div>
+  </sc-if>
+  </div>
+
+  <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+    <sc-if value="{{ noRepos }}" hint-placeholder-val="{{ false }}">
+      <div style="max-width:560px;margin:56px auto;padding:0 16px;display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:17px;font-weight:600">No repositories monitored yet</div>
+        <div style="color:var(--mu);text-wrap:pretty">Seshat only reads pull requests from repositories you switch on. Choose at least one to fill this page.</div>
+        <div><button onClick="{{ goRepos }}" style="height:34px;padding:0 14px;border-radius:6px;border:1px solid var(--sky);background:transparent;color:var(--sky);cursor:pointer">Choose repositories</button></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ hasRepos }}" hint-placeholder-val="{{ true }}">
+      <div ref="{{ stickyRef }}" style="{{ stickyStyle }}">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 28px;padding:16px 16px 4px">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu)">{{ g.name }} · {{ g.count }}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <sc-for list="{{ g.buckets }}" as="b" hint-placeholder-count="4">
+                <button onClick="{{ b.jump }}" title="{{ b.desc }}" style="{{ b.chipStyle }}">
+                  <span style="{{ b.glyphStyle }}">{{ b.glyph }}</span>
+                  <span style="{{ b.countStyle }}">{{ b.count }}</span>
+                  <span style="color:var(--mu)">{{ b.name }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+        <div style="flex:1"></div>
+        <div style="{{ asOfStyle }}">{{ asOfText }}</div>
+      </div>
+          <sc-if value="{{ showColHead }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:3px 128px minmax(0,1fr) 140px 84px 150px 96px 40px 52px;column-gap:12px;padding:10px 28px 6px 28px;background:var(--bg);color:var(--mu);font-size:11px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--line);margin:4px 0 0">
+              <span></span>
+              <sc-for list="{{ cols }}" as="c" hint-placeholder-count="8">
+                <button onClick="{{ c.onClick }}" title="{{ c.title }}" aria-sort="{{ c.aria }}" style="{{ c.style }}" style-hover="color:var(--tx)"><span>{{ c.label }}</span><span style="{{ c.arrowStyle }}">{{ c.arrow }}</span></button>
+              </sc-for>
+            </div>
+          </sc-if>
+      </div>
+
+      <sc-if value="{{ noPRs }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:24px 16px;padding:28px 20px;border:1px solid var(--line);border-radius:8px;background:var(--p1);display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:15px;font-weight:600">No open pull requests</div>
+          <div style="color:var(--mu)">{{ noPRsText }}</div>
+          <div><button onClick="{{ goRepos }}" style="margin-top:6px;background:none;border:none;padding:0;color:var(--sky);cursor:pointer">Manage repositories</button></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasPRs }}" hint-placeholder-val="{{ true }}">
+        <div style="{{ listStyle }}">
+
+          <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+            <section style="padding:0 16px 8px">
+              <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;padding:20px 0 8px">
+                <span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600">{{ g.name }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--mu)">{{ g.count }}</span>
+                <span style="flex:1"></span>
+                <span style="color:var(--mu);font-size:12px">{{ g.orderLabel }}</span>
+                <sc-if value="{{ g.isProposal }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--amb);border:1px dashed var(--amb);border-radius:4px;padding:0 5px">Proposal</span>
+                </sc-if>
+                <sc-if value="{{ g.isSorted }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ g.resetSort }}" style="background:none;border:none;padding:0;color:var(--sky);cursor:pointer;font-size:12px" style-hover="text-decoration:underline">Reset to proposed order</button>
+                </sc-if>
+              </div>
+
+              <sc-if value="{{ g.allClear }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:22px 18px;border:1px solid var(--line);border-radius:8px;background:var(--p1);display:flex;gap:14px;align-items:flex-start">
+                  <span style="color:var(--grn);font-size:18px;line-height:1.1">✓</span>
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <div style="font-size:15px;font-weight:600">Nothing needs you</div>
+                    <div style="color:var(--mu)">{{ allClearText }}</div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-for list="{{ g.buckets }}" as="b" hint-placeholder-count="3">
+                <div data-bucket="{{ b.id }}" style="padding-top:6px">
+                  <button onClick="{{ b.toggle }}" style="width:100%;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:8px 2px;background:none;border:none;color:var(--tx);cursor:pointer;text-align:left">
+                    <span style="{{ b.glyphStyle }}">{{ b.glyph }}</span>
+                    <span style="font-weight:600;font-size:14px">{{ b.name }}</span>
+                    <span style="{{ b.countStyle }}">{{ b.count }}</span>
+                    <span style="color:var(--mu);font-size:12px;flex:1;min-width:200px">{{ b.desc }}</span>
+                    <span style="color:var(--sl);font-size:11px">{{ b.chev }}</span>
+                  </button>
+                  <sc-if value="{{ b.showEmpty }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:6px 26px 10px;color:var(--sl);font-size:12px">None right now</div>
+                  </sc-if>
+                  <sc-if value="{{ b.showRows }}" hint-placeholder-val="{{ true }}">
+                    <div style="border:1px solid var(--line);border-top:none;border-radius:6px;overflow:hidden;background:var(--p1)">
+                      <sc-for list="{{ b.rows }}" as="r" hint-placeholder-count="3">
+                        <sc-if value="{{ r.wide }}" hint-placeholder-val="{{ true }}">
+                          <a href="{{ r.href }}" target="_blank" rel="noopener" title="Open on GitHub" style="position:relative;display:grid;grid-template-columns:3px 128px minmax(0,1fr) 140px 84px 150px 96px 40px 52px;align-items:center;column-gap:12px;min-height:36px;padding:0 12px 0 0;border-top:1px solid var(--line);color:var(--tx)" style-hover="background:var(--p2);color:var(--tx)">
+                            <span style="{{ r.flashStyle }}"></span>
+                            <span style="{{ r.railStyle }}"></span>
+                            <span onClick="{{ r.openRepo }}" title="{{ r.repoTitle }}" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" style-hover="color:var(--sky)">{{ r.repo }}</span>
+                            <span style="display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden">
+                              <span style="flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</span>
+                              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--sl);flex:none">#{{ r.num }}</span>
+                              <sc-if value="{{ r.draft }}" hint-placeholder-val="{{ false }}"><span style="flex:none;font-size:11px;color:var(--mu);border:1px solid var(--sl);border-radius:4px;padding:0 5px">draft</span></sc-if>
+                              <sc-if value="{{ r.stale }}" hint-placeholder-val="{{ false }}"><span style="flex:none;font-size:11px;color:var(--amb);border:1px solid var(--amb);border-radius:4px;padding:0 5px;white-space:nowrap">◷ {{ r.staleLabel }}</span></sc-if>
+                              <sc-if value="{{ r.moved }}" hint-placeholder-val="{{ false }}"><span style="flex:none;font-size:11px;color:var(--sky);white-space:nowrap">{{ r.movedNote }}</span></sc-if>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0;font-size:12px">
+                              <span onClick="{{ r.openAuthor }}" title="{{ r.authorTitle }}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px" style-hover="color:var(--sky);text-decoration-color:currentColor">{{ r.author }}</span>
+                              <sc-if value="{{ r.bot }}" hint-placeholder-val="{{ false }}"><span style="flex:none;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--bg);background:var(--sl);border-radius:3px;padding:0 4px">bot</span></sc-if>
+                            </span>
+                            <span style="{{ r.ciStyle }}">{{ r.ciText }}</span>
+                            <span style="display:flex;gap:6px;align-items:baseline;min-width:0"><span style="{{ r.rvStyle }}">{{ r.rvText }}</span><span style="font-size:11px;color:var(--mu);white-space:nowrap">{{ r.rvSub }}</span></span>
+                            <span style="{{ r.mgStyle }}">{{ r.mgText }}</span>
+                            <span style="{{ r.ageStyle }}">{{ r.age }}</span>
+                            <span style="{{ r.activeStyle }}">{{ r.active }}</span>
+                          </a>
+                        </sc-if>
+                        <sc-if value="{{ r.narrow }}" hint-placeholder-val="{{ false }}">
+                          <a href="{{ r.href }}" target="_blank" rel="noopener" style="position:relative;display:flex;flex-direction:column;gap:5px;padding:10px 12px 10px 14px;border-top:1px solid var(--line);color:var(--tx)" style-hover="background:var(--p2);color:var(--tx)">
+                            <span style="{{ r.flashStyle }}"></span>
+                            <span style="{{ r.railAbs }}"></span>
+                            <span style="display:flex;gap:8px;align-items:baseline;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mu)">
+                              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span onClick="{{ r.openRepo }}" style="cursor:pointer" style-hover="color:var(--sky)">{{ r.repo }}</span> #{{ r.num }}</span>
+                              <span style="flex:1"></span>
+                              <span style="white-space:nowrap">{{ r.age }} old · active {{ r.active }}</span>
+                            </span>
+                            <span style="font-size:14px;text-wrap:pretty">{{ r.title }}</span>
+                            <span style="display:flex;flex-wrap:wrap;gap:5px 10px;align-items:center">
+                              <span style="{{ r.ciStyle }}">{{ r.ciText }}</span>
+                              <span style="{{ r.rvStyle }}">{{ r.rvText }}</span>
+                              <span style="{{ r.mgStyle }}">{{ r.mgText }}</span>
+                              <span onClick="{{ r.openAuthor }}" title="{{ r.authorTitle }}" style="font-size:12px;color:var(--mu);cursor:pointer" style-hover="color:var(--sky)">{{ r.author }}</span>
+                              <sc-if value="{{ r.bot }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--bg);background:var(--sl);border-radius:3px;padding:0 4px">bot</span></sc-if>
+                              <sc-if value="{{ r.draft }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--mu);border:1px solid var(--sl);border-radius:4px;padding:0 5px">draft</span></sc-if>
+                              <sc-if value="{{ r.stale }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--amb);border:1px solid var(--amb);border-radius:4px;padding:0 5px">◷ {{ r.staleLabel }}</span></sc-if>
+                            </span>
+                            <sc-if value="{{ r.moved }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--sky)">{{ r.movedNote }}</span></sc-if>
+                          </a>
+                        </sc-if>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </section>
+          </sc-for>
+          <div style="padding:16px 16px 48px;color:var(--sl);font-size:12px">Rows open the pull request on GitHub. Status comes from GitHub's API only.</div>
+        </div>
+      </sc-if>
+    </sc-if>
+  </sc-if>
+
+  <sc-if value="{{ isRepos }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:860px;margin:0 auto;padding:20px 16px 64px;display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px">
+        <h1 style="margin:0;font-size:18px;font-weight:600">Repositories</h1>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--mu)">{{ monitoredCount }} of {{ repoTotal }} monitored</span>
+      </div>
+      <p style="margin:0 0 8px;color:var(--mu);max-width:640px;text-wrap:pretty">Only pull requests from monitored repositories appear in the overview. Repositories you own are on by default. Forks and organization repositories stay off until you switch them on. Archived repositories are never monitored.</p>
+      <sc-for list="{{ repoGroups }}" as="rg" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column;gap:0;margin-top:14px">
+          <div style="display:flex;align-items:baseline;gap:10px;padding:0 2px 6px">
+            <span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600">{{ rg.name }}</span>
+            <span style="font-size:12px;color:var(--mu)">{{ rg.sub }}</span>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--p1)">
+            <sc-for list="{{ rg.rows }}" as="rr" hint-placeholder-count="3">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;min-height:44px;padding:6px 12px;border-top:1px solid var(--line)">
+                <span style="{{ rr.nameStyle }}">{{ rr.name }}</span>
+                <span style="font-size:11px;color:var(--mu);border:1px solid var(--line);border-radius:4px;padding:0 5px">{{ rr.vis }}</span>
+                <sc-if value="{{ rr.hasTag }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--mu)">{{ rr.tag }}</span></sc-if>
+                <span style="flex:1"></span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--mu);white-space:nowrap">{{ rr.prText }}</span>
+                <span style="font-size:12px;width:96px;text-align:right;color:var(--mu)">{{ rr.status }}</span>
+                <button role="switch" aria-checked="{{ rr.on }}" aria-label="{{ rr.aria }}" disabled="{{ rr.disabled }}" onClick="{{ rr.toggle }}" style="{{ rr.trackStyle }}"><span style="{{ rr.knobStyle }}"></span></button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</sc-if>
+</div>
+</div>
+
+<div style="position:fixed;right:16px;bottom:16px;z-index:50;width:244px;background:#0b1117;border:1px solid #2a4052;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);color:#dbe5ec;font-size:12px">
+  <button onClick="{{ togglePanel }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:none;border:none;color:#8d9da8;cursor:pointer;letter-spacing:.06em;text-transform:uppercase;font-size:10px">
+    <span>Prototype controls</span><span>{{ panelChev }}</span>
+  </button>
+  <sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px 12px">
+      <label style="display:grid;grid-template-columns:52px 1fr;align-items:center;gap:8px"><span style="color:#8d9da8">Screen</span>
+        <select data-sel="screen" onChange="{{ onScreen }}" style="height:26px;background:#16232e;color:#dbe5ec;border:1px solid #2a4052;border-radius:5px">
+          <option value="signin">Sign-in</option><option value="refused">Refused</option><option value="overview">Overview</option><option value="repos">Repositories</option>
+        </select></label>
+      <label style="display:grid;grid-template-columns:52px 1fr;align-items:center;gap:8px"><span style="color:#8d9da8">Data</span>
+        <select data-sel="data" onChange="{{ onData }}" style="height:26px;background:#16232e;color:#dbe5ec;border:1px solid #2a4052;border-radius:5px">
+          <option value="sample">Sample (25 PRs)</option><option value="allclear">All clear</option><option value="noprs">No open PRs</option><option value="norepos">No repos monitored</option>
+        </select></label>
+      <label style="display:grid;grid-template-columns:52px 1fr;align-items:center;gap:8px"><span style="color:#8d9da8">Sync</span>
+        <select data-sel="sync" onChange="{{ onSync }}" style="height:26px;background:#16232e;color:#dbe5ec;border:1px solid #2a4052;border-radius:5px">
+          <option value="normal">Normal</option><option value="overdue">Overdue</option><option value="failed">Failed</option>
+        </select></label>
+      <button onClick="{{ fire }}" disabled="{{ fireDisabled }}" style="height:28px;border-radius:5px;border:1px solid #7bc8f6;background:transparent;color:#7bc8f6;cursor:pointer">{{ fireLabel }}</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+        <button onClick="{{ toggleLive }}" style="height:26px;border-radius:5px;border:1px solid #2a4052;background:#16232e;color:#dbe5ec;cursor:pointer">{{ liveLabel }}</button>
+        <button onClick="{{ togglePhone }}" style="height:26px;border-radius:5px;border:1px solid #2a4052;background:#16232e;color:#dbe5ec;cursor:pointer">{{ phoneLabel }}</button>
+        <button onClick="{{ reset }}" style="height:26px;border-radius:5px;border:1px solid #2a4052;background:#16232e;color:#dbe5ec;cursor:pointer">Reset</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark'|'light'&quot;},&quot;staleDays&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:7,&quot;min&quot;:1,&quot;max&quot;:30,&quot;tsType&quot;:&quot;number&quot;}}">
+const OWNER = 'mara';
+const M = 60000, H = 60 * M, D = 24 * H;
+const MONO = "'JetBrains Mono',ui-monospace,monospace";
+const BUCKETS = {
+  ready: { name: 'Ready to land', glyph: '✓', color: 'var(--grn)', desc: 'Not draft · CI passing or none · no conflicts · approved at latest commit, or opened by you' },
+  broken: { name: 'Broken', glyph: '✕', color: 'var(--cor)', desc: 'Your PR · CI failing or merge conflicts' },
+  review: { name: 'Awaiting your review', glyph: '◉', color: 'var(--sky)', desc: "Someone else's PR · you haven't reviewed its latest commit" },
+  changes: { name: 'Changes requested on yours', glyph: '↺', color: 'var(--amb)', desc: 'Your PR · a reviewer asked for changes' },
+  ci: { name: 'CI running', glyph: '◌', color: 'var(--mu)', desc: 'Checks still in progress' },
+  author: { name: 'Waiting on the author', glyph: '…', color: 'var(--mu)', desc: "Someone else's PR · you reviewed its latest commit" },
+  draft: { name: 'Draft', glyph: '◇', color: 'var(--mu)', desc: 'Work in progress, whoever opened it' },
+};
+const GROUPS = [{ id: 'needs', name: 'Needs you', ids: ['ready', 'broken', 'review', 'changes'] }, { id: 'waiting', name: 'Waiting', ids: ['ci', 'author', 'draft'] }];
+const NEEDS = GROUPS[0].ids;
+const CI = { pass: ['✓', 'passing', 'var(--grn)'], fail: ['✕', 'failing', 'var(--cor)'], pending: ['◌', 'running', 'var(--sky)'], none: ['–', 'no CI', 'var(--sl)'] };
+const REV = { approved: ['✓', 'approved', 'var(--grn)'], changes: ['↺', 'changes', 'var(--amb)'], none: ['–', 'none', 'var(--sl)'] };
+const MERGE = { clean: ['○', 'clean', 'var(--mu)'], conflicts: ['≠', 'conflicts', 'var(--cor)'], checking: ['◌', 'checking', 'var(--amb)'] };
+
+const REPOS = [
+  { id: 'mara/lattice', kind: 'owned', vis: 'public' }, { id: 'mara/tidewater', kind: 'owned', vis: 'private' },
+  { id: 'mara/quill-cli', kind: 'owned', vis: 'public' }, { id: 'mara/kiln', kind: 'owned', vis: 'public' },
+  { id: 'mara/hearth', kind: 'owned', vis: 'private' }, { id: 'mara/sundial', kind: 'owned', vis: 'public' },
+  { id: 'mara/old-site', kind: 'owned', vis: 'public', archived: true }, { id: 'mara/notes-2019', kind: 'owned', vis: 'private', archived: true },
+  { id: 'mara/pebble-db', kind: 'fork', vis: 'public', forkOf: 'stonecut/pebble-db' }, { id: 'mara/tinyhttp', kind: 'fork', vis: 'public', forkOf: 'larkspur/tinyhttp' },
+  { id: 'fernworks/beacon', kind: 'org', org: 'fernworks', vis: 'public' }, { id: 'fernworks/ledger-api', kind: 'org', org: 'fernworks', vis: 'private' },
+  { id: 'fernworks/infra', kind: 'org', org: 'fernworks', vis: 'private' }, { id: 'fernworks/handbook', kind: 'org', org: 'fernworks', vis: 'public' },
+  { id: 'openloom/loom-core', kind: 'org', org: 'openloom', vis: 'public' }, { id: 'openloom/loom-docs', kind: 'org', org: 'openloom', vis: 'public' },
+];
+const DEFAULT_MON = () => {
+  const m = {};
+  REPOS.forEach(r => { m[r.id] = r.kind === 'owned' && !r.archived; });
+  m['fernworks/beacon'] = true; m['fernworks/ledger-api'] = true; // switched on individually
+  return m;
+};
+
+const SEED = [
+  ['mara/lattice', 412, 'Add retry budget to fetch scheduler', OWNER, { ci: 'pass' }, 2 * D, 18 * M],
+  ['mara/tidewater', 88, 'Migrate config loader to TOML', OWNER, { ci: 'pass', review: 'approved' }, 5 * H, 40 * M],
+  ['mara/quill-cli', 203, 'Support --json output for status', OWNER, { ci: 'none' }, D + 3 * H, 3 * H],
+  ['mara/kiln', 57, 'Bump minimum Node version to 22', OWNER, { ci: 'pass' }, 11 * D, 8 * D],
+  ['fernworks/beacon', 1290, 'Fix tooltip clipping in narrow panels', 'ostrander', { ci: 'pass', review: 'approved', youHead: true, you: 'approved' }, 3 * D, 2 * H],
+  ['mara/sundial', 31, 'Fix DST edge case in weekly view', OWNER, { ci: 'pass', review: 'approved' }, 20 * H, 55 * M],
+  ['mara/hearth', 149, 'Cache resolved locales per request', OWNER, { ci: 'fail' }, 6 * H, 25 * M],
+  ['mara/lattice', 405, 'Rework queue shutdown ordering', OWNER, { ci: 'pass', merge: 'conflicts', review: 'approved' }, 14 * D, 8 * D],
+  ['mara/tidewater', 91, 'Bump serde from 1.0.210 to 1.0.214', 'dependabot', { bot: true, ci: 'pass' }, D, D],
+  ['mara/hearth', 152, 'Update dependency vite to v6.2.1', 'renovate', { bot: true, ci: 'pass' }, 9 * H, 9 * H],
+  ['mara/quill-cli', 207, 'Add fish shell completions', 'juno-park', { ci: 'pass', merge: 'checking' }, 2 * H, 4 * M],
+  ['fernworks/beacon', 1301, 'Keyboard navigation for command menu', 'tamsin-r', { ci: 'fail' }, 12 * D, 9 * D],
+  ['fernworks/ledger-api', 330, 'Bump actions/checkout from 4 to 5', 'dependabot', { bot: true, ci: 'pass' }, 2 * D, 2 * D],
+  ['mara/sundial', 36, 'Bump date-fns from 3.6.0 to 4.1.0', 'dependabot', { bot: true, ci: 'pass' }, 3 * D, 3 * D],
+  ['fernworks/beacon', 1295, 'Theme tokens for chart colors', 'ostrander', { ci: 'pass', you: 'commented' }, 4 * D, 6 * H],
+  ['fernworks/ledger-api', 327, 'Paginate account export endpoint', OWNER, { ci: 'pass', review: 'changes' }, 2 * D, 5 * H],
+  ['mara/lattice', 414, 'Add metrics for retry budget', OWNER, { ci: 'pending' }, 50 * M, 3 * M],
+  ['mara/kiln', 60, 'Update rust crate tokio to 1.41', 'renovate', { bot: true, ci: 'pending' }, 30 * M, 6 * M],
+  ['mara/kiln', 61, 'Parallelize asset hashing', OWNER, { ci: 'pending' }, H, 2 * M],
+  ['mara/hearth', 140, 'Add Dutch translations', 'ilse-v', { ci: 'pass', review: 'changes', you: 'changes', youHead: true }, 6 * D, 4 * D],
+  ['mara/tidewater', 93, 'Streaming parser for large inputs', OWNER, { draft: true, ci: 'fail' }, 3 * D, D],
+  ['mara/lattice', 416, 'Split scheduler into separate crates', OWNER, { draft: true, ci: 'pass' }, D, 2 * H],
+  ['mara/quill-cli', 209, 'Prototype plugin loader', OWNER, { draft: true, ci: 'none' }, 15 * D, 11 * D],
+  ['mara/hearth', 155, 'Explore server rendering for settings', 'juno-park', { draft: true, ci: 'pending' }, 4 * H, 35 * M],
+  ['mara/sundial', 34, 'Add ICS export', OWNER, { draft: true, ci: 'pass' }, 5 * D, D],
+];
+const seed = () => {
+  const now = Date.now();
+  return SEED.map(([repo, num, title, author, f, age, act]) => ({
+    key: repo + '#' + num, repo, num, title, author, bot: !!f.bot, draft: !!f.draft,
+    ci: f.ci || 'none', review: f.review || 'none', merge: f.merge || 'clean',
+    you: f.you || null, youHead: !!f.youHead, created: now - age, activity: now - act,
+  }));
+};
+const EVENTS = [
+  { key: 'mara/lattice#414', set: { ci: 'pass' }, note: 'CI passed' },
+  { key: 'mara/quill-cli#207', set: { merge: 'clean' }, note: 'Mergeability resolved: clean' },
+  { key: 'mara/hearth#140', set: { youHead: false }, note: 'New commit pushed', bump: true },
+  { key: 'mara/kiln#61', set: { ci: 'fail' }, note: 'CI failed' },
+  { key: 'fernworks/ledger-api#327', set: { review: 'approved' }, note: 'Approved by ostrander', bump: true },
+];
+
+const rank = o => (a, b) => o.indexOf(a) - o.indexOf(b);
+const ciR = rank(['fail', 'pending', 'pass', 'none']), rvR = rank(['changes', 'approved', 'none']), mgR = rank(['conflicts', 'checking', 'clean']);
+const COLS = [
+  { key: 'repo', label: 'Repository', first: 'asc', asc: 'A → Z', desc: 'Z → A', cmp: (a, b) => a.repo.localeCompare(b.repo) || a.num - b.num },
+  { key: 'title', label: 'Pull request', first: 'asc', asc: 'A → Z', desc: 'Z → A', cmp: (a, b) => a.title.localeCompare(b.title) },
+  { key: 'author', label: 'Author', first: 'asc', asc: 'A → Z', desc: 'Z → A', cmp: (a, b) => a.author.localeCompare(b.author) },
+  { key: 'ci', label: 'CI', first: 'asc', asc: 'failing first', desc: 'failing last', cmp: (a, b) => ciR(a.ci, b.ci) },
+  { key: 'review', label: 'Review', first: 'asc', asc: 'changes first', desc: 'changes last', cmp: (a, b) => rvR(a.review, b.review) },
+  { key: 'merge', label: 'Merge', first: 'asc', asc: 'conflicts first', desc: 'conflicts last', cmp: (a, b) => mgR(a.merge, b.merge) },
+  { key: 'age', label: 'Age', right: true, first: 'desc', asc: 'newest first', desc: 'oldest first', cmp: (a, b) => b.created - a.created },
+  { key: 'active', label: 'Active', right: true, first: 'asc', asc: 'most recent first', desc: 'least recent first', cmp: (a, b) => b.activity - a.activity },
+];
+function classify(p) {
+  if (p.draft) return 'draft';
+  if (p.author === OWNER) {
+    if (p.ci === 'fail' || p.merge === 'conflicts') return 'broken';
+    if (p.review === 'changes') return 'changes';
+    if (p.ci === 'pending' || p.merge === 'checking') return 'ci';
+    return 'ready';
+  }
+  if (p.ci === 'pending') return 'ci';
+  if (p.youHead) {
+    if (p.review === 'approved' && p.ci !== 'fail' && p.merge === 'clean') return 'ready';
+    return 'author';
+  }
+  return 'review';
+}
+const rel = ms => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm';
+  if (s < 86400) return Math.floor(s / 3600) + 'h';
+  return Math.floor(s / 86400) + 'd';
+};
+const hms = t => new Date(t).toLocaleTimeString('en-GB', { hour12: false });
+const cell = ([g, l, c]) => ({ text: g + ' ' + l, style: { color: c, fontFamily: MONO, fontSize: 12, whiteSpace: 'nowrap' } });
+
+const LIGHT = { '--bg': '#f3f5f7', '--p1': '#ffffff', '--p2': '#eaeff3', '--line': '#d6dee4', '--tx': '#101820', '--mu': '#4f5e69', '--sl': '#7d8c97', '--sky': '#1d6ea3', '--grn': '#2a7848', '--amb': '#875d0e', '--cor': '#b0443a', '--skyT': 'rgba(29,110,163,.13)' };
+
+class Component extends DCLogic {
+  topRef = el => { this.topEl = el; };
+  stickyRef = el => { this.stickyEl = el; };
+  measure = () => {
+    const th = this.topEl ? Math.round(this.topEl.getBoundingClientRect().height) : 48;
+    if (th !== this.state.topH) this.setState({ topH: th });
+    const el = this.appEl;
+    const w = el ? el.getBoundingClientRect().width : window.innerWidth;
+    const n = w < 1100;
+    if (n !== this.state.narrow) this.setState({ narrow: n });
+  };
+  appRef = el => {
+    if (el && el !== this.appEl) {
+      this.appEl = el;
+      if (!this.ro) this.ro = new ResizeObserver(() => this.measure());
+      this.ro.disconnect(); this.ro.observe(el);
+      this.measure();
+    }
+  };
+  lastEvt = Date.now() - 7000;
+  state = {
+    screen: 'overview', data: 'sample', sync: 'normal', now: Date.now(), lastSync: Date.now(),
+    prs: seed(), monitored: DEFAULT_MON(), evt: 0, live: true, phone: false, narrow: false,
+    collapsed: {}, retrying: false, panelOpen: true,
+  };
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      const now = Date.now();
+      this.setState(s => {
+        const u = { now };
+        if (s.sync === 'normal' && now - s.lastSync >= 10000) u.lastSync = now;
+        return u;
+      });
+      const s = this.state;
+      if (s.live && s.sync === 'normal' && s.screen === 'overview' && now - this.lastEvt > 15000) this.fire();
+    }, 1000);
+    window.addEventListener('resize', this.measure);
+    this.measure();
+    setTimeout(() => this.syncSelects(), 0);
+  }
+  syncSelects() {
+    const s = this.state, v = { screen: s.screen, data: s.data, sync: s.sync };
+    document.querySelectorAll('select[data-sel]').forEach(el => { const x = v[el.dataset.sel]; if (x != null && el.value !== x) el.value = x; });
+  }
+  componentDidUpdate() { this.measure(); this.syncSelects(); }
+  componentWillUnmount() { clearInterval(this.timer); this.ro && this.ro.disconnect(); window.removeEventListener('resize', this.measure); clearTimeout(this.rt); }
+  fire = () => {
+    const s = this.state;
+    if (s.evt >= EVENTS.length || s.sync !== 'normal') return;
+    const e = EVENTS[s.evt], now = Date.now();
+    this.lastEvt = now;
+    this.setState({
+      evt: s.evt + 1, lastSync: now,
+      prs: s.prs.map(p => p.key !== e.key ? p : { ...p, ...e.set, activity: e.bump ? now : p.activity, changedAt: now, note: e.note, from: classify(p) }),
+    });
+  };
+  setSync = v => {
+    const now = Date.now();
+    this.setState({ sync: v, lastSync: v === 'normal' ? now : v === 'overdue' ? now - 7 * M - 12000 : now - 23 * M - 40000, retrying: false });
+  };
+  retry = () => {
+    this.setState({ retrying: true });
+    this.rt = setTimeout(() => this.setSync('normal'), 1400);
+  };
+  setData = v => {
+    this.setState(s => {
+      const u = { data: v };
+      if (v === 'norepos') { const m = {}; REPOS.forEach(r => { m[r.id] = false; }); u.monitored = m; }
+      else if (s.data === 'norepos') u.monitored = DEFAULT_MON();
+      return u;
+    });
+  };
+  jump = id => {
+    const el = document.querySelector('[data-bucket="' + id + '"]');
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - (this.topEl ? this.topEl.offsetHeight : 48) - (this.state.narrow || !this.stickyEl ? 0 : this.stickyEl.offsetHeight) - 4, behavior: 'smooth' });
+  };
+
+  renderVals() {
+    const s = this.state, P = this.props, now = s.now;
+    const light = (P.theme ?? 'dark') === 'light';
+    const sort = s.sort;
+    const staleMs = (P.staleDays ?? 7) * D;
+    const syncOk = s.sync === 'normal';
+    const narrow = s.narrow;
+
+    const monitoredIds = REPOS.filter(r => s.monitored[r.id] && !r.archived).map(r => r.id);
+    let prs = s.prs.filter(p => s.monitored[p.repo]).map(p => ({ ...p, bucket: classify(p) }));
+    if (s.data === 'noprs') prs = [];
+    if (s.data === 'allclear') prs = prs.filter(p => !NEEDS.includes(p.bucket));
+
+    const row = p => {
+      const since = p.changedAt ? now - p.changedAt : Infinity;
+      const moved = syncOk && since < 120000;
+      const ci = cell(CI[p.ci]), rv = cell(REV[p.review]), mg = cell(MERGE[p.merge]);
+      const isOthers = p.author !== OWNER;
+      const rvSub = isOthers && p.you ? (p.youHead ? 'by you' : 'you: older commit') : '';
+      const movedNote = p.from && p.from !== p.bucket ? `${p.note} · moved from ${BUCKETS[p.from].name} · ${rel(since)} ago` : `${p.note} · ${rel(since)} ago`;
+      const flash = syncOk && since < 3000;
+      const stale = now - p.activity >= staleMs;
+      const num = { fontFamily: MONO, fontSize: 12, textAlign: 'right', color: 'var(--mu)', whiteSpace: 'nowrap' };
+      return {
+        key: p.key, wide: !narrow, narrow, href: `https://github.com/${p.repo}/pull/${p.num}`,
+        repo: p.repo.startsWith(OWNER + '/') ? p.repo.slice(OWNER.length + 1) : p.repo,
+        repoTitle: 'Open ' + p.repo + ' on GitHub',
+        openRepo: e => { e.preventDefault(); e.stopPropagation(); window.open('https://github.com/' + p.repo, '_blank', 'noopener'); },
+        authorTitle: 'Open GitHub profile of ' + (p.bot ? p.author + '[bot]' : '@' + p.author),
+        openAuthor: e => { e.preventDefault(); e.stopPropagation(); window.open(p.bot ? `https://github.com/apps/${p.author}` : `https://github.com/${p.author}`, '_blank', 'noopener'); },
+        num: p.num, title: p.title, author: p.author === OWNER ? 'you' : p.author, bot: p.bot, draft: p.draft,
+        stale, staleLabel: 'stale ' + Math.floor((now - p.activity) / D) + 'd',
+        age: rel(now - p.created), active: rel(now - p.activity),
+        ageStyle: num, activeStyle: stale ? { ...num, color: 'var(--amb)' } : num,
+        ciText: ci.text, ciStyle: ci.style, rvText: rv.text, rvStyle: rv.style, rvSub, mgText: mg.text, mgStyle: mg.style,
+        moved, movedNote,
+        flashStyle: { position: 'absolute', inset: 0, pointerEvents: 'none', background: flash ? 'var(--skyT)' : 'transparent', transition: 'background-color 2.6s ease-out' },
+        railStyle: { alignSelf: 'stretch', background: moved ? 'var(--sky)' : 'transparent', transition: 'background-color 1s' },
+        railAbs: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: moved ? 'var(--sky)' : 'transparent' },
+      };
+    };
+    const sorter = gid => {
+      if (!sort) return gid === 'waiting' ? (a, b) => b.activity - a.activity : (a, b) => a.activity - b.activity;
+      const C = COLS.find(c => c.key === sort.key), m = sort.dir === 'asc' ? 1 : -1;
+      return (a, b) => m * C.cmp(a, b) || b.activity - a.activity;
+    };
+
+    const groups = GROUPS.map(g => {
+      const buckets = g.ids.map(id => {
+        const B = BUCKETS[id];
+        const list = prs.filter(p => p.bucket === id).sort(sorter(g.id));
+        const recent = syncOk && list.some(p => p.changedAt && now - p.changedAt < 4000 && p.from !== id);
+        const open = !s.collapsed[id];
+        return {
+          id, name: B.name, glyph: B.glyph, desc: B.desc, count: list.length,
+          rows: list.map(row), showRows: open && list.length > 0, showEmpty: open && list.length === 0,
+          chev: open ? '▾' : '▸',
+          toggle: () => this.setState(st => ({ collapsed: { ...st.collapsed, [id]: !st.collapsed[id] } })),
+          jump: () => this.jump(id),
+          glyphStyle: { color: B.color, fontFamily: MONO, width: 14, display: 'inline-block', textAlign: 'center' },
+          countStyle: { fontFamily: MONO, fontSize: 13, fontWeight: 500, color: list.length ? 'var(--tx)' : 'var(--sl)' },
+          chipStyle: { display: 'flex', alignItems: 'baseline', gap: 7, padding: '5px 10px', background: 'var(--p1)', border: '1px solid ' + (recent ? 'var(--sky)' : 'var(--line)'), borderRadius: 6, color: 'var(--tx)', cursor: 'pointer', transition: 'border-color 1.5s', whiteSpace: 'nowrap' },
+        };
+      });
+      const count = buckets.reduce((a, b) => a + b.count, 0);
+      const allClear = g.id === 'needs' && count === 0 && prs.length > 0;
+      return {
+        name: g.name, count, allClear, buckets, summary: buckets,
+        isProposal: !sort, isSorted: !!sort,
+        resetSort: () => this.setState({ sort: null }),
+        orderLabel: sort ? 'Sorted by ' + COLS.find(c => c.key === sort.key).label + ' · ' + COLS.find(c => c.key === sort.key)[sort.dir] : g.id === 'waiting' ? 'Order: latest activity first' : 'Order: longest waiting first',
+      };
+    });
+    // all-clear hides the empty needs-you buckets in the list; keep them in the summary strip
+    const listGroups = groups.map(g => g.allClear ? { ...g, buckets: [] } : g);
+    const waitingCount = groups[1].count;
+
+    const ago = rel(now - s.lastSync);
+    const t = hms(s.lastSync);
+    const syncMap = {
+      normal: { glyph: '●', c: 'var(--grn)', text: narrow ? `Synced ${ago} ago` : `Live · synced ${t} · ${ago} ago` },
+      overdue: { glyph: '◷', c: 'var(--amb)', text: narrow ? `Overdue · ${t}` : `Sync overdue · last ${t} (${ago} ago)` },
+      failed: { glyph: '✕', c: 'var(--cor)', text: narrow ? `Failed · ${t}` : `Sync failed · last good ${t} (${ago} ago)` },
+    };
+    const sm = syncMap[s.sync];
+    const bannerTint = s.sync === 'failed' ? 'rgba(239,159,151,.13)' : 'rgba(236,199,134,.13)';
+
+    const nav = a => ({ height: 30, padding: '0 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: a ? 'var(--p2)' : 'transparent', color: a ? 'var(--tx)' : 'var(--mu)', fontWeight: a ? 600 : 400 });
+
+    const RG = [
+      { name: 'Owned', sub: 'on by default', f: r => r.kind === 'owned' },
+      { name: 'Forks', sub: 'off until switched on', f: r => r.kind === 'fork' },
+      { name: 'fernworks', sub: 'organization · off until switched on', f: r => r.org === 'fernworks' },
+      { name: 'openloom', sub: 'organization · off until switched on', f: r => r.org === 'openloom' },
+    ];
+    const repoGroups = RG.map(g => ({
+      name: g.name, sub: g.sub,
+      rows: REPOS.filter(g.f).sort((a, b) => !!a.archived - !!b.archived).map(r => {
+        const on = !!s.monitored[r.id] && !r.archived;
+        const n = s.prs.filter(p => p.repo === r.id).length;
+        return {
+          key: r.id, name: r.id, vis: r.vis, on, disabled: !!r.archived,
+          hasTag: !!(r.forkOf || r.archived), tag: r.archived ? 'archived' : 'fork of ' + r.forkOf,
+          prText: on ? `${n} open PR${n === 1 ? '' : 's'}` : '—',
+          status: r.archived ? 'Not monitored' : on ? 'Monitored' : 'Off',
+          aria: 'Monitor ' + r.id,
+          nameStyle: { fontFamily: MONO, fontSize: 12, color: r.archived ? 'var(--sl)' : 'var(--tx)' },
+          toggle: () => this.setState(st => ({ monitored: { ...st.monitored, [r.id]: !st.monitored[r.id] }, data: st.data === 'norepos' ? 'sample' : st.data })),
+          trackStyle: { position: 'relative', flex: 'none', width: 36, height: 20, borderRadius: 10, border: '1px solid ' + (on ? 'var(--sky)' : 'var(--line)'), background: on ? 'var(--sky)' : 'var(--p2)', cursor: r.archived ? 'not-allowed' : 'pointer', opacity: r.archived ? .4 : 1, padding: 0, transition: 'background .15s' },
+          knobStyle: { position: 'absolute', top: 2, left: on ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: on ? 'var(--bg)' : 'var(--sl)', transition: 'left .15s' },
+        };
+      }),
+    }));
+
+    return {
+      appRef: this.appRef,
+      themeStyle: { ...(light ? LIGHT : {}), background: 'var(--bg)', color: 'var(--tx)', minHeight: '100vh' },
+      frameStyle: s.phone ? { maxWidth: 390, margin: '24px auto', border: '1px solid var(--line)', borderRadius: 18, minHeight: 800, overflow: 'clip', background: 'var(--bg)' } : { minHeight: '100vh' },
+      isSignin: s.screen === 'signin', isRefused: s.screen === 'refused',
+      isApp: s.screen === 'overview' || s.screen === 'repos',
+      isOverview: s.screen === 'overview', isRepos: s.screen === 'repos',
+      signIn: () => this.setState({ screen: 'overview' }), signOut: () => this.setState({ screen: 'signin' }),
+      goOverview: () => this.setState({ screen: 'overview' }), goRepos: () => this.setState({ screen: 'repos' }),
+      navOverview: nav(s.screen === 'overview'), navRepos: nav(s.screen === 'repos'),
+      syncGlyph: sm.glyph, syncText: sm.text,
+      syncTitle: 'Last successful sync with GitHub: ' + new Date(s.lastSync).toLocaleString('en-GB'),
+      syncPillStyle: { display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', borderRadius: 14, border: '1px solid ' + (syncOk ? 'var(--line)' : sm.c), background: syncOk ? 'transparent' : bannerTint, color: syncOk ? 'var(--mu)' : sm.c, fontFamily: MONO, fontSize: 11.5, whiteSpace: 'nowrap' },
+      showBanner: !syncOk,
+      bannerStyle: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 14px', padding: '10px 16px', background: light ? (s.sync === 'failed' ? '#fbe9e7' : '#fbf1de') : (s.sync === 'failed' ? '#2a2226' : '#272519'), borderBottom: '1px solid ' + sm.c, color: sm.c },
+      bannerTitle: s.sync === 'failed' ? `Sync failed. Showing data from ${t}, ${ago} ago.` : `Sync overdue. Last successful sync was ${ago} ago, at ${t}.`,
+      bannerBody: s.sync === 'failed'
+        ? `GitHub returned 401 Bad credentials on the last 4 attempts; check this instance's GitHub token. Nothing below has been updated since ${t}.`
+        : `Seshat normally syncs with GitHub every 30 seconds. Everything below is as of ${t} and may have changed since.`,
+      retry: this.retry, retryLabel: s.retrying ? 'Retrying…' : 'Retry now',
+      noRepos: monitoredIds.length === 0, hasRepos: monitoredIds.length > 0,
+      noPRs: prs.length === 0, hasPRs: prs.length > 0,
+      noPRsText: `None of your ${monitoredIds.length} monitored repositories has an open pull request.`,
+      allClearText: waitingCount ? `${waitingCount} open PR${waitingCount === 1 ? ' is' : 's are'} waiting on CI, their authors, or still in draft.` : 'No open pull requests are waiting either.',
+      cols: COLS.map(c => {
+        const on = sort && sort.key === c.key;
+        return {
+          key: c.key, label: c.label, arrow: on ? (sort.dir === 'asc' ? '▲' : '▼') : '↕',
+          aria: on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none',
+          title: on ? 'Sorted: ' + c[sort.dir] + '. Click to reverse.' : 'Sort all buckets by ' + c.label.toLowerCase() + ' (' + c[c.first] + ')',
+          onClick: () => this.setState(st => ({ sort: st.sort && st.sort.key === c.key ? { key: c.key, dir: st.sort.dir === 'asc' ? 'desc' : 'asc' } : { key: c.key, dir: c.first } })),
+          style: { display: 'flex', alignItems: 'center', gap: 4, justifyContent: c.right ? 'flex-end' : 'flex-start', minWidth: 0, padding: 0, background: 'none', border: 'none', cursor: 'pointer', color: on ? 'var(--tx)' : 'var(--mu)', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: on ? 600 : 400, whiteSpace: 'nowrap' },
+          arrowStyle: { fontSize: 9, color: on ? 'var(--sky)' : 'var(--sl)', opacity: on ? 1 : .6 },
+        };
+      }),
+      groups: listGroups, wide: !narrow, showColHead: !narrow && prs.length > 0,
+      topRef: this.topRef, stickyRef: this.stickyRef,
+      stickyStyle: narrow ? {} : { position: 'sticky', top: s.topH || 48, zIndex: 5, background: 'var(--bg)' },
+      asOfText: syncOk ? `${prs.length} open PRs · ${monitoredIds.length} repositories` : `As of ${t} · may be out of date`,
+      asOfStyle: { fontFamily: MONO, fontSize: 11.5, color: syncOk ? 'var(--mu)' : sm.c, paddingBottom: 6 },
+      listStyle: syncOk ? {} : { opacity: .55, filter: 'saturate(.25)' },
+      repoGroups, monitoredCount: monitoredIds.length, repoTotal: REPOS.length,
+      panelOpen: s.panelOpen, panelChev: s.panelOpen ? '▾' : '▴',
+      togglePanel: () => this.setState({ panelOpen: !s.panelOpen }),
+      screen: s.screen, data: s.data, sync: s.sync,
+      onScreen: e => this.setState({ screen: e.target.value }),
+      onData: e => this.setData(e.target.value),
+      onSync: e => this.setSync(e.target.value),
+      fire: this.fire, fireDisabled: s.evt >= EVENTS.length || !syncOk,
+      fireLabel: !syncOk ? 'Live events paused (sync)' : s.evt >= EVENTS.length ? 'No more events · Reset' : `Next live event (${s.evt + 1}/${EVENTS.length})`,
+      toggleLive: () => this.setState({ live: !s.live }), liveLabel: s.live ? 'Auto: on' : 'Auto: off',
+      togglePhone: () => this.setState({ phone: !s.phone }), phoneLabel: s.phone ? 'Desktop' : 'Phone',
+      reset: () => { this.lastEvt = Date.now(); this.setState({ sort: null, prs: seed(), evt: 0, monitored: DEFAULT_MON(), data: 'sample', collapsed: {} }); this.setSync('normal'); },
+    };
+  }
+}
+</script>
+</body>
+</html>

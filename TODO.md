@@ -35,11 +35,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Related: `choose-github-integration`, `track-upstream-prs`
   - Overlaps GitHub's own review-requested inbox; decide whether a personal instance should surface organization or work review load at all.
 
-- [PRODUCT] `define-bucket-ordering` — **Decide how PRs are ordered within each overview bucket.** The first-deliverable definition fixes which bucket a PR lands in but not its position, and the prototype and the implementation both need one.
-  - Source: Claude Design prompt drafted from the `define-minimal-deliverable` work, 2026-10-11
-  - Blocked by: owner review of the Claude Design prototype, which was asked to propose an order
-  - Starting point: compare the prototype's proposal with longest-waiting first by last activity; record the result in docs/DELIVERABLE.md once that document is on main.
-
 ## Needs proof of concept
 
 ### P0 Critical
@@ -67,7 +62,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 - [GITHUB] `choose-github-integration` — **Choose GitHub authentication, credential access scope and permissions.** Enforce the single-owner boundary and plan credential lifecycle, forks and organization access.
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
   - Related: `choose-change-detection`, `define-public-view`
-  - Starting point: compare a GitHub App with OAuth against the sign-in, monitored-repository and PR-signal requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md); the choice constrains which webhooks are available.
+  - Starting point: compare a GitHub App with OAuth against the sign-in, monitored-repository and PR-signal requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md), including reading each reviewer's permission on the repository for the trusted-reviewer rule; the choice constrains which webhooks are available.
 
 ### P2 Normal
 

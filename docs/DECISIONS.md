@@ -50,3 +50,30 @@ updates early.
   GitHub webhooks persisted in Cloudflare and pushed to a reactive frontend;
   `choose-cloudflare-stack` tests it. Bounded polling within about five minutes
   is the fallback discussed if the free tier cannot support that.
+
+## 2026-10-12 — Prototype differences and bucket ordering
+
+The Claude Design prototype of the PR overview, kept as a reference in
+[design/README.md](design/README.md), disagreed with the bucket rules in
+[DELIVERABLE.md](DELIVERABLE.md) in three cases. The owner settled them:
+
+- Someone else's PR the owner has not reviewed stays in awaiting your review
+  while its CI runs, as the deliverable already said. Reviewing need not wait
+  for CI.
+- Mergeability that GitHub is still computing counts as no conflicts, as the
+  deliverable already said. The state is usually resolved within seconds, and
+  the row says it is being checked.
+- Only trusted reviewers, those with write, maintain or admin permission on the
+  repository, affect review state. Someone else's PR approved on its current
+  head by a co-maintainer is ready to land without the owner's review; an
+  approval from a passer-by on a public repository counts for nothing. The
+  same rule applies to requests for changes, so a passer-by cannot block a PR
+  or move the owner's PR into changes requested; permission is read as it
+  stands when a PR is bucketed, so removing a collaborator withdraws their
+  earlier approvals; and reviews from bots and GitHub Apps are ignored. All of
+  this matches whose reviews GitHub counts towards required reviews.
+
+Rows within a bucket follow the prototype's proposal: longest waiting first in
+Needs you, latest activity first in Waiting. A tie-break by repository and PR
+number was added so the order is deterministic, and the prototype's column
+sorting is left out of the first deliverable as more than it needs.
