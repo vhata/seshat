@@ -64,21 +64,21 @@ what the refusal requires.
   the PR's head commit, whether or not branch protection requires it:
   - *failing* if any result is failure, error, timed out, cancelled, startup
     failure or action required;
-  - otherwise *pending* if any is queued, in progress, waiting, requested or
-    pending;
-  - otherwise *passing* if any is success (neutral and skipped results count
-    as neither);
+  - otherwise *pending* if any is queued, in progress, waiting, requested,
+    pending or expected;
+  - otherwise *passing* if any is success (neutral, skipped and stale results
+    count as neither);
   - otherwise *none*.
 - **Conflicts:** GitHub reports the PR as not mergeable because of conflicts.
   While GitHub has not yet computed mergeability, the PR is treated as having no
   conflicts and the row says that mergeability is being checked.
 - **Review state:** derived from each reviewer's latest approval or
-  changes-requested review, ignoring comment-only reviews. It is *changes
-  requested* if any reviewer's latest such review requests changes, otherwise
-  *approved* if at least one reviewer's latest such review is an approval
-  submitted on the current head commit, otherwise *none*. A request for changes
-  stands until that reviewer reviews again; an approval lapses when new commits
-  are pushed. Seshat derives this itself rather than using GitHub's review
+  changes-requested review, ignoring comment-only and dismissed reviews. It is
+  *changes requested* if any reviewer's latest such review requests changes,
+  otherwise *approved* if at least one reviewer's latest such review is an
+  approval submitted on the current head commit, otherwise *none*. A request for
+  changes stands until that reviewer reviews again or it is dismissed; an
+  approval lapses when new commits are pushed. Seshat derives this itself rather than using GitHub's review
   decision, which GitHub reports only when branch protection requires reviews.
 - **Reviewed the current head:** the owner submitted a review (approval,
   changes requested or comment) on the PR's current head commit. A push, including
@@ -138,7 +138,8 @@ why a PR is where it is.
   Stale data must never look current. The overdue threshold is set by the
   change-detection decision (`choose-change-detection`).
 - Changes that GitHub fails to report, or reports late, are still picked up:
-  the overview converges on GitHub's state without owner action.
+  the overview converges on GitHub's state without owner action, within a
+  catch-up bound the change-detection decision also sets.
 
 ## Evidence boundary
 
@@ -174,7 +175,7 @@ where practical and otherwise by a recorded manual scenario.
    overview within 60 seconds, with no reload.
 6. A change made while Seshat receives no notification of it (simulated by
    dropping the notification) still appears without owner action, within the
-   bound the change-detection decision sets.
+   catch-up bound under [Freshness](#freshness).
 7. The last successful sync time is always visible, and an overdue or failed
    sync is flagged.
 8. A PR with no activity for 7 days carries the stale flag.

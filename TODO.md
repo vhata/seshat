@@ -12,7 +12,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
   - Depends on: `choose-github-integration`
   - Related: `choose-cloudflare-stack`
-  - Must meet the freshness requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md#freshness): changes visible within 60 seconds, convergence after missed or late notifications, and an overdue-sync threshold this decision sets.
+  - Must meet the freshness requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md#freshness): changes visible within 60 seconds, convergence after missed or late notifications, and the overdue-sync threshold and catch-up bound this decision sets.
 
 ### P2 Normal
 
