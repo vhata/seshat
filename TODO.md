@@ -61,7 +61,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
   - Related: `choose-cloudflare-stack`
   - Must meet the freshness requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md#freshness): changes visible within 60 seconds, convergence after missed or late notifications, and the overdue-sync threshold and catch-up bound this decision sets.
-  - GitHub access is a GitHub App with read-only Metadata, Pull requests, Checks and Commit statuses ([decision](docs/DECISIONS.md#2026-10-12--github-integration)). The events it can receive and the constraints that bear on this choice (no automatic redelivery, fork CI events matched by head SHA, no event for mergeability, no push or comment events without more permissions, rate and subrequest limits) are under [Webhook events](docs/specs/2026-10-12-github-integration.md#webhook-events) and [Rate limits](docs/specs/2026-10-12-github-integration.md#rate-limits) in the spec.
+  - GitHub access is a GitHub App with read-only Metadata, Pull requests, Checks and Commit statuses ([decision](docs/DECISIONS.md#2026-10-12--github-integration)). The events it can receive and the constraints that bear on this choice (no automatic redelivery, fork CI events matched by head SHA, no event for mergeability, no push or top-level PR comment events without more permissions, rate and subrequest limits) are under [Webhook events](docs/specs/2026-10-12-github-integration.md#webhook-events) and [Rate limits](docs/specs/2026-10-12-github-integration.md#rate-limits) in the spec.
 
 ### P2 Normal
 

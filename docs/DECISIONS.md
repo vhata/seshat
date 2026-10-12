@@ -101,10 +101,11 @@ installation tokens or a private key that never leaves the instance.
   add a stored token with its own lifecycle if they need one.
 - Permissions are read-only Metadata, Pull requests, Checks and Commit
   statuses, with no organization or account permissions. Contents, Issues and
-  Members are left out for the first deliverable: they would add push and
-  comment events but also grant reading all code and issues, and an
-  organization permission would stop repository admins installing the app.
-  Revisit when change detection, ingesting the projects index or hosted
+  Members are left out for the first deliverable. Contents and Issues would
+  add push and top-level comment events but grant reading all code and
+  issues; Members would add collaborator-change events, but as an
+  organization permission it would stop repository admins installing the
+  app. Revisit when change detection, ingesting the projects index or hosted
   refresh needs them.
 - The app starts private and is made public when the first organization is
   added, because a private app cannot be installed on another account. An
