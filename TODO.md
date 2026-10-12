@@ -35,6 +35,11 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Related: `choose-github-integration`, `track-upstream-prs`
   - Overlaps GitHub's own review-requested inbox; decide whether a personal instance should surface organization or work review load at all.
 
+- [PRODUCT] `define-bucket-ordering` — **Decide how PRs are ordered within each overview bucket.** The first-deliverable definition fixes which bucket a PR lands in but not its position, and the prototype and the implementation both need one.
+  - Source: Claude Design prompt drafted from the `define-minimal-deliverable` work, 2026-10-11
+  - Blocked by: owner review of the Claude Design prototype, which was asked to propose an order
+  - Starting point: compare the prototype's proposal with longest-waiting first by last activity; record the result in docs/DELIVERABLE.md once that document is on main.
+
 ## Needs proof of concept
 
 ### P0 Critical
