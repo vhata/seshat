@@ -66,12 +66,12 @@ The Claude Design prototype of the PR overview, kept as a reference in
 - Only trusted reviewers, those with write, maintain or admin permission on the
   repository, affect review state. Someone else's PR approved on its current
   head by a co-maintainer is ready to land without the owner's review; an
-  approval from a passer-by on a public repository counts for nothing.
-  Applying the same rule to requests for changes, so that a passer-by cannot
-  block a PR or move the owner's PR into changes requested, was added for
-  consistency with GitHub and awaits the owner's confirmation. So do two
-  details added while writing the rule: permission is read as it stands when a
-  PR is bucketed, and reviews from bots and GitHub Apps are ignored.
+  approval from a passer-by on a public repository counts for nothing. The
+  same rule applies to requests for changes, so a passer-by cannot block a PR
+  or move the owner's PR into changes requested; permission is read as it
+  stands when a PR is bucketed, so removing a collaborator withdraws their
+  earlier approvals; and reviews from bots and GitHub Apps are ignored. All of
+  this matches whose reviews GitHub counts towards required reviews.
 
 Rows within a bucket follow the prototype's proposal: longest waiting first in
 Needs you, latest activity first in Waiting. A tie-break by repository and PR
