@@ -373,15 +373,17 @@ For `choose-github-integration`, which this proposal does not decide:
   apply to every repository in an installation, and an App has only one
   installation per account, so adding contents read (or later write) for the
   index would extend it to every monitored repository on the owner's account.
-  Contents access limited to the index needs either a separate App for the
-  index, or an index repository owned by a different account, such as an
-  organization, with its own installation. An App can narrow each
-  installation token it requests to one repository and one permission, which
-  limits what Seshat itself does with a token, but not what a leaked private
-  key could reach. A classic OAuth token cannot be limited to one repository
-  at all. `choose-github-integration` should weigh this; if per-repository
-  scope is not available, the owner should be told how far the extra access
-  reaches.
+  Because an App's permissions are set for the App as a whole, every
+  installation is asked to accept them, so contents access limited to the
+  index in practice needs a separate App for the index. An index repository
+  owned by another account, such as an organization, helps only if the
+  owner's own installation does not accept the added permission. An App can
+  narrow each installation token it requests to one repository and one
+  permission, which limits what Seshat itself does with a token, but not what
+  a leaked private key could reach. A classic OAuth token cannot be limited
+  to one repository at all. `choose-github-integration` should weigh this; if
+  per-repository scope is not available, the owner should be told how far the
+  extra access reaches.
 - **Authoring identity:** refresh PRs should come from an identity other than
   the owner's account where the integration allows it, and otherwise open as
   drafts (see above). A GitHub App's bot identity provides this naturally; a
