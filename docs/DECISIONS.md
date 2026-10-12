@@ -38,11 +38,11 @@ updates early.
   repositories are opt-in. Explicit per-repository opt-in was rejected because
   it hides new repositories until the owner adds them; rule-based selection was
   deferred as more to build and explain than the first cut needs.
-- PRs are sorted into ordered buckets (ready to land, broken, awaiting review,
-  changes requested, CI running, waiting on the author, draft), with a stale flag
-  after 7 days without activity. The owner's own green PR counts as ready to
+- PRs are sorted into ordered buckets (ready to land, broken, awaiting your
+  review, changes requested on yours, CI running, waiting on the author, draft),
+  with a stale flag after 7 days without activity. The owner's own green PR counts as ready to
   land without an approval.
-- Changes on GitHub should reach an open page within about a minute, with sync
+- Changes on GitHub should reach an open page within 60 seconds, with sync
   status always visible. The owner's working hypothesis for meeting this is
   GitHub webhooks persisted in Cloudflare and pushed to a reactive frontend;
   `choose-cloudflare-stack` tests it. Bounded polling within about five minutes
