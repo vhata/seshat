@@ -25,9 +25,10 @@ The export does not run on its own. It needs Claude Design's generated runtime,
 relative to the HTML. The runtime is not committed: it is generated
 third-party code with no licence statement, and this repository is MIT
 licensed. To view the prototype, export the project from Claude Design again
-(or reuse a previous export), place `support.js` and the repository's
-[`assets/seshat.svg`](../../assets/seshat.svg) beside the HTML, and serve the
-directory over HTTP. The runtime loads React 18, ReactDOM and Babel from
+(or reuse a previous export), place `support.js` beside the HTML, copy the
+repository's [`assets/seshat.svg`](../../assets/seshat.svg) to
+`assets/seshat.svg` under the HTML's directory, and serve that directory over
+HTTP. The runtime loads React 18, ReactDOM and Babel from
 unpkg, and the page loads its fonts from Google Fonts.
 
 A floating "Prototype controls" panel switches screen, sample data set and sync
@@ -111,3 +112,9 @@ light theme and a "Retry now" action on the sync banner.
 - In the 390 px render the header, summary chips and row ages run past the
   right edge. Check the narrow layout on a real phone viewport against
   acceptance check 10.
+- The prototype shows "by you" beside the review state whenever the owner has
+  reviewed the current head, even when the review state itself comes from
+  another reviewer. The real annotation must describe only the owner's own
+  review.
+- The `staleDays` editor control (1 to 30 days) exists only for exploring the
+  design. The deliverable fixes the stale threshold at 7 days.
