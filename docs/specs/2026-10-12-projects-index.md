@@ -20,10 +20,11 @@ live and never written back. Cloudflare storage holds only data that can be
 rebuilt from GitHub and the file.
 
 The laptop agent updates the file with git: by direct push after the owner
-approves the diff in the session, or by draft PR when it runs unattended. Seshat
-writes nothing to the index for now. If `evaluate-optional-llm-refresh` later
-adopts hosted refresh, it proposes changes only by PR, from an identity other
-than the owner's, with one open refresh PR at a time.
+approves the diff in the session, or by draft PR when it runs unattended.
+Seshat writes nothing to the index for now. If `evaluate-optional-llm-refresh`
+later adopts hosted refresh, it proposes changes only by PR, with one open
+refresh PR at a time, from an identity other than the owner's where the
+integration allows it, and otherwise as a draft.
 
 This needs no new credential on the laptop and keeps the file usable without
 Seshat. Seshat's extra GitHub access is reading one repository, and only that
@@ -116,9 +117,9 @@ laptop agent posts its survey to an instance API.
 - **Privacy:** data sits behind owner sign-in, which is good, but the laptop
   needs a long-lived credential for the instance API. That is a new secret to
   issue, store, rotate and revoke, and a new way in.
-- **Build cost:** higher than B. An editor, an
-  authenticated ingestion API, history, export and import all have to be built
-  before the index is as useful as the file is now.
+- **Build cost:** higher than B. An editor, an authenticated ingestion API,
+  history, export and import all have to be built before the index is as
+  useful as the file is now.
 
 ### B. Markdown in an owner-selected repository
 
@@ -179,15 +180,15 @@ Both stores hold editable data and are kept in step.
 The owner selects one repository and one file path, defaulting to
 `PROJECTS.md` at the root. It should be dedicated to the index, so that
 where the integration allows per-repository grants, granting Seshat access to
-it exposes nothing else. Seshat shows the
-repository's visibility on its settings page and warns prominently if it is
-public, because the file names private and local-only repositories.
+it exposes nothing else. Seshat shows the repository's visibility on its
+settings page and warns prominently if it is public, because the file names
+private and local-only repositories.
 
-If it is owned by the owner's personal account and not a fork, it is
-monitored by default under the first deliverable's rules, and its PRs appear
-in the overview.
-That is useful: a pending index PR shows up as something needing the owner.
-The owner can still turn monitoring off; Seshat reads the index either way.
+If it is owned by the owner's personal account and not a fork, it is monitored
+by default under the first deliverable's rules, and its PRs appear in the
+overview. That is useful: a pending index PR shows up as something needing the
+owner. The owner can still turn monitoring off; Seshat reads the index either
+way.
 
 ### Field ownership and provenance
 
@@ -251,9 +252,8 @@ repositories can wait for the classifications design.
   shows that the index failed to parse with the commit and line, and shows the
   commit time of the last good parse.
 - Unknown fields are kept and shown as unrecognised fields of unknown source,
-  not as owner notes. Unknown section names are
-  accepted and shown as written; this decision does not fix the set of
-  classifications.
+  not as owner notes. Unknown section names are accepted and shown as written;
+  this decision does not fix the set of classifications.
 - A format check that Seshat and the laptop agent share (and that the index
   repository's CI could run) keeps the two parsers from drifting.
 
@@ -377,8 +377,9 @@ For `choose-github-integration`, which this proposal does not decide:
   `choose-github-integration` should weigh this; if per-repository scope is
   not available, the owner should be told how far the extra access reaches.
 - **Authoring identity:** refresh PRs should come from an identity other than
-  the owner's account (see above). A GitHub App's bot identity provides this
-  naturally; a user OAuth token would author the PRs as the owner.
+  the owner's account where the integration allows it, and otherwise open as
+  drafts (see above). A GitHub App's bot identity provides this naturally; a
+  user OAuth token would author the PRs as the owner, so they would be drafts.
 - **Laptop:** the laptop agent uses the owner's existing local git and GitHub
   credentials and needs no Seshat credential.
 
@@ -449,8 +450,9 @@ Left for the classifications design, which has no queue entry yet:
    index can show, with work checkouts and non-project observations excluded
    by the agent's prompt.
 5. **Hosted writes.** Should Seshat write nothing to the index until
-   `evaluate-optional-llm-refresh` is decided, and then only by PR from a
-   non-owner identity? Recommended: yes.
+   `evaluate-optional-llm-refresh` is decided, and then only by PR, from a
+   non-owner identity where the integration allows it and otherwise as a
+   draft? Recommended: yes.
 6. **Authoritative classification.** Is the section an entry sits under the
    authoritative classification, with computed classifications only ever
    shown as suggestions? Recommended: yes. The brief says some
