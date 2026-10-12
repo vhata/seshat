@@ -77,24 +77,27 @@ controls.
 Within the Needs you group the prototype orders rows longest waiting first
 (oldest last activity first); within Waiting, latest activity first. Both are
 labelled as proposals, and sortable column headers override them across all
-buckets. Adopting an order is tracked by `define-bucket-ordering` in
-[TODO.md](../../TODO.md).
+buckets. The owner adopted both default orders on 2026-10-12; see
+[Order within a bucket](../DELIVERABLE.md#order-within-a-bucket). Column
+sorting is not required for the first deliverable.
 
 ### Where it differs from the deliverable
 
 The prototype's `classify()` disagrees with the
-[bucket rules](../DELIVERABLE.md#buckets) in three cases. The deliverable's
-rules stand until the owner decides otherwise; `reconcile-prototype-bucket-rules`
-in [TODO.md](../../TODO.md) tracks the decision.
+[bucket rules](../DELIVERABLE.md#buckets) in three cases. The owner settled
+each on 2026-10-12 (see [DECISIONS.md](../DECISIONS.md)); follow the
+deliverable, not the prototype, in all three.
 
 1. Someone else's non-draft PR with CI pending goes to CI running even when the
-   owner has not reviewed it; the deliverable puts it in Awaiting your review.
+   owner has not reviewed it. Decided: it stays in Awaiting your review.
 2. Mergeability still being computed ("checking") keeps a PR out of Ready to
-   land, and sends the owner's own PR to CI running; the deliverable treats
-   checking as no conflicts.
+   land, and sends the owner's own PR to CI running. Decided: checking counts
+   as no conflicts.
 3. Someone else's PR approved on its current head by another reviewer stays in
-   Awaiting your review until the owner reviews it; the deliverable puts it in
-   Ready to land.
+   Awaiting your review until the owner reviews it. Decided: an approval from
+   a trusted reviewer (write, maintain or admin permission) makes it ready to
+   land; an approval from anyone else is ignored, which matches the
+   prototype's behaviour for that case.
 
 The prototype also adds behaviour the deliverable does not mention: sortable
 columns, collapsible buckets, the summary strip, repository and author links, a

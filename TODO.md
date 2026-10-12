@@ -35,17 +35,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Related: `choose-github-integration`, `track-upstream-prs`
   - Overlaps GitHub's own review-requested inbox; decide whether a personal instance should surface organization or work review load at all.
 
-- [PRODUCT] `define-bucket-ordering` — **Decide how PRs are ordered within each overview bucket.** The first-deliverable definition fixes which bucket a PR lands in but not its position, and the implementation needs one.
-  - Source: Claude Design prompt drafted from the `define-minimal-deliverable` work, 2026-10-11
-  - Blocked by: the owner's decision on the order the Claude Design prototype proposes
-  - Related: `reconcile-prototype-bucket-rules`
-  - Starting point: the prototype proposes longest waiting first in Needs you and latest activity first in Waiting, with sortable columns as an override ([docs/design/README.md](docs/design/README.md#ordering-proposal)); record the decision in [docs/DELIVERABLE.md](docs/DELIVERABLE.md).
-
-- [PRODUCT] `reconcile-prototype-bucket-rules` — **Decide whether the prototype's three bucketing differences change the deliverable.** The Claude Design prototype disagrees with the deliverable's rules on pending CI, mergeability still being checked, and approvals by other reviewers; the deliverable stands until the owner decides.
-  - Source: review of the Claude Design export on branch task/prototype-design-reference, 2026-10-12
-  - Related: `define-bucket-ordering`
-  - Starting point: the three cases in [docs/design/README.md](docs/design/README.md#where-it-differs-from-the-deliverable). Recommendation when filed: keep the deliverable's rules for the first two; the third (whether another reviewer's approval sends someone else's PR to Ready to land) is an owner judgment.
-
 ## Needs proof of concept
 
 ### P0 Critical
