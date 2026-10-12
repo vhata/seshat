@@ -1,8 +1,10 @@
 # GitHub integration
 
-Status: **proposal awaiting the owner's decision.** Nothing here is decided
-until [DECISIONS.md](../DECISIONS.md) records it. This answers the queue entry
-`choose-github-integration` in [TODO.md](../../TODO.md) and is judged against
+Status: **accepted on 2026-10-12.** The owner accepted the recommendation and
+answered all four [questions](#questions-for-the-owner) as recommended; the
+decision is recorded in
+[DECISIONS.md](../DECISIONS.md#2026-10-12--github-integration). This answered
+the queue entry `choose-github-integration` and is judged against
 [DELIVERABLE.md](../DELIVERABLE.md). Facts about GitHub were checked against
 GitHub's documentation on 2026-10-12; each claim links to its source, and
 points the documentation does not settle are listed under
@@ -684,7 +686,7 @@ applies to the owner's session and stays unchanged.
 
 ## Effect on DELIVERABLE.md
 
-Suggested amendments, to make after the owner decides:
+Amendments, made to DELIVERABLE.md with the decision:
 
 1. **Monitored repositories.** "Any organization repository they can access"
    should read as any organization repository the instance's app has been
@@ -704,17 +706,15 @@ Suggested amendments, to make after the owner decides:
 
 No requirement in DELIVERABLE.md is unmeetable with the recommended option.
 
-## Follow-up work if accepted
+## Follow-up
 
-- Record the decision, with the owner's answers to the questions below, in
-  [DECISIONS.md](../DECISIONS.md).
-- Update the GitHub authentication question under
-  [Open design questions](../BRIEF.md#open-design-questions) in the brief to
-  point at the decision.
-- Make the three amendments above to [DELIVERABLE.md](../DELIVERABLE.md).
-- Resolve `choose-github-integration` in [TODO.md](../../TODO.md) and drop
-  the `Depends on:` line from `choose-change-detection`, which becomes
-  unblocked.
+- `choose-change-detection` in [TODO.md](../../TODO.md) works within the
+  events and constraints under [Webhook events](#webhook-events) and
+  [Rate limits](#rate-limits).
+- The `choose-cloudflare-stack` spike confirms the first two items under
+  [Not verified](#not-verified).
+- The remaining unverified items are checked during implementation, before
+  anything relies on them.
 
 ## Not verified
 
@@ -751,6 +751,8 @@ already receives a GitHub webhook.
 
 ## Questions for the owner
 
+The owner answered all four as recommended on 2026-10-12.
+
 1. **App visibility and organizations.** A private app owned by the owner's
    personal account cannot be installed on an organization, and a public app
    can be installed and authorized by anyone (the installation guard deletes
@@ -761,6 +763,7 @@ already receives a GitHub webhook.
    *Recommended:* register it private, make it public when an organization is
    added, and ship the installation guard from the start so either state is
    safe. Acceptance check 2 then needs a test app switched to public.
+   *Decided:* as recommended.
 2. **Minimum permissions.** Keep to Metadata, Pull requests, Checks and Commit
    statuses, all read-only, leaving out Contents, Issues and Members. Without
    them, conflicts caused by pushes to a base branch, top-level PR comments and
@@ -772,6 +775,7 @@ already receives a GitHub webhook.
    *Recommended:* yes, keep the minimum for the first deliverable; revisit if
    `choose-change-detection` shows that reconciliation cannot meet the
    catch-up bound, or when the index decision is made.
+   *Decided:* as recommended.
 3. **Where setup credentials go.** The manifest flow hands the app's
    credentials to the instance. Either the setup page shows them once for the
    owner to store as secrets (one manual step, no extra credential), or the
@@ -779,11 +783,12 @@ already receives a GitHub webhook.
    in instance storage, or the instance needs a Cloudflare API token to write
    its own secrets). *Recommended:* show once for the owner to store, unless
    `choose-cloudflare-stack` finds encrypted storage that is as good.
+   *Decided:* as recommended.
 4. **Owner user token.** Discard the owner's user token after each sign-in, or
    keep and refresh it to enable later features that must act as the owner
    (`show-review-requests`, `track-upstream-prs`). *Recommended:* discard it
    now; those entries can add a stored token, with its own lifecycle, if they
-   need one.
+   need one. *Decided:* as recommended.
 
 ## Sources
 

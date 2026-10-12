@@ -107,9 +107,11 @@ light theme and a "Retry now" action on the sync banner.
 
 - Serve fonts from the instance itself. Loading them from Google Fonts sends
   every visit to a third party.
-- The banner copy assumes a 30-second sync interval and a GitHub token. Neither
-  is decided; take both from `choose-change-detection` and
-  `choose-github-integration`.
+- The banner copy assumes a 30-second sync interval and a GitHub token. The
+  interval is not decided; take it from `choose-change-detection`. GitHub
+  access uses a GitHub App with no stored user token
+  ([decision](../DECISIONS.md#2026-10-12--github-integration)), so copy that
+  refers to the owner's GitHub token should refer to the app instead.
 - Rows are links containing further clickable elements (repository and
   author). Use non-nested interactive elements in the real markup.
 - In the 390 px render the header, summary chips and row ages run past the

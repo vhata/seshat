@@ -77,3 +77,58 @@ Rows within a bucket follow the prototype's proposal: longest waiting first in
 Needs you, latest activity first in Waiting. A tie-break by repository and PR
 number was added so the order is deterministic, and the prototype's column
 sorting is left out of the first deliverable as more than it needs.
+
+## 2026-10-12 — GitHub integration
+
+Each instance owner registers their own GitHub App and installs it on their
+personal account with access to all repositories. The full comparison,
+permissions, events and credential lifecycle are in
+[specs/2026-10-12-github-integration.md](specs/2026-10-12-github-integration.md).
+A GitHub App is the only option that hears about a personal account's new
+repositories without polling, since user accounts cannot have webhooks; it can
+be limited to read-only access; and its credentials are either short-lived
+installation tokens or a private key that never leaves the instance.
+
+- The app is registered through GitHub's manifest flow, which fills in the
+  registration so the owner does not copy a dozen settings by hand.
+  Installing with all repositories, not selected ones, is what lets
+  repositories created after setup be monitored without owner action.
+- Sign-in uses the app's user authorization. Seshat compares the account ID
+  from `GET /user` with the configured owner ID, then revokes the user token;
+  for any other account it deletes the authorization on GitHub, so nothing is
+  left stored for them. Data is read with installation tokens, so no user token
+  is kept, the owner's included. Later features that must act as the owner can
+  add a stored token with its own lifecycle if they need one.
+- Permissions are read-only Metadata, Pull requests, Checks and Commit
+  statuses, with no organization or account permissions. Contents, Issues and
+  Members are left out for the first deliverable: they would add push and
+  comment events but also grant reading all code and issues, and an
+  organization permission would stop repository admins installing the app.
+  Revisit when change detection, ingesting the projects index or hosted
+  refresh needs them.
+- The app starts private and is made public when the first organization is
+  added, because a private app cannot be installed on another account. An
+  installation guard ships from the start: it accepts the owner's personal
+  installation, holds organization installations until the owner accepts them,
+  and deletes any other, so a public app stays safe.
+- The setup page shows the app's credentials once for the owner to store as
+  secrets, unless `choose-cloudflare-stack` finds encrypted storage that is as
+  good. That keeps the private key out of instance storage without giving the
+  instance a Cloudflare API token.
+
+Rejected: an OAuth App needs the `repo` scope, which is full read and write,
+and must create a webhook on every repository; a fine-grained personal access
+token cannot sign anyone in and needs one token per account and manual
+rotation; a stored owner user token serves nothing in the first deliverable;
+and installing on selected repositories would hide new ones.
+
+The owner asked whether simply pasting a GitHub token would do instead of
+authorizing an app. A token does not sign the browser visitor in, so
+owner-only sign-in would still need an app. With a token or an OAuth App, push
+notifications also need a webhook created on each repository, which takes
+admin rights on it and a write-capable scope, plus polling to find new
+repositories, because user accounts cannot have webhooks. The owner agreed it
+gains nothing. The owner also asked whether setting up an app is complicated:
+with the manifest flow it is a few confirmations on GitHub plus storing the
+credentials it returns (see
+[Setup burden](specs/2026-10-12-github-integration.md#setup-burden)).
