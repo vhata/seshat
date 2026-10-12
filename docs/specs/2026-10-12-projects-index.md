@@ -85,7 +85,7 @@ hold secrets.
 | Remote branches, ahead/behind the default branch | Yes, with Contents read | Yes, as of the last fetch |
 | Open and merged PRs, review and CI state | Yes | Only through the GitHub API |
 | Fork parent, archived flag, visibility, creation date | Yes | Partly |
-| Last push and other activity dates | Yes | Partly |
+| Last push and other activity dates | Yes (last push with Metadata; commit dates need Contents read) | Partly |
 | Unpushed commits and local-only branches | No | Yes |
 | Uncommitted changes and stashes | No | Yes |
 | Repositories with no GitHub remote | No | Yes |
@@ -203,9 +203,9 @@ the record. Seshat reads it.
   keeps working against a clone.
 - **Privacy:** protected by the repository's visibility. Seshat needs read
   access to the file's contents in one more repository, which under a GitHub
-  App widens to every repository in the installation (see
-  [GitHub access needs](#github-access-needs)). The laptop uses the owner's
-  existing git credentials.
+  App widens to every repository in the installation unless a separate App
+  covers the index (see [GitHub access needs](#github-access-needs)). The
+  laptop uses the owner's existing git credentials.
 - **Build cost:** moderate. A documented format, a parser that reports errors,
   ingestion on push, and a view that joins entries to GitHub evidence. The
   file format becomes an interface that Seshat and the laptop agent both
