@@ -19,3 +19,34 @@ CI checks the committed PR merge tree.
 Install an empty review index and backlog without inventing a baseline review.
 Defer scheduled extended validation until there are meaningful extended checks.
 GitHub protection is recommended, not configured as part of installation.
+
+## 2026-10-11 — First deliverable is the PR overview
+
+The first deliverable is an overview of open pull requests on monitored
+repositories, defined with acceptance checks in [DELIVERABLE.md](DELIVERABLE.md).
+Project classifications wait: PR signals come directly from GitHub, while
+classifications need owner judgment and override rules that deserve their own
+design. The PR overview also exercises sign-in, change detection and live
+updates early.
+
+- PRs in scope are those on monitored repositories, opened by the owner or by
+  anyone else, bots included. PRs the owner opened elsewhere and review
+  requests in other owners' repositories are deferred to `track-upstream-prs`
+  and `show-review-requests` in [TODO.md](../TODO.md).
+- Monitoring defaults to every non-archived, non-fork repository the owner's
+  personal account owns, with per-repository overrides. Forks and organization
+  repositories are opt-in. Explicit per-repository opt-in was rejected because
+  it hides new repositories until the owner adds them; rule-based selection was
+  deferred as more to build and explain than the first cut needs.
+- PRs are sorted into ordered buckets (ready to land, broken, awaiting your
+  review, changes requested on yours, CI running, waiting on the author, draft),
+  with a stale flag after 7 days without activity. The owner's own green PR
+  counts as ready to land without an approval. Drafts always sit in the draft
+  bucket, even when failing, because work in progress is expected to break. An
+  approval lapses when new commits are pushed, so an approved PR that changes
+  returns to awaiting review.
+- Changes on GitHub should reach an open page within 60 seconds, with sync
+  status always visible. The owner's working hypothesis for meeting this is
+  GitHub webhooks persisted in Cloudflare and pushed to a reactive frontend;
+  `choose-cloudflare-stack` tests it. Bounded polling within about five minutes
+  is the fallback discussed if the free tier cannot support that.

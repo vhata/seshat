@@ -66,3 +66,7 @@ The personal inventory is deliberately not copied into this public repository.
 Resolve these questions with the owner, record decisions and establish a
 minimal deliverable with acceptance checks before selecting dependencies or
 writing application code.
+
+The first deliverable, a PR overview, is defined in
+[DELIVERABLE.md](DELIVERABLE.md). The remaining questions above stay open
+unless [DECISIONS.md](DECISIONS.md) records an answer.
