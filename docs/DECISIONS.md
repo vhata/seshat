@@ -133,3 +133,48 @@ gains nothing. The owner also asked whether setting up an app is complicated:
 with the manifest flow it is a few confirmations on GitHub plus storing the
 credentials it returns (see
 [Setup burden](specs/2026-10-12-github-integration.md#setup-burden)).
+
+## 2026-10-12 — Project index source of truth
+
+The owner accepted the proposal in
+[specs/2026-10-12-projects-index.md](specs/2026-10-12-projects-index.md),
+answering all six of its questions as recommended:
+
+- The project index that replaces `PROJECTS.md` is Markdown in a dedicated
+  private repository the owner selects. The file holds owner judgment and
+  dated laptop observations. Seshat derives GitHub evidence live, shows it
+  beside the file with its source, and never writes it back; Cloudflare
+  storage holds only a cache rebuildable from GitHub and the file.
+- The laptop agent pushes directly after the owner approves its diff in the
+  session, and opens a draft PR only when it runs unattended, so unread
+  generated content never appears in Ready to land.
+- The file stays a complete standalone survey: last commit and branches are
+  kept as dated local observations, so the file stays useful without Seshat.
+- Names and summaries of local-only repositories may live in the private index
+  repository and in Seshat's storage. The survey prompt excludes work
+  checkouts and observations about files that are not projects.
+- Seshat writes nothing to the index until `evaluate-optional-llm-refresh` is
+  decided. After that, refresh writes only by PR, one at a time, from a
+  non-owner identity where the integration allows it and otherwise as a
+  draft, and is never triggered by a push to the index repository.
+- The section an entry sits under is its authoritative classification.
+  Computed classifications are only ever shown as suggestions; thresholds and
+  presentation wait for `design-project-classifications`.
+
+Rejected: dashboard storage as the source of truth, as the most to build, with
+no history or portability and a new laptop credential; two-way sync, as the
+costs of both stores plus conflict resolution between them; storing
+GitHub-derived facts in the file and keeping them current from Seshat, as
+commit noise and duplicated facts that drift; direct hosted commits for
+generated content, as unreviewed changes to owner judgment; and a PR for every
+laptop survey, as repeating a review the owner already did in the session.
+
+The owner added two inputs. Seshat should include a command-line tool for
+power users that works on a clone of the index (list by classification, run a
+command across projects, check against disk) plus a `survey` command that
+prints the local-only signals in a stable form for the laptop agent
+(`ship-projects-cli`). And most signals a laptop survey reads are available
+from the GitHub API, along with some it never had, such as open PRs, CI and
+squash merges. A hosted refresh could therefore gather one context bundle per
+refresh, at the cost of Contents read across monitored repositories, which
+shapes `evaluate-optional-llm-refresh`.

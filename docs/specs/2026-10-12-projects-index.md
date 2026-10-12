@@ -1,15 +1,17 @@
 # Project index: source of truth and update workflow
 
-Proposal for `replace-projects-index` in [TODO.md](../../TODO.md), written
-2026-10-12.
+Written 2026-10-12 for the `replace-projects-index` queue entry, which this
+decision resolves.
 
-**Status: proposal awaiting the owner's decision.** Nothing here is decided
-until [DECISIONS.md](../DECISIONS.md) records it. The questions that need the
-owner's judgment are listed under
-[Questions for the owner](#questions-for-the-owner), each with a recommended
-answer.
+**Status: accepted by the owner on 2026-10-12**, with all six
+[owner decisions](#owner-decisions) answered as recommended. The decision is
+recorded in
+[DECISIONS.md](../DECISIONS.md#2026-10-12--project-index-source-of-truth).
+The owner added two inputs: a command-line tool for working with the index
+locally ([Seshat CLI](#seshat-cli)), and the observation that most survey
+signals are available from GitHub ([Survey signals](#survey-signals)).
 
-## Recommendation in brief
+## Decision in brief
 
 Keep the project index as Markdown in a dedicated private repository the owner
 selects. That file is the only durable record of what GitHub cannot supply:
@@ -95,6 +97,56 @@ two can disagree without either being wrong: a branch the survey listed as
 unmerged may have been merged on GitHub since. Seshat should show such a
 disagreement as two dated observations, not resolve it.
 
+## Survey signals
+
+The owner asked the agent that maintains the current index what it reads
+during a survey. The table maps each signal to where it can come from. The
+survey checked nothing on GitHub: not open PRs, CI, whether branches were
+merged there, deploys, or TODO and queue files.
+
+| Signal | Source | Notes |
+| --- | --- | --- |
+| Whether a directory is a git repository | Local only | Covers local-only directories and repositories |
+| Checked-out branch | Local only | |
+| Most recent commit on any branch, with date and ref | GitHub for pushed branches; local for unpushed ones | |
+| Commit count, and commits since the last survey | GitHub for pushed history; local for unpushed commits | Counting with `--all` includes hidden refs that tooling creates; see below |
+| Uncommitted and untracked file counts | Local only | |
+| Commits ahead of upstream (unpushed) | Local only | |
+| Origin remote as `owner/name` | Local | The join key; GitHub lists repositories but cannot say which checkout is which |
+| Local branches other than the default | Local; GitHub shows only those that were pushed | |
+| Commit subjects since the last survey | GitHub for pushed commits | |
+| Start of the README, the source of summaries | GitHub, needs Contents read | |
+| Whether a repository vendors particular tooling directories | GitHub, needs Contents read | |
+| TODO and queue files | GitHub, needs Contents read | Not read by the survey |
+| Merged branches | GitHub PR state; locally `git branch --merged` | `--merged` misses squash merges, so the agent inferred them from `(#n)` in commit subjects. A merged PR with that head branch answers the question directly |
+| Open PRs and CI results | GitHub | Not read by the survey; the PR overview already needs them |
+| Loose files in the surveyed directory, by name | Local only | Kept out of the index by the survey prompt (see [Laptop-agent workflow](#laptop-agent-workflow)) |
+| Classification | Owner judgment | The agent's call from recency and the previous entry, never a script |
+| Next action | Owner judgment | Partly inferred from commit messages, partly carried over |
+
+Conclusions:
+
+- A hosted refresh could assemble most of a survey's context from the GitHub
+  API in one bundle per refresh: commits, branches, PRs, CI, README and queue
+  files. It would also have signals the laptop survey never had, notably open
+  PRs, CI and squash merges.
+- That bundle needs Contents read across monitored repositories, not only the
+  index repository. Under a GitHub App, Contents read is installation-wide in
+  any case (see [GitHub access needs](#github-access-needs)), so if refresh is
+  adopted, the concern about limiting Contents to the index matters much less.
+  It also means private READMEs and queue files would go to the LLM provider.
+  These are notes for `evaluate-optional-llm-refresh` and
+  `choose-github-integration`, not decisions.
+- The laptop survey's distinct value is the local-only rows: checked-out
+  branch, uncommitted and untracked files, unpushed commits, local-only
+  branches and local-only repositories. The `survey` command of the
+  [Seshat CLI](#seshat-cli) should report exactly these.
+- Commit counts, locally or on GitHub, should count commits reachable from
+  named branches only, never every ref, so that hidden refs created by tools
+  do not inflate them. The survey left counts out for this reason.
+- Classification and next actions stay owner judgment. Signals can inform a
+  suggestion; they do not make the call.
+
 ## Source-of-truth options
 
 The brief names three options. Each is assessed on who writes, conflicts,
@@ -147,8 +199,7 @@ the record. Seshat reads it.
 
 The weakness of B on its own is that it invites storing GitHub-derived facts
 in the file, which then go stale, or having Seshat commit them, which creates
-noise. The recommended model below addresses this by splitting fields by
-source.
+noise. The chosen model below addresses this by splitting fields by source.
 
 ### C. A synchronized combination
 
@@ -160,7 +211,7 @@ Both stores hold editable data and are kept in step.
 - **One-way, split by field source**, where the file holds what only the
   owner or the laptop can know and storage holds a rebuildable cache of GitHub
   evidence plus the parsed file, is B with a clear rule about what goes where.
-  This is the recommendation.
+  This is the chosen option.
 
 ### Comparison
 
@@ -173,7 +224,7 @@ Both stores hold editable data and are kept in step.
 | Seshat GitHub access beyond monitoring | None | Read the index repository's contents | Read and write the index repository's contents |
 | Build cost | High | Moderate | Highest |
 
-## Recommended model
+## The model
 
 ### Index repository
 
@@ -295,19 +346,47 @@ The same rule applies to any generated PR authored as the owner; see
 [Hosted writes](#hosted-writes-and-self-pr-behaviour). The cost is visibility:
 Draft is in the Waiting group, so the owner has to look for it.
 
-Recommended: when the owner runs the agent and is present, the agent shows the
+Decided: when the owner runs the agent and is present, the agent shows the
 diff, asks, then pulls, commits and pushes directly, never force-pushing. When
 it runs unattended, it opens a draft PR, updating its own open PR rather than
 adding another. This matches how the owner maintains the file now (edited in
 place with the agent in the loop) while keeping review for runs nobody
 watches.
 
+## Seshat CLI
+
+The owner's current index comes with a small local tool that parses it by
+heading structure. The owner wants an equivalent in Seshat so that users can
+work with the index locally; the audience is power users. It works on a clone
+of the index repository, uses the same format and format check as the hosted
+side, and needs no Seshat credential.
+
+- **List:** list projects in given classifications, with local paths or as
+  JSON.
+- **Each:** run a command in every project's checkout for given
+  classifications, with the project and its classification available to the
+  command.
+- **Check:** check the file against the format and against the directories on
+  disk, reporting checkouts with no entry, entries whose checkout is missing,
+  and duplicate entries.
+- **Survey:** print the local-only signals from
+  [Survey signals](#survey-signals) for each checkout in a stable, documented
+  form, as a table for people and as JSON for the laptop agent. The agent
+  reads this output instead of running its own git commands, which makes
+  surveys repeatable and keeps counts consistent. The command reports local
+  signals by default. If it also offers GitHub signals through the owner's
+  own GitHub CLI login, for use without an instance, they are labelled as
+  GitHub's.
+
+How the CLI is built and distributed waits for a stack decision; no
+application stack is selected yet.
+
 ## Hosted writes and self-PR behaviour
 
 Three ways hosted updates could reach the index:
 
 - **Dashboard-only.** Hosted signals are computed and shown, and never
-  written. This is the recommendation for deterministic signals. They are
+  written. This is the decision for deterministic signals. They are
   rebuildable from GitHub, so writing them to the file only adds commits that
   go stale.
 - **Direct commits.** Seshat commits to the default branch. Rejected for
@@ -360,7 +439,7 @@ entry.
 
 ## GitHub access needs
 
-For `choose-github-integration`, which this proposal does not decide:
+For `choose-github-integration`, which this decision does not settle:
 
 - **Now:** read the contents of one owner-selected repository, which may be
   private and may be excluded from monitoring, and learn when its default
@@ -393,8 +472,8 @@ For `choose-github-integration`, which this proposal does not decide:
 
 ## Relationship to the first deliverable and classifications
 
-The PR overview does not read the index, and nothing in this proposal blocks
-it. Replacing `PROJECTS.md` is out of scope for the first deliverable per
+The PR overview does not read the index, and nothing in this decision blocks
+it. Showing the project index is out of scope for the first deliverable per
 [DELIVERABLE.md](../DELIVERABLE.md#scope). The access needs above are listed
 so the integration choice does not rule the index out.
 
@@ -402,13 +481,13 @@ Settled by this decision:
 
 - Where the owner's classification lives: the section an entry sits under in
   the file. Hosted code never moves an entry between sections except through
-  a PR the owner merges. Whether that section is authoritative over computed
-  classifications is put to the owner in question 6.
+  a PR the owner merges. That section is authoritative, and computed
+  classifications are only ever shown as suggestions (owner decision 6).
 - Which fields the file holds, who writes each, and how provenance and
   freshness are shown.
 - The write paths for the owner, the laptop agent and any hosted refresh.
 
-Left for the classifications design, which has no queue entry yet:
+Left for the classifications design (`design-project-classifications`):
 
 - The set of classifications and the thresholds for any computed ones.
 - Whether Seshat suggests classifications from evidence, how a suggestion is
@@ -437,7 +516,9 @@ Left for the classifications design, which has no queue entry yet:
   granting Seshat read access would expose the rest, even where the
   integration allows per-repository grants.
 
-## Questions for the owner
+## Owner decisions
+
+The owner answered all six as recommended on 2026-10-12.
 
 1. **Source of truth.** Should the index be Markdown in a dedicated private
    repository, with GitHub evidence derived live by Seshat and never written
@@ -469,22 +550,22 @@ Left for the classifications design, which has no queue entry yet:
    survives refreshes. Thresholds and how suggestions look stay with the
    classifications design.
 
-## Follow-up work if accepted
+## Follow-up work
 
-Once the owner decides, record the decision in
-[DECISIONS.md](../DECISIONS.md), update the
-[brief's open questions](../BRIEF.md#open-design-questions), and consider
-queue entries for:
+Owner step, outside this repository: migrate the index by creating the
+dedicated private repository, moving the file into it, and replacing the
+single file-wide survey date with per-entry `Surveyed:` lines. The owner's
+local tool parses the file and may need updating for the new fields until the
+Seshat CLI replaces it.
 
-- Migrating the index: creating the dedicated private repository, moving the
-  file into it, and replacing the single file-wide survey date with
-  per-entry `Surveyed:` lines. The owner's local script parses the file and
-  may need updating for the new fields.
-- Documenting the index format and its shared format check.
-- Writing the laptop-agent prompt or skill.
-- Ingesting the index and showing it beside GitHub evidence, as a deliverable
+Queue entries in [TODO.md](../../TODO.md):
+
+- `define-index-format`: document the index format and a shared format check.
+- `ship-projects-cli`: the [Seshat CLI](#seshat-cli), including `survey`.
+- `write-survey-prompt`: the laptop-agent prompt or skill.
+- `design-project-classifications`: the classifications design the brief
+  lists.
+- `show-project-index`: ingest the index and show it beside GitHub evidence,
   after the PR overview.
-- The classifications design, which the brief lists as an open question but
-  the queue does not yet track.
 
-`evaluate-optional-llm-refresh` is unblocked by the decision.
+`evaluate-optional-llm-refresh` is unblocked by this decision.

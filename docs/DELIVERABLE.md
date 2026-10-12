@@ -31,7 +31,7 @@ entry:
 
 - Project classifications and project health (Active, Cooling, Stranded and so
   on from the [brief](BRIEF.md#project-index)).
-- Replacing `PROJECTS.md` (`replace-projects-index`).
+- Showing the project index that replaces `PROJECTS.md` (`show-project-index`).
 - PRs the owner opened in repositories they do not own (`track-upstream-prs`).
 - Review requests in other owners' repositories (`show-review-requests`).
 - A public view (`define-public-view`).
