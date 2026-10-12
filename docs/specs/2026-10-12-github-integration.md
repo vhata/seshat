@@ -319,8 +319,9 @@ check 2.
 Seshat stores no user token. With expiring user tokens, the default, the
 exchange also returns a refresh token valid for six months
 ([refreshing][app-refresh]); Seshat never stores it either. For a refused
-account, deleting the grant deletes every token for that user and app,
-refresh token included ([OAuth authorizations API][rest-oauth-auth]). For the
+account, deleting the grant deletes "all OAuth tokens associated with the
+application for the user", which presumably includes the refresh token
+([OAuth authorizations API][rest-oauth-auth]). For the
 owner, `DELETE /applications/{client_id}/token` is documented as revoking "a
 single token", and the documentation does not say whether the paired refresh
 token stops working too (see [Not verified](#not-verified)). If it does not,
@@ -332,9 +333,8 @@ as the only cleanup needed.
 Everything the overview shows is read with installation tokens, so the
 owner's session is purely Seshat's own (session format and lifetime belong to
 implementation). Authorizing creates no installation and an installation
-needs no authorization ([authorizing apps][app-authorizing]); sign-in creates
-no installation, and the user token is revoked before it is used for anything
-but `GET /user`.
+needs no authorization ([authorizing apps][app-authorizing]); the user token
+is revoked before it is used for anything but `GET /user`.
 
 The app requests no account permissions, so authorizing it grants no access
 to account resources such as email addresses or gists
@@ -394,9 +394,8 @@ permissions, and outside collaborators. Trusted means `permission` is `write`
 or `admin`, which takes in maintain and any custom role whose base role is
 write or higher. The endpoint's page lists only 200 and 404 responses and
 does not say what a user with no access gets; Seshat should treat 404,
-`read` and `none` alike as untrusted. Bot and
-app reviewers are excluded by the review author's account type before any
-permission lookup.
+`read` and `none` alike as untrusted. Bot and app reviewers are excluded by
+the review author's account type before any permission lookup.
 
 `author_association` on a review is not a substitute: `COLLABORATOR` means
 only that the author was invited to collaborate, at any permission
