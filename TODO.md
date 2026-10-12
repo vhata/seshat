@@ -62,7 +62,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 - [GITHUB] `choose-github-integration` — **Choose GitHub authentication, credential access scope and permissions.** Enforce the single-owner boundary and plan credential lifecycle, forks and organization access.
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
   - Related: `choose-change-detection`, `define-public-view`
-  - Starting point: compare a GitHub App with OAuth against the sign-in, monitored-repository and PR-signal requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md); the choice constrains which webhooks are available.
+  - Starting point: compare a GitHub App with OAuth against the sign-in, monitored-repository and PR-signal requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md), including reading each reviewer's permission on the repository for the trusted-reviewer rule; the choice constrains which webhooks are available.
 
 ### P2 Normal
 

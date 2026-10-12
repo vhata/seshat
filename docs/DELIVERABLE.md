@@ -1,6 +1,7 @@
 # First deliverable: PR overview
 
-Decided with the owner on 2026-10-11 (see [DECISIONS.md](DECISIONS.md)). This
+Decided with the owner on 2026-10-11 and amended on 2026-10-12 (see
+[DECISIONS.md](DECISIONS.md)). This
 defines what the first implementation must do and how it will be judged. It does
 not choose a stack, an authentication mechanism or a change-detection mechanism;
 those remain open in [TODO.md](../TODO.md) and must meet the requirements here.
@@ -74,11 +75,15 @@ what the refusal requires.
 - **Conflicts:** GitHub reports the PR as not mergeable because of conflicts.
   While GitHub has not yet computed mergeability, the PR is treated as having no
   conflicts and the row says that mergeability is being checked.
-- **Trusted reviewer:** a reviewer whose permission on the repository is
-  write, maintain or admin. The owner is a trusted reviewer on every repository
-  they own. Reviews from anyone else, such as a passer-by on a public
-  repository, are ignored for review state and bucketing. This matches whose
-  approvals GitHub counts towards required reviews.
+- **Trusted reviewer:** a person whose current permission on the repository
+  is write, maintain or admin, as GitHub reports it when the PR is bucketed.
+  The owner is a trusted reviewer on every repository they own; on an
+  organization repository they are trusted only with write permission or
+  higher. Reviews from anyone else, such as a passer-by on a public
+  repository, and reviews submitted by bots or GitHub Apps, are ignored for
+  review state. This matches whose approvals GitHub counts towards required
+  reviews. Trust does not limit *reviewed the current head*: any review the
+  owner submits counts there.
 - **Review state:** derived from each trusted reviewer's latest approval or
   changes-requested review, ignoring comment-only and dismissed reviews. It is
   *changes requested* if any trusted reviewer's latest such review requests
