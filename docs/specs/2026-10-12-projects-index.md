@@ -20,13 +20,15 @@ live and never written back. Cloudflare storage holds only data that can be
 rebuilt from GitHub and the file.
 
 The laptop agent updates the file with git: by direct push after the owner
-approves the diff in the session, or by PR when it runs unattended. Seshat
+approves the diff in the session, or by draft PR when it runs unattended. Seshat
 writes nothing to the index for now. If `evaluate-optional-llm-refresh` later
 adopts hosted refresh, it proposes changes only by PR, from an identity other
 than the owner's, with one open refresh PR at a time.
 
-This needs no new credential on the laptop, keeps the file usable without
-Seshat, and limits Seshat's extra GitHub access to reading one repository.
+This needs no new credential on the laptop and keeps the file usable without
+Seshat. Seshat's extra GitHub access is reading one repository, and only that
+repository where the integration allows per-repository grants; see
+[GitHub access needs](#github-access-needs).
 
 ## The index today
 
@@ -53,13 +55,14 @@ repository.
 Two consequences follow. Entries are keyed by local directory, so the hosted
 side needs an explicit join to GitHub repositories. And a survey of a laptop
 can notice things that are not about any project and should not leave the
-machine, such as credentials in stray files or work checkouts.
+machine, for example an employer's repositories or files that look like they
+hold secrets.
 
 ## Requirements
 
 - Keep the brief's [evidence boundary](../BRIEF.md#project-index): the hosted
   side must never imply that local evidence was inspected. The first
-  deliverable states the same rule for the PR overview under
+  deliverable states a stricter form of the rule for the PR overview under
   [Evidence boundary](../DELIVERABLE.md#evidence-boundary).
 - Owner judgment must survive refreshes. Nothing automated may silently
   overwrite a classification, a next action or a note.
@@ -113,7 +116,7 @@ laptop agent posts its survey to an instance API.
 - **Privacy:** data sits behind owner sign-in, which is good, but the laptop
   needs a long-lived credential for the instance API. That is a new secret to
   issue, store, rotate and revoke, and a new way in.
-- **Build cost:** highest of the single-store options. An editor, an
+- **Build cost:** higher than B. An editor, an
   authenticated ingestion API, history, export and import all have to be built
   before the index is as useful as the file is now.
 
@@ -132,8 +135,10 @@ the record. Seshat reads it.
   clones anywhere. It works with no Seshat instance, and the local script
   keeps working against a clone.
 - **Privacy:** protected by the repository's visibility. Seshat needs read
-  access to one more repository; the laptop uses the owner's existing git
-  credentials.
+  access to the file's contents in one more repository, which may widen its
+  access to other repositories depending on the integration (see
+  [GitHub access needs](#github-access-needs)). The laptop uses the owner's
+  existing git credentials.
 - **Build cost:** moderate. A documented format, a parser that reports errors,
   ingestion on push, and a view that joins entries to GitHub evidence. The
   file format becomes an interface that Seshat and the laptop agent both
@@ -163,8 +168,8 @@ Both stores hold editable data and are kept in step.
 | Durable record | Cloudflare storage | Git repository | Both |
 | Conflict handling | Built by Seshat | Git | Built by Seshat |
 | Works without Seshat | No | Yes | Partly |
-| New laptop credential | Yes | No | Yes |
-| Seshat GitHub access beyond monitoring | None | Read one repository | Read and write one repository |
+| New laptop credential | Yes | No | Depends on whether the laptop writes through git or the instance |
+| Seshat GitHub access beyond monitoring | None | Read the index repository's contents | Read and write the index repository's contents |
 | Build cost | High | Moderate | Highest |
 
 ## Recommended model
@@ -173,12 +178,14 @@ Both stores hold editable data and are kept in step.
 
 The owner selects one repository and one file path, defaulting to
 `PROJECTS.md` at the root. It should be dedicated to the index, so that
-granting Seshat access to it exposes nothing else. Seshat shows the
+where the integration allows per-repository grants, granting Seshat access to
+it exposes nothing else. Seshat shows the
 repository's visibility on its settings page and warns prominently if it is
 public, because the file names private and local-only repositories.
 
-The repository is an owned, non-fork repository, so under the first
-deliverable's defaults it is monitored and its PRs appear in the overview.
+If it is owned by the owner's personal account and not a fork, it is
+monitored by default under the first deliverable's rules, and its PRs appear
+in the overview.
 That is useful: a pending index PR shows up as something needing the owner.
 The owner can still turn monitoring off; Seshat reads the index either way.
 
@@ -215,8 +222,9 @@ survey, and Seshat puts GitHub's live values beside it with their own labels.
   into a GitHub value or shown without its date.
 - A monitored repository with no entry in the index shows GitHub evidence only
   and says it has no index entry.
-- An index entry with no GitHub repository is shown from the file alone,
-  labelled as reported by the laptop survey.
+- An index entry with no GitHub repository is shown from the file alone, with
+  each field labelled with its source (the owner or the laptop survey) and no
+  GitHub evidence.
 - Wording that Seshat generates itself, such as "no recent activity", is
   qualified as GitHub activity.
 
@@ -242,7 +250,8 @@ repositories can wait for the classifications design.
 - A parse error does not blank the index. Seshat keeps the last good parse,
   shows that the index failed to parse with the commit and line, and shows the
   commit time of the last good parse.
-- Unknown fields are kept and shown as notes. Unknown section names are
+- Unknown fields are kept and shown as unrecognised fields of unknown source,
+  not as owner notes. Unknown section names are
   accepted and shown as written; this decision does not fix the set of
   classifications.
 - A format check that Seshat and the laptop agent share (and that the index
@@ -276,15 +285,22 @@ and Seshat's storage.
 | Ingestion | When the PR is merged | When the push lands |
 | Format check | Can run as PR CI in the index repository | Runs locally before the push |
 
-A PR the laptop agent opens is authored by the owner's account, so in the
-overview it is the owner's PR. With no CI it lands in Ready to land, which is
-the right prompt for something waiting on the owner.
+A PR the laptop agent opens is authored by the owner's account, because the
+agent uses the owner's credentials and has no other identity. In the overview
+it is therefore the owner's PR, and with no CI a non-draft one lands in Ready
+to land. That bucket says the owner's work is ready to merge, which is wrong
+for generated content nobody has read. The unattended agent should open its PR
+as a draft, so it sits in Draft until the owner reads it and marks it ready.
+The same rule applies to any generated PR authored as the owner; see
+[Hosted writes](#hosted-writes-and-self-pr-behaviour). The cost is visibility:
+Draft is in the Waiting group, so the owner has to look for it.
 
 Recommended: when the owner runs the agent and is present, the agent shows the
 diff, asks, then pulls, commits and pushes directly, never force-pushing. When
-it runs unattended, it opens a PR, updating its own open PR rather than adding
-another. This matches how the owner maintains the file now (edited in place
-with the agent in the loop) while keeping review for runs nobody watches.
+it runs unattended, it opens a draft PR, updating its own open PR rather than
+adding another. This matches how the owner maintains the file now (edited in
+place with the agent in the loop) while keeping review for runs nobody
+watches.
 
 ## Hosted writes and self-PR behaviour
 
@@ -318,9 +334,18 @@ entry.
   Under the first deliverable's rules, an owner-authored PR with no CI is
   Ready to land without review; a refresh PR authored as someone else lands in
   Awaiting your review instead, which is accurate, and does not look like the
-  owner's own work.
+  owner's own work. If the chosen integration can only author as the owner,
+  refresh PRs open as drafts, like unattended laptop-agent PRs.
 - Refresh may propose changes to owner fields but never to laptop
   observations, which it cannot verify.
+- Refresh may propose new entries for monitored repositories that have none,
+  with the repository field as the join key and only owner fields filled in.
+  It never changes an existing entry's join key, and never adds or removes
+  entries for local-only repositories, which it cannot see.
+- Refresh sends private index content (owner notes, next actions, local-only
+  repository names) and private GitHub context to the LLM provider.
+  `evaluate-optional-llm-refresh` must decide what is sent and get the owner's
+  consent for it.
 
 ## Privacy and the public view
 
@@ -341,9 +366,16 @@ For `choose-github-integration`, which this proposal does not decide:
   private and may be excluded from monitoring, and learn when its default
   branch changes. Webhook push events or polling would both work.
 - **Later, only if hosted refresh is adopted:** create a branch, commit and
-  open or update a PR on that one repository. Write access should cover that
-  repository and nothing else; Seshat needs no write access to monitored
-  repositories for this.
+  open or update a PR on that one repository. Seshat needs no write access to
+  monitored repositories for this.
+- **Scope constraint:** the aim is contents access to the index repository
+  alone, but not every mechanism can grant that. A GitHub App's permissions
+  apply to every repository in an installation, so adding contents read (or
+  later write) for the index would extend it to every monitored repository in
+  the same installation, unless a separate App or installation covers the
+  index. A classic OAuth token cannot be limited to one repository at all.
+  `choose-github-integration` should weigh this; if per-repository scope is
+  not available, the owner should be told how far the extra access reaches.
 - **Authoring identity:** refresh PRs should come from an identity other than
   the owner's account (see above). A GitHub App's bot identity provides this
   naturally; a user OAuth token would author the PRs as the owner.
@@ -360,7 +392,9 @@ so the integration choice does not rule the index out.
 Settled by this decision:
 
 - Where the owner's classification lives: the section an entry sits under in
-  the file. Hosted code never moves an entry between sections.
+  the file. Hosted code never moves an entry between sections except through
+  a PR the owner merges. Whether that section is authoritative over computed
+  classifications is put to the owner in question 6.
 - Which fields the file holds, who writes each, and how provenance and
   freshness are shown.
 - The write paths for the owner, the laptop agent and any hosted refresh.
@@ -391,7 +425,8 @@ Left for the classifications design, which has no queue entry yet:
   already performed in the session, plus a PR in the overview after every
   survey. Kept as the mode for unattended runs.
 - **Keeping the file in a repository that also holds unrelated files:**
-  granting Seshat read access would expose the rest.
+  granting Seshat read access would expose the rest, even where the
+  integration allows per-repository grants.
 
 ## Questions for the owner
 
@@ -399,8 +434,10 @@ Left for the classifications design, which has no queue entry yet:
    repository, with GitHub evidence derived live by Seshat and never written
    back? Recommended: yes.
 2. **Laptop-agent updates.** Should the laptop agent push directly after you
-   approve its diff in the session, and open a PR only when it runs
-   unattended? Recommended: yes. The alternative is a PR for every survey.
+   approve its diff in the session, and open a draft PR only when it runs
+   unattended? Recommended: yes. The alternatives are a PR for every survey,
+   or unattended PRs that are not drafts and so appear in Ready to land
+   before anyone has read them.
 3. **Standalone file.** Should the file stay a complete standalone survey,
    with last commit and branches kept as dated local observations, or shrink
    to owner judgment plus what GitHub cannot see? Recommended: stay
@@ -414,6 +451,13 @@ Left for the classifications design, which has no queue entry yet:
 5. **Hosted writes.** Should Seshat write nothing to the index until
    `evaluate-optional-llm-refresh` is decided, and then only by PR from a
    non-owner identity? Recommended: yes.
+6. **Authoritative classification.** Is the section an entry sits under the
+   authoritative classification, with computed classifications only ever
+   shown as suggestions? Recommended: yes. The brief says some
+   classifications express owner judgment, and a computed value that
+   silently replaced the owner's would break the rule that owner judgment
+   survives refreshes. Thresholds and how suggestions look stay with the
+   classifications design.
 
 ## Follow-up work if accepted
 
@@ -422,6 +466,10 @@ Once the owner decides, record the decision in
 [brief's open questions](../BRIEF.md#open-design-questions), and consider
 queue entries for:
 
+- Migrating the index: creating the dedicated private repository, moving the
+  file into it, and replacing the single file-wide survey date with
+  per-entry `Surveyed:` lines. The owner's local script parses the file and
+  may need updating for the new fields.
 - Documenting the index format and its shared format check.
 - Writing the laptop-agent prompt or skill.
 - Ingesting the index and showing it beside GitHub evidence, as a deliverable
