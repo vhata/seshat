@@ -20,9 +20,9 @@ their personal account with access to all repositories.
 
 - **Sign-in** uses the app's user authorization flow. Seshat exchanges the
   code, reads the account ID from `GET /user`, compares it with the configured
-  owner ID, and then discards the user token. A refused account's
+  owner ID, and then revokes the user token. A refused account's
   authorization is deleted on GitHub before the refusal page is shown. No user
-  token is stored for anyone, the owner included.
+  token or refresh token is stored for anyone, the owner included.
 - **Data** is read with short-lived installation tokens, minted on demand from
   the app's private key. The app requests read-only access to four repository
   permissions (Metadata, Pull requests, Checks, Commit statuses), and no
@@ -40,10 +40,10 @@ their personal account with access to all repositories.
 
 The main reasons are that only a GitHub App can get events for a personal
 account's new repositories without polling (no webhook can be created on a
-user account), that it can be limited to
-read-only access where an OAuth App needs the `repo` scope's full read and
-write access, and that its credentials are either short-lived (installation
-tokens expire after an hour) or stay inside the instance (the private key).
+user account), that it can be limited to read-only access where an OAuth App
+needs the `repo` scope's full read and write access, and that its
+credentials are either short-lived (installation tokens expire after an hour)
+or stay inside the instance (the private key).
 The cost is a heavier one-time setup and an organization-access wrinkle,
 described below and put to the owner as [question 1](#questions-for-the-owner).
 
@@ -289,6 +289,18 @@ from installations that are not accepted are dropped after signature
 verification. This guard is what makes a public app safe to run; it costs
 little, so it should exist even while the app is private.
 
+The guard also watches the personal installation's repository selection.
+The installation object and the `installation_repositories` payload carry
+`repository_selection`, either `all` or `selected`; when an installation
+changes from all to selected, `repositories_removed` in that payload is empty
+([apps API][rest-apps]; [webhook events][wh-events]). Seshat should read
+`repository_selection` whenever it reads the installation and on every
+`installation_repositories` event, and if the personal installation is
+`selected`, say prominently on the repositories screen that repositories
+created later will not be monitored until the installation is switched back
+to all repositories. Otherwise the change would silently break acceptance
+check 2.
+
 ### Sign-in and the owner boundary
 
 1. The visitor is redirected to GitHub's authorize URL with `state` and a
@@ -304,12 +316,25 @@ little, so it should exist even while the app is private.
    to revoke that one token, keeping the grant so the next sign-in needs no
    consent screen, and starts its own session.
 
-No GitHub user token outlives the request. Everything the overview shows is
-read with installation tokens, so the owner's session is purely Seshat's own
-(session format and lifetime belong to implementation). Authorizing creates
-no installation and an installation needs no authorization
-([authorizing apps][app-authorizing]), so sign-in never grants the instance
-access to anything.
+Seshat stores no user token. With expiring user tokens, the default, the
+exchange also returns a refresh token valid for six months
+([refreshing][app-refresh]); Seshat never stores it either. For a refused
+account, deleting the grant deletes every token for that user and app,
+refresh token included ([OAuth authorizations API][rest-oauth-auth]). For the
+owner, `DELETE /applications/{client_id}/token` is documented as revoking "a
+single token", and the documentation does not say whether the paired refresh
+token stops working too (see [Not verified](#not-verified)). If it does not,
+two fallbacks remain: delete the grant for the owner as well, at the cost of a
+consent screen at every sign-in, or opt the app out of expiring user tokens so
+that no refresh token is issued, which leaves the access token's revocation
+as the only cleanup needed.
+
+Everything the overview shows is read with installation tokens, so the
+owner's session is purely Seshat's own (session format and lifetime belong to
+implementation). Authorizing creates no installation and an installation
+needs no authorization ([authorizing apps][app-authorizing]); sign-in creates
+no installation, and the user token is revoked before it is used for anything
+but `GET /user`.
 
 The app requests no account permissions, so authorizing it grants no access
 to account resources such as email addresses or gists
@@ -367,8 +392,9 @@ installation tokens and needs only Metadata read ([collaborators][rest-collab];
 So it covers organization members with access through teams or base
 permissions, and outside collaborators. Trusted means `permission` is `write`
 or `admin`, which takes in maintain and any custom role whose base role is
-write or higher. For a reviewer with no access the documentation lists only a
-404; Seshat should treat 404, `read` and `none` alike as untrusted. Bot and
+write or higher. The endpoint's page lists only 200 and 404 responses and
+does not say what a user with no access gets; Seshat should treat 404,
+`read` and `none` alike as untrusted. Bot and
 app reviewers are excluded by the review author's account type before any
 permission lookup.
 
@@ -376,14 +402,17 @@ permission lookup.
 only that the author was invited to collaborate, at any permission
 ([GraphQL schema][gql-schema], `CommentAuthorAssociation`).
 
-GraphQL offers a shortcut worth testing in implementation:
-`PullRequest.latestOpinionatedReviews(writersOnly: true)` returns each user's
-latest approving or changes-requested review, limited to users with write
-access, and `PullRequestReview.authorCanPushToRepository` reports push access
-per review ([GraphQL schema][gql-schema]). One query per repository could then
-replace many REST calls. The schema's definition of "write access" has to be
-confirmed against the collaborator permission endpoint before relying on it,
-and dismissed reviews and bot authors still need filtering.
+GraphQL offers a shortcut worth testing in implementation. The schema
+describes `PullRequest.latestOpinionatedReviews` only as "A list of latest
+reviews per user associated with the pull request", with a `writersOnly`
+argument to "Only return reviews from user who have write access to the
+repository"; `PullRequestReview.authorCanPushToRepository` "Indicates whether
+the author of this review has push access to the repository"
+([GraphQL schema][gql-schema]). If the field returns each user's latest
+approval or changes-requested review, as its name suggests, one query per
+repository could replace many REST calls. Both the opinionated filter and the
+meaning of "write access" have to be confirmed before relying on it, and
+dismissed reviews and bot authors still need filtering.
 
 ### Minimum permissions
 
@@ -412,6 +441,38 @@ Deliberately left out:
   as that push. Without Contents they are found when Seshat next reads the PR.
   Contents read also grants reading all code, which the overview does not
   need.
+
+  The projects-index proposal (`replace-projects-index`) may later need
+  Contents read on one owner-selected index repository, and Contents and Pull
+  requests write if hosted refresh PRs are adopted. That is not decided here,
+  but it bears on this choice:
+
+  - Permissions are set on the app registration, not per installation.
+    Adding Contents later prompts the owner of every account where the app is
+    installed to approve it, and an installation that does not approve keeps
+    the old permissions ([choosing permissions][app-perms];
+    [approving updated permissions][app-approve];
+    [modifying an app][app-modify]).
+  - Once approved, a permission applies to every repository in the
+    installation, so with All repositories Contents would cover every
+    repository the owner's account owns. Seshat can narrow its installation
+    tokens to the index repository and the Contents permission
+    ([installation tokens][app-install-token]), which limits Seshat's own use
+    but not what a leaked private key could reach.
+  - In practice, confining Contents to the index repository needs a separate
+    app installed only on that repository. Putting the index in another
+    account does not help: the added permission is requested from every
+    installation, the owner's personal one included, and would stay off it
+    only if the owner left that request unapproved. A second installation of
+    the same app on the owner's account is not an option either: the API
+    returns a single installation per account
+    (`GET /users/{username}/installation`; [apps API][rest-apps]), which
+    implies one installation per account; see [Not verified](#not-verified).
+  - Requests made with an installation token are attributed to the app, not
+    the owner ([installation tokens][app-install-token]), which gives refresh
+    PRs the non-owner author the index proposal asks for.
+  - Once Contents is granted, the `push` event becomes available, which
+    narrows the base-branch conflict gap described above.
 - **Issues.** Needed for the `issue_comment` event, which carries top-level PR
   comments ([webhook events][wh-events]). The comments themselves are
   readable with Pull requests read ([issue comments][rest-issue-comments]).
@@ -455,7 +516,8 @@ Constraints relevant to change detection, all from GitHub's documentation:
   receiver takes longer than 10 seconds to respond
   ([failed deliveries][wh-failed]; [webhook best practices][wh-best]). Failed
   deliveries can be listed and redelivered through the API, for the app
-  webhook with a JWT ([failed deliveries][wh-failed]). The redelivery window
+  webhook with a JWT ([failed deliveries][wh-failed];
+  [app webhooks API][rest-app-webhooks]). The redelivery window
   is 3 days in most of the redelivery page and 7 days in its introduction
   ([redelivering][wh-redeliver]).
 - A redelivery keeps the original `X-GitHub-Delivery` ID, which suits
@@ -483,15 +545,16 @@ Constraints relevant to change detection, all from GitHub's documentation:
 | Client secret | Until replaced | Instance secret | Regenerated in app settings |
 | Webhook secret | Until replaced | Instance secret | Changed in app settings and on the instance together; deliveries in between fail verification and need redelivery |
 | User token | Seconds (revoked after the identity check) | Not stored | `DELETE /applications/{client_id}/token` or `/grant` ([OAuth authorizations API][rest-oauth-auth]) |
+| Refresh token | Six months ([refreshing][app-refresh]) | Not stored | Deleted with the grant; whether revoking the access token alone revokes it is [not verified](#not-verified) |
 | Session | Set by implementation | Instance | Owner signs out or session expires |
 
 **Private key format.** GitHub issues the key as a PKCS#1 PEM
-([private keys][app-keys]). The Web Crypto `importKey` accepts `pkcs8` but
-not PKCS#1 ([MDN][mdn-importkey]), and Workers implements Web Crypto, so
-either setup converts the key to PKCS#8 once or the runtime uses a library
-that parses PKCS#1. GitHub recommends a sign-only key vault over an
-environment variable ([private keys][app-keys]); no free-tier equivalent is
-assumed here.
+([private keys][app-keys]). MDN lists the Web Crypto `importKey` formats as
+`raw`, `pkcs8`, `spki` and `jwk`, with no PKCS#1 ([MDN][mdn-importkey]), and
+Workers implements Web Crypto, so either setup converts the key once (to
+PKCS#8 or JWK) or the runtime uses a library that parses PKCS#1. GitHub
+recommends a sign-only key vault over an environment variable
+([private keys][app-keys]); no free-tier equivalent is assumed here.
 
 **Workers secrets.** On Workers, secrets are encrypted, not readable in the
 dashboard or Wrangler after they are set, added with `wrangler secret put` or
@@ -499,6 +562,7 @@ the dashboard, and setting one deploys a new version ([Workers
 secrets][cf-secrets]). The free plan allows 64 variables per Worker at up to
 5 KB each ([Workers limits][cf-limits]); PEM-encoded RSA keys of 2048 or
 4096 bits are smaller than that.
+
 The manifest flow returns the credentials to the instance, not to the owner's
 shell, so either the setup page shows them once for the owner to store as
 secrets, or the instance stores them itself. Which is possible depends on
@@ -538,7 +602,10 @@ owner's preference.
   authorized ([REST best practices][rest-best]).
 - **Secondary limits.** No more than 100 concurrent requests, 900 points per
   minute per REST endpoint, 2,000 per minute for GraphQL, and 2,000 OAuth token
-  requests per hour per app ([REST rate limits][rate-rest]).
+  requests per hour per app ([REST rate limits][rate-rest]). Refused sign-ins
+  spend that last budget too, so with a public app a stranger could exhaust
+  it and lock the owner out of signing in; implementation should rate-limit
+  the sign-in callback.
 - **User-token options** (B, C, or a stored owner token) draw on the owner's
   5,000 per hour shared with the GitHub CLI and every other tool the owner
   uses ([REST rate limits][rate-rest]).
@@ -547,9 +614,10 @@ A full REST read of one PR is about five requests (PR, reviews, check runs,
 statuses, plus one permission lookup per new reviewer). As an estimate, a
 few dozen open PRs re-read every few minutes is a few thousand requests an
 hour, within the installation limit; ETags and GraphQL bring it down. The
-Cloudflare free plan allows 50 subrequests per invocation
-([Workers limits][cf-limits]), which a REST pass over many PRs in one
-invocation would exceed. That is for `choose-change-detection` and
+Cloudflare free plan allows 50 subrequests per invocation for external
+fetches, such as calls to GitHub, and 1,000 to Cloudflare's internal services
+([Workers limits][cf-limits]); a REST pass over many PRs in one invocation
+would exceed the external limit. That is for `choose-change-detection` and
 `choose-cloudflare-stack` to settle; it favours GraphQL or spreading the work
 over several invocations.
 
@@ -609,8 +677,8 @@ applies to the owner's session and stays unchanged.
   token without serving any first-deliverable requirement.
 - **GitHub App installed on "Only select repositories" for the personal
   account.** Hides repositories created after setup.
-- **Requesting Contents, Issues or Members** for more events. See
-  [Minimum permissions](#minimum-permissions).
+- **Requesting Contents, Issues or Members** for more events, for the first
+  deliverable. See [Minimum permissions](#minimum-permissions).
 - **A shared, centrally hosted app** that every Seshat instance installs.
   Every instance would depend on one registrant's private key and webhook
   URL, which contradicts self-hosting.
@@ -637,6 +705,18 @@ Suggested amendments, to make after the owner decides:
 
 No requirement in DELIVERABLE.md is unmeetable with the recommended option.
 
+## Follow-up work if accepted
+
+- Record the decision, with the owner's answers to the questions below, in
+  [DECISIONS.md](../DECISIONS.md).
+- Update the GitHub authentication question under
+  [Open design questions](../BRIEF.md#open-design-questions) in the brief to
+  point at the decision.
+- Make the three amendments above to [DELIVERABLE.md](../DELIVERABLE.md).
+- Resolve `choose-github-integration` in [TODO.md](../../TODO.md) and drop
+  the `Depends on:` line from `choose-change-detection`, which becomes
+  unblocked.
+
 ## Not verified
 
 These need confirming with a real app before implementation relies on them.
@@ -650,8 +730,19 @@ These need confirming with a real app before implementation relies on them.
   `GET /installation/repositories` without any owner action.
 - What the collaborator permission endpoint returns for a user with no access
   to a public repository (404, `none` or `read`).
-- Whether `latestOpinionatedReviews(writersOnly: true)` counts maintain, admin
+- Whether `latestOpinionatedReviews` returns only approvals and
+  changes-requested reviews (the schema describes it only as the latest
+  reviews per user), and whether `writersOnly: true` counts maintain, admin
   and custom roles the same way as the collaborator permission endpoint.
+- Whether `DELETE /applications/{client_id}/token` also invalidates the
+  refresh token issued with that user token. The fallbacks are in
+  [Sign-in and the owner boundary](#sign-in-and-the-owner-boundary).
+- That an app can have only one installation per account. The single-result
+  `GET /users/{username}/installation` implies it, but the pages cited do
+  not say so.
+- The exact login under which installation-token actions appear (commonly
+  `<app-slug>[bot]`); the documentation says only that they are attributed to
+  the app.
 - Whether fine-grained personal access tokens can call the Checks API (the two
   GitHub pages disagree). This matters only if option C is reconsidered.
 - The redelivery window, given as both 3 and 7 days.
@@ -675,9 +766,13 @@ already receives a GitHub webhook.
    statuses, all read-only, leaving out Contents, Issues and Members. Without
    them, conflicts caused by pushes to a base branch, top-level PR comments and
    collaborator changes are found when Seshat next reads the PR, not pushed by
-   a webhook. *Recommended:* yes, keep the minimum; revisit if
+   a webhook. If `replace-projects-index` later needs Contents on an index
+   repository, that is a separate permission change each installation must
+   approve, it covers every repository in the installation, and it brings
+   the `push` event with it (see [Minimum permissions](#minimum-permissions)).
+   *Recommended:* yes, keep the minimum for the first deliverable; revisit if
    `choose-change-detection` shows that reconciliation cannot meet the
-   catch-up bound.
+   catch-up bound, or when the index decision is made.
 3. **Where setup credentials go.** The manifest flow hands the app's
    credentials to the instance. Either the setup page shows them once for the
    owner to store as secrets (one manual step, no extra credential), or the
@@ -710,9 +805,11 @@ GitHub documentation, read 2026-10-12:
 - [Reviewing and modifying installed GitHub Apps][app-installed]
 - [About the setup URL][app-setup-url]
 - [Choosing permissions for a GitHub App][app-perms]
+- [Approving updated permissions for a GitHub App][app-approve]
 - [Permissions required for GitHub Apps][perms-required]
 - [REST API endpoints for GitHub Apps][rest-apps]
 - [REST API endpoints for GitHub App installations][rest-installations]
+- [REST API endpoints for GitHub App webhooks][rest-app-webhooks]
 - [REST API endpoints for OAuth authorizations][rest-oauth-auth]
 - [REST API endpoints for collaborators][rest-collab]
 - [REST API endpoints for pull requests][rest-pulls]
@@ -758,9 +855,11 @@ Other:
 [app-installed]: https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps
 [app-setup-url]: https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/about-the-setup-url
 [app-perms]: https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app
+[app-approve]: https://docs.github.com/en/apps/using-github-apps/approving-updated-permissions-for-a-github-app
 [perms-required]: https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps
 [rest-apps]: https://docs.github.com/en/rest/apps/apps
 [rest-installations]: https://docs.github.com/en/rest/apps/installations
+[rest-app-webhooks]: https://docs.github.com/en/rest/apps/webhooks
 [rest-oauth-auth]: https://docs.github.com/en/rest/apps/oauth-applications
 [rest-collab]: https://docs.github.com/en/rest/collaborators/collaborators
 [rest-pulls]: https://docs.github.com/en/rest/pulls/pulls
