@@ -75,9 +75,11 @@ what the refusal requires.
 - **Review state:** derived from each reviewer's latest approval or
   changes-requested review, ignoring comment-only reviews. It is *changes
   requested* if any reviewer's latest such review requests changes, otherwise
-  *approved* if at least one reviewer approved, otherwise *none*. Seshat derives
-  this itself rather than using GitHub's review decision, which GitHub reports
-  only when branch protection requires reviews.
+  *approved* if at least one reviewer's latest such review is an approval
+  submitted on the current head commit, otherwise *none*. A request for changes
+  stands until that reviewer reviews again; an approval lapses when new commits
+  are pushed. Seshat derives this itself rather than using GitHub's review
+  decision, which GitHub reports only when branch protection requires reviews.
 - **Reviewed the current head:** the owner submitted a review (approval,
   changes requested or comment) on the PR's current head commit. A push, including
   a force-push, changes the head, so earlier reviews no longer count.
@@ -100,8 +102,11 @@ Notes on the rules:
 
 - The owner's own non-draft PR with passing CI counts as ready to land without
   an approval, because the owner is the only person who would approve it.
-- A draft with failing CI is a draft, not broken: work in progress is expected
-  to be red at times.
+- Every rule except Draft excludes drafts, so a draft is always in Draft, even
+  with failing CI or conflicts: work in progress is expected to be broken at
+  times.
+- Pushing to someone else's PR after it was approved moves it back to awaiting
+  your review, because the approval no longer covers the head commit.
 - The rules cover every combination of author, draft state, CI, conflicts,
   review state and whether the owner has reviewed the current head, so no PR is
   left unbucketed. Tests must show this.

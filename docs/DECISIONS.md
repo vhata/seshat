@@ -40,8 +40,11 @@ updates early.
   deferred as more to build and explain than the first cut needs.
 - PRs are sorted into ordered buckets (ready to land, broken, awaiting your
   review, changes requested on yours, CI running, waiting on the author, draft),
-  with a stale flag after 7 days without activity. The owner's own green PR counts as ready to
-  land without an approval.
+  with a stale flag after 7 days without activity. The owner's own green PR
+  counts as ready to land without an approval. Drafts always sit in the draft
+  bucket, even when failing, because work in progress is expected to break. An
+  approval lapses when new commits are pushed, so an approved PR that changes
+  returns to awaiting review.
 - Changes on GitHub should reach an open page within 60 seconds, with sync
   status always visible. The owner's working hypothesis for meeting this is
   GitHub webhooks persisted in Cloudflare and pushed to a reactive frontend;
