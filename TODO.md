@@ -8,7 +8,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### P1 High
 
-
 ### P2 Normal
 
 ### P3 Low
@@ -26,6 +25,13 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Related: `track-upstream-prs`
   - Overlaps GitHub's own review-requested inbox; decide whether a personal instance should surface organization or work review load at all.
   - The GitHub integration decision stores no owner user token; this entry may add one, with its own lifecycle, if acting as the owner is needed ([spec](docs/specs/2026-10-12-github-integration.md#d-hybrids)).
+
+- [PRODUCT] `use-docket-labels` — **Show Docket labels on PR rows when a PR has them, without depending on them.** Docket's `pr-labels.sh` labels PRs with `docket` and `type:<kind>`, and with `queue:<todo|review|roadmap>`, `area:<area>` and `priority:<p0-p3>` when the PR claims or resolves queue entries; they say what a change is and how urgent its queue entry was, but not every PR has them, even in Docket repositories.
+  - Source: owner, during replace-projects-index (PR #5), 2026-10-12; example labels on vhata/docket#22
+  - Related: `show-project-index`
+  - Labels arrive with each PR under the Pull requests permission the GitHub App already has, and label changes arrive as `pull_request` events with the `labeled` and `unlabeled` actions, which need only Pull requests read ([webhook events](https://docs.github.com/en/webhooks/webhook-events-and-payloads#pull_request)).
+  - Bucketing stays on the GitHub facts in [docs/DELIVERABLE.md](docs/DELIVERABLE.md); a PR without these labels must look and sort exactly as it does today. Whether labels go beyond display (filtering, or a tie-break within a bucket) is the owner's call at triage.
+  - The `docket` label also marks a repository as Docket-managed without reading its files, which otherwise needs Contents read.
 
 - [PRODUCT] `ship-projects-cli` — **Ship a Seshat command-line tool for working with the project index locally.** Power users want to list projects by classification, run commands across them and check the index against disk without the hosted app.
   - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
@@ -45,7 +51,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Depends on: `define-index-format`, `choose-change-detection`, `choose-cloudflare-stack`
   - Blocked by: the first deliverable (PR overview) landing
   - Related: `design-project-classifications`
-  - Needs Contents read added to the GitHub App chosen for the integration: for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
+  - Needs Contents read added to the GitHub App chosen for the integration ([decision](docs/DECISIONS.md#2026-10-12--github-integration)): for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
   - Requirements are in the model and evidence-boundary sections of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md): per-field provenance and survey dates, "not reported" rather than "none", rename-safe joins, last good parse kept on errors, and a warning when the index repository is public.
 
 ## Needs proof of concept

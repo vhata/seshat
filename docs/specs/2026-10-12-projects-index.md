@@ -453,7 +453,8 @@ entry.
 
 ## GitHub access needs
 
-The owner chose the GitHub integration on 2026-10-12 in a separate decision: a
+The owner chose the GitHub integration on 2026-10-12 in a
+[separate decision](../DECISIONS.md#2026-10-12--github-integration): a
 per-instance GitHub App with read-only Metadata, Pull requests, Checks and
 Commit statuses permissions, and no Contents permission for the first
 deliverable. Permission names follow GitHub's
