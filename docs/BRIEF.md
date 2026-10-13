@@ -45,6 +45,8 @@ The personal inventory is deliberately not copied into this public repository.
   current free-tier constraints. Decide reactive updates versus bounded polling.
 - Choose GitHub authentication and authorization, permissions, repository scope
   and credential lifecycle. Compare a GitHub App with OAuth-based integration.
+  Decided: a GitHub App per instance; see
+  [DECISIONS.md](DECISIONS.md#2026-10-12--github-integration).
 - Choose webhook installation or another change-detection mechanism, including
   reconciliation after missed events and visibility of stale data.
 - Define the PR overview: draft state, review needs, CI results, mergeability

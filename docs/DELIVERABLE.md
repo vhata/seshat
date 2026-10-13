@@ -1,10 +1,13 @@
 # First deliverable: PR overview
 
-Decided with the owner on 2026-10-11 and amended on 2026-10-12 (see
+Decided with the owner on 2026-10-11 and amended twice on 2026-10-12 (see
 [DECISIONS.md](DECISIONS.md)). This
 defines what the first implementation must do and how it will be judged. It does
-not choose a stack, an authentication mechanism or a change-detection mechanism;
-those remain open in [TODO.md](../TODO.md) and must meet the requirements here.
+not choose a stack or a change-detection mechanism; those remain open in
+[TODO.md](../TODO.md) and must meet the requirements here. GitHub access uses a
+GitHub App, as decided in
+[DECISIONS.md](DECISIONS.md#2026-10-12--github-integration) and specified in
+[specs/2026-10-12-github-integration.md](specs/2026-10-12-github-integration.md).
 Visual references, which do not override this document, are in
 [design/README.md](design/README.md).
 
@@ -51,9 +54,11 @@ what the refusal requires.
 - A repository created after setup is monitored without any owner action.
 - A repository that becomes archived stops being monitored.
 - The owner can turn monitoring off for any repository, and turn it on for any
-  fork they own or any organization repository they can access. Organization
-  repositories are opted in individually; nothing from an organization is
-  monitored by default.
+  fork they own or any organization repository that Seshat's GitHub App is
+  installed on and the owner can access. Installing the app on an organization
+  takes an organization owner, or an admin of the repositories concerned.
+  Organization repositories are opted in individually; nothing from an
+  organization is monitored by default.
 - Turning a repository off removes its PRs from the overview.
 
 ## PR overview
@@ -79,11 +84,12 @@ what the refusal requires.
   is write, maintain or admin, as GitHub reports it when the PR is bucketed.
   The owner is a trusted reviewer on every repository they own; on an
   organization repository they are trusted only with write permission or
-  higher. Reviews from anyone else, such as a passer-by on a public
-  repository, and reviews submitted by bots or GitHub Apps, are ignored for
-  review state. This matches whose approvals GitHub counts towards required
-  reviews. Trust does not limit *reviewed the current head*: any review the
-  owner submits counts there.
+  higher. Trust follows the base role GitHub reports, so a custom repository
+  role based on write counts as write. Reviews from anyone else, such as a
+  passer-by on a public repository, and reviews submitted by bots or GitHub
+  Apps, are ignored for review state. This matches whose approvals GitHub
+  counts towards required reviews. Trust does not limit *reviewed the current
+  head*: any review the owner submits counts there.
 - **Review state:** derived from each trusted reviewer's latest approval or
   changes-requested review, ignoring comment-only and dismissed reviews. It is
   *changes requested* if any trusted reviewer's latest such review requests
@@ -184,10 +190,12 @@ and no LLM provider key.
 The first implementation PR must demonstrate each of these, by automated test
 where practical and otherwise by a recorded manual scenario.
 
-1. A second GitHub account completes sign-in and is refused, seeing no instance
+1. A second GitHub account attempts sign-in and is refused, either by GitHub
+   before authorization completes or by Seshat afterwards. It sees no instance
    data, and no credential for it remains stored afterwards. The owner check
-   compares account IDs: a test shows that an account whose username matches
-   the owner's but whose ID differs is refused.
+   compares account IDs: an automated test against a stubbed `GET /user`
+   response shows that an account whose username matches the owner's but
+   whose ID differs is refused.
 2. Owned repositories that are neither archived nor forks are monitored by
    default. A repository created after setup appears without owner action, and
    one archived after setup drops out. Turning a repository off removes its PRs.
