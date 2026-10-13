@@ -141,10 +141,11 @@ The owner accepted the proposal in
 answering all six of its questions as recommended:
 
 - The project index that replaces `PROJECTS.md` is Markdown in a dedicated
-  private git repository the owner selects, hosted on GitHub for now. The file holds owner judgment and
-  dated laptop observations. Seshat derives GitHub evidence live, shows it
-  beside the file with its source, and never writes it back; Cloudflare
-  storage holds only a cache rebuildable from GitHub and the file.
+  private git repository the owner selects, hosted on GitHub for now. The file
+  holds owner judgment and dated laptop observations. Seshat derives GitHub
+  evidence live, shows it beside the file with its source, and never writes it
+  back; Cloudflare storage holds only a cache rebuildable from GitHub and the
+  file.
 - The laptop agent pushes directly after the owner approves its diff in the
   session, and opens a draft PR only when it runs unattended, so unread
   generated content never appears in Ready to land.

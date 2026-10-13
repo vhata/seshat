@@ -279,6 +279,10 @@ design rule is that only Seshat's ingestion knows the host:
 - The laptop agent and the CLI use only git. The remote is configuration, and
   nothing in them assumes GitHub, so moving the index to another host is a
   remote change.
+- The one exception is an unattended laptop-agent run, which opens a draft PR
+  where the host supports PRs. Where the host has no PRs, an unattended run
+  pushes to a review branch, never to the default branch, and leaves review to
+  the owner.
 - Seshat reads "the index at a commit" through an interface that does not
   assume GitHub. The first implementation reads it from GitHub.
 
@@ -291,13 +295,19 @@ permission story for the index, and let Seshat read the index from its own
 storage. Against that:
 
 - Seshat would run a public git endpoint that accepts pushes, and would hold
-  the canonical copy of the index.
+  the canonical copy of the index. Reads must be authenticated as well as
+  pushes, since the index is private. Of the two servers above, durable-git
+  serves reads publicly unless a repository is flagged private, and
+  git-on-cloudflare's private repositories rely on its own OIDC sign-in, an
+  extra identity dependency.
 - Workers Free allows 10 ms of CPU per HTTP request
   ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/)),
   while git-on-cloudflare documents a 30-second CPU limit for fetch and
-  receive, which is paid-plan territory. Whether pack handling for a one-file
-  repository fits on Free, and what CPU Durable Objects get on Free, are
-  unverified.
+  receive. That matches the Durable Objects default CPU time per invocation,
+  which is configurable up to five minutes
+  ([Durable Objects limits](https://developers.cloudflare.com/durable-objects/platform/limits/)).
+  Whether a Durable Object on Free gets that or the Workers Free 10 ms, and
+  whether pack handling for a one-file repository fits, are unverified.
 - Storage fits: SQLite-backed Durable Objects are available on Free with 5 GB
   ([Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/)),
   and R2 has a free tier
@@ -305,8 +315,8 @@ storage. Against that:
 - Pushing needs a Seshat-issued token on the laptop, the new credential that a
   repository on GitHub avoids.
 - It loses GitHub's web and mobile editing, CI format checks in the index
-  repository, and PRs. Refresh "by PR" would become branches plus a review
-  view in Seshat.
+  repository, and PRs. Refresh "by PR" and unattended laptop-agent runs would
+  both become review branches plus a review view in Seshat.
 - The saving is mostly the index-specific Contents grant, and
   `show-project-index` needs Contents across monitored repositories anyway for
   branch and commit evidence.
