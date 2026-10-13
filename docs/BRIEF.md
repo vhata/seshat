@@ -53,10 +53,19 @@ The personal inventory is deliberately not copied into this public repository.
   and which signals mean that work is needed.
 - Define classifications, manual overrides, evidence and freshness. Decide
   whether deterministic signals, owner input or optional LLM summaries apply.
+  Partly decided 2026-10-12: the section an index entry sits under is the
+  authoritative classification and computed ones are only suggestions; see
+  [DECISIONS.md](DECISIONS.md#2026-10-12--project-index-source-of-truth). The
+  rest is `design-project-classifications` in [TODO.md](../TODO.md).
 - Decide the source of truth for replacing `PROJECTS.md`: dashboard data,
   Markdown in an owner-selected repository, or a synchronized combination.
+  Decided 2026-10-12 and refined 2026-10-13: Markdown in a dedicated private
+  git repository, hosted on GitHub for now; see
+  [DECISIONS.md](DECISIONS.md#2026-10-12--project-index-source-of-truth).
 - Evaluate an optional laptop-agent prompt that surveys local checkouts and
   proposes Markdown updates through a PR or an owner-authorized direct push.
+  Decided in the same entry: direct push after in-session approval, draft PR
+  when unattended.
 - Evaluate hosted refresh using GitHub context, the existing Markdown and a
   supplied prompt, optionally with an owner-supplied Anthropic or OpenAI key.
   Decide approval, secret handling, cost bounds and self-PR behavior before use.
