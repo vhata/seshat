@@ -59,7 +59,8 @@ The personal inventory is deliberately not copied into this public repository.
   rest is `design-project-classifications` in [TODO.md](../TODO.md).
 - Decide the source of truth for replacing `PROJECTS.md`: dashboard data,
   Markdown in an owner-selected repository, or a synchronized combination.
-  Decided 2026-10-12: Markdown in a dedicated private repository; see
+  Decided 2026-10-12: Markdown in a dedicated private git repository, hosted
+  on GitHub for now; see
   [DECISIONS.md](DECISIONS.md#2026-10-12--project-index-source-of-truth).
 - Evaluate an optional laptop-agent prompt that surveys local checkouts and
   proposes Markdown updates through a PR or an owner-authorized direct push.

@@ -9,17 +9,19 @@ recorded in
 [DECISIONS.md](../DECISIONS.md#2026-10-12--project-index-source-of-truth).
 The owner added two inputs: a command-line tool for working with the index
 locally ([Seshat CLI](#seshat-cli)), and the observation that most survey
-signals are available from GitHub ([Survey signals](#survey-signals)).
+signals are available from GitHub ([Survey signals](#survey-signals)). On
+2026-10-13 the owner refined where the repository is hosted
+([owner refinements](#owner-refinements-2026-10-13)).
 
 ## Decision in brief
 
-Keep the project index as Markdown in a dedicated private repository the owner
-selects. That file is the only durable record of what GitHub cannot supply:
-owner judgment (classification, summary, next action, notes) and dated
-observations from an optional laptop survey. Seshat reads the file, joins each
-entry to the repository it names, and shows GitHub evidence beside it, derived
-live and never written back. Cloudflare storage holds only data that can be
-rebuilt from GitHub and the file.
+Keep the project index as Markdown in a dedicated private git repository the
+owner selects, hosted on GitHub for now. That file is the only durable record of
+what GitHub cannot supply: owner judgment (classification, summary, next action,
+notes) and dated observations from an optional laptop survey. Seshat reads the
+file, joins each entry to the repository it names, and shows GitHub evidence
+beside it, derived live and never written back. Cloudflare storage holds only
+data that can be rebuilt from GitHub and the file.
 
 The laptop agent updates the file with git: by direct push after the owner
 approves the diff in the session, or by draft PR when it runs unattended.
@@ -27,6 +29,11 @@ Seshat writes nothing to the index for now. If `evaluate-optional-llm-refresh`
 later adopts hosted refresh, it proposes changes only by PR, with one open
 refresh PR at a time, from an identity other than the owner's where the
 integration allows it, and otherwise as a draft.
+
+The laptop agent and the CLI use only git, with the remote as configuration,
+and Seshat reads the index through an interface that does not assume GitHub,
+so the repository can move to another host later; see
+[Where the repository is hosted](#where-the-repository-is-hosted).
 
 This needs no new credential on the laptop and keeps the file usable without
 Seshat. Seshat needs Contents read for the index repository, which under the
@@ -255,6 +262,57 @@ overview. That is useful: a pending index PR shows up as something needing the
 owner. The owner can still turn monitoring off; Seshat reads the index either
 way.
 
+The index should not live in the owner's fork of Seshat. Seshat's repository is
+public, forks of a public repository are public, and a fork's visibility
+cannot be changed by itself, so the index would be public
+([GitHub: permissions and visibility of forks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/about-permissions-and-visibility-of-forks)).
+A fork would also not be monitored by default. A private copy of Seshat,
+imported or mirrored rather than forked, could hold the file, but it mixes
+instance deploys and upstream updates with index commits. Because the owner
+picks any repository and path, this is allowed, but not recommended.
+
+### Where the repository is hosted
+
+The index repository is on GitHub for now; where it is hosted stays open. The
+design rule is that only Seshat's ingestion knows the host:
+
+- The laptop agent and the CLI use only git. The remote is configuration, and
+  nothing in them assumes GitHub, so moving the index to another host is a
+  remote change.
+- Seshat reads "the index at a commit" through an interface that does not
+  assume GitHub. The first implementation reads it from GitHub.
+
+Self-hosting the repository on Cloudflare is feasible in principle: open-source
+git smart-HTTP servers on Workers, Durable Objects and R2 exist, such as
+[git-on-cloudflare](https://github.com/zllovesuki/git-on-cloudflare) and
+[durable-git](https://github.com/littledivy/durable-git). It would keep git's
+offline editing, history and every-clone-is-a-backup, remove the GitHub
+permission story for the index, and let Seshat read the index from its own
+storage. Against that:
+
+- Seshat would run a public git endpoint that accepts pushes, and would hold
+  the canonical copy of the index.
+- Workers Free allows 10 ms of CPU per HTTP request
+  ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/)),
+  while git-on-cloudflare documents a 30-second CPU limit for fetch and
+  receive, which is paid-plan territory. Whether pack handling for a one-file
+  repository fits on Free, and what CPU Durable Objects get on Free, are
+  unverified.
+- Storage fits: SQLite-backed Durable Objects are available on Free with 5 GB
+  ([Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/)),
+  and R2 has a free tier
+  ([R2 pricing](https://developers.cloudflare.com/r2/pricing/)).
+- Pushing needs a Seshat-issued token on the laptop, the new credential that a
+  repository on GitHub avoids.
+- It loses GitHub's web and mobile editing, CI format checks in the index
+  repository, and PRs. Refresh "by PR" would become branches plus a review
+  view in Seshat.
+- The saving is mostly the index-specific Contents grant, and
+  `show-project-index` needs Contents across monitored repositories anyway for
+  branch and commit evidence.
+
+The proof of concept is `self-host-index-repo` in [TODO.md](../../TODO.md).
+
 ### Field ownership and provenance
 
 Every field in the file has one kind of source, implied by its name, so
@@ -321,6 +379,10 @@ repositories can wait for the classifications design.
   this decision does not fix the set of classifications.
 - A format check that Seshat and the laptop agent share (and that the index
   repository's CI could run) keeps the two parsers from drifting.
+- Ingestion reads the index at a given commit through an interface that does
+  not assume GitHub (see
+  [Where the repository is hosted](#where-the-repository-is-hosted)). The
+  first implementation reads it from GitHub.
 
 ## Laptop-agent workflow
 
@@ -536,6 +598,15 @@ Left for the classifications design (`design-project-classifications`):
 - **Keeping the file in a repository that also holds unrelated files:**
   granting Seshat read access would expose the rest, even if Contents were
   confined to that repository.
+- **The owner's fork of Seshat:** forks of a public repository are public, and
+  a fork's visibility cannot be changed by itself, so the index would be
+  public.
+- **Cloudflare storage with a utility that syncs to the laptop, works offline
+  and re-syncs later:** this is option A plus two-way sync. Git already gives
+  offline editing and later sync, with merges, history and backups. The gains
+  (no extra repository, no index-specific Contents permission, direct
+  dashboard edits) are smaller than the cost of a sync protocol, conflict
+  handling, a CLI credential, history and export.
 
 ## Owner decisions
 
@@ -571,6 +642,26 @@ The owner answered all six as recommended on 2026-10-12.
    survives refreshes. Thresholds and how suggestions look stay with the
    classifications design.
 
+### Owner refinements, 2026-10-13
+
+The owner asked three further questions about where the index lives:
+
+- **In the owner's fork of Seshat?** No: the fork would be public. A private
+  copy is allowed but not recommended (see
+  [Index repository](#index-repository)).
+- **In Cloudflare storage, with a utility that syncs to the laptop and works
+  offline?** No: that is option A plus two-way sync, and git already does it
+  (see [Rejected alternatives](#rejected-alternatives)).
+- **In a git repository hosted on Cloudflare?** Feasible in principle, with
+  the trade-offs under
+  [Where the repository is hosted](#where-the-repository-is-hosted).
+
+Decided: the index is Markdown in a private git repository, hosted on GitHub
+for now, and where it is hosted stays open. The laptop agent and the CLI
+assume only git, with the remote as configuration, and Seshat's ingestion
+reads the index at a commit through an interface that does not assume GitHub.
+Self-hosting on Cloudflare goes to a proof of concept, `self-host-index-repo`.
+
 ## Follow-up work
 
 Owner step, outside this repository: migrate the index by creating the
@@ -588,5 +679,7 @@ Queue entries in [TODO.md](../../TODO.md):
   lists.
 - `show-project-index`: ingest the index and show it beside GitHub evidence,
   after the PR overview.
+- `self-host-index-repo`: a proof of concept for hosting the index repository
+  on Cloudflare.
 
 `evaluate-optional-llm-refresh` is unblocked by this decision.

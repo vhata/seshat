@@ -39,11 +39,13 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Related: `write-survey-prompt`
   - Commands from the decision: list by classification (paths or JSON), run a command across projects in given classifications, check the file against the format and the directories on disk, and `survey`, which prints the local-only signals (checked-out branch, uncommitted and untracked files, unpushed commits, local-only branches and repositories) in a stable table and JSON form. See the Seshat CLI section of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md).
   - Needs a language and distribution choice; no application stack is selected. Commit counts must count named branches only, not hidden refs that tools create.
+  - Uses only git, with no GitHub assumption; the index repository's remote is configuration.
 
 - [PRODUCT] `write-survey-prompt` — **Write the optional laptop-agent prompt or skill that surveys local checkouts and proposes index updates.** Local-only evidence reaches the index only through this survey.
   - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
   - Depends on: `define-index-format`
   - Related: `ship-projects-cli`
+  - Uses only git, with no GitHub assumption; the index repository's remote is configuration. Opening a draft PR is the one host-specific step, used only where the host supports it.
   - Pushes directly after the owner approves the diff in the session; opens or updates a single draft PR when unattended; never force-pushes; never deletes an entry for a checkout it did not find without confirmation. Excludes work checkouts, secrets and observations about non-project files. Should read the CLI's `survey` output once it exists rather than running ad-hoc git commands.
 
 - [PRODUCT] `show-project-index` — **Ingest the project index and show it beside GitHub evidence.** The index decision defines what the dashboard shows; this is the deliverable that builds it, after the PR overview.
@@ -52,6 +54,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Blocked by: the first deliverable (PR overview) landing
   - Related: `design-project-classifications`
   - Needs Contents read added to the GitHub App chosen for the integration ([decision](docs/DECISIONS.md#2026-10-12--github-integration)): for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
+  - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. See `self-host-index-repo`.
   - Requirements are in the model and evidence-boundary sections of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md): per-field provenance and survey dates, "not reported" rather than "none", rename-safe joins, last good parse kept on errors, and a warning when the index repository is public.
 
 ## Needs proof of concept
@@ -72,6 +75,12 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 ### P3 Low
 
 ### Unprioritized
+
+- [HOSTING] `self-host-index-repo` — **Prove or rule out hosting the project index repository on Cloudflare.** A self-hosted git repository would remove the GitHub permission story for the index and let Seshat read it from its own storage, at the cost of running a push endpoint.
+  - Source: owner, during replace-projects-index (PR #5), 2026-10-13
+  - Starting point: try an existing git smart-HTTP server on Workers, Durable Objects and R2 (for example git-on-cloudflare or durable-git) with a small repository on the free plan. Measure CPU per request against the Workers Free limit, find out what CPU Durable Objects get on Free, and check storage. Try push authentication with a Seshat-issued token, and list what is lost compared with GitHub (web and mobile editing, CI format checks, PRs). Can share the `choose-cloudflare-stack` spike.
+  - Related: `choose-cloudflare-stack`, `show-project-index`
+  - Trade-offs and citations are in the "Where the repository is hosted" section of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md).
 
 ## Ready for separate work
 

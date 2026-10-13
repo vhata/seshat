@@ -141,7 +141,7 @@ The owner accepted the proposal in
 answering all six of its questions as recommended:
 
 - The project index that replaces `PROJECTS.md` is Markdown in a dedicated
-  private repository the owner selects. The file holds owner judgment and
+  private git repository the owner selects, hosted on GitHub for now. The file holds owner judgment and
   dated laptop observations. Seshat derives GitHub evidence live, shows it
   beside the file with its source, and never writes it back; Cloudflare
   storage holds only a cache rebuildable from GitHub and the file.
@@ -182,3 +182,31 @@ Contents read, so that bundle, and any branch or commit evidence that
 only last push, archived, fork parent, visibility, PR state and CI are
 available without it. This shapes `show-project-index` and
 `evaluate-optional-llm-refresh`.
+
+On 2026-10-13 the owner asked three questions about where the index lives,
+recorded in the spec:
+
+- The owner's fork of Seshat is ruled out: forks of a public repository are
+  public and a fork's visibility cannot be changed by itself. A private copy,
+  imported or mirrored rather than forked, is allowed but not recommended,
+  because it mixes instance deploys and upstream updates with index commits.
+- Cloudflare storage with a utility that syncs to the laptop and works offline
+  stays rejected. It is dashboard storage plus two-way sync, and git already
+  gives offline editing and later sync with merges, history and backups; its
+  gains are smaller than the cost of a sync protocol, conflict handling, a CLI
+  credential, history and export.
+- A git repository hosted on Cloudflare is feasible in principle, since
+  open-source git servers on Workers, Durable Objects and R2 exist. It would
+  mean a public push endpoint and a canonical copy held by Seshat, a
+  Seshat-issued token on the laptop, and losing GitHub editing, CI checks and
+  PRs, and whether it fits the Workers Free CPU limits is unverified. Its
+  main saving, the index-specific Contents grant, is small because
+  `show-project-index` needs Contents across monitored repositories anyway.
+
+Decided: the index is Markdown in a private git repository, hosted on GitHub
+for now, and where it is hosted stays open. The laptop agent and the CLI
+assume only git, with the remote as configuration, so moving the index is a
+remote change. Seshat's ingestion reads the index at a commit through an
+interface that does not assume GitHub, though the first implementation uses
+GitHub. Self-hosting on Cloudflare goes to a proof of concept,
+`self-host-index-repo`.
