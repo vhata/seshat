@@ -322,6 +322,12 @@ storage. Against that:
   branch and commit evidence.
 
 The proof of concept is `self-host-index-repo` in [TODO.md](../../TODO.md).
+Its findings, in
+[2026-10-13-self-host-index-repo.md](2026-10-13-self-host-index-repo.md),
+settle the unverified points above: a Durable Object on Free got about 30 s
+of CPU and a small index's pack handling took tens of milliseconds, while
+git-on-cloudflare's dependence on R2 rules it out on the Free plan, since
+enabling R2 needs a subscription and a payment method.
 
 ### Field ownership and provenance
 
