@@ -264,8 +264,9 @@ The owner ran the GitHub App checks the queue entry asked for on 2026-10-14
 UTC ([results](specs/2026-10-13-cloudflare-stack.md#github-app-checks)). A
 repository created after installing with All repositories was delivered
 within seconds and listed by `GET /installation/repositories`, so new
-repositories are monitored without owner action. Revoking the owner's user token also invalidated its refresh token, so
-sign-in needs neither fallback in the GitHub integration spec. Whether another
+repositories are monitored without owner action. Revoking the owner's user
+token also invalidated its refresh token, so sign-in needs neither fallback in
+the GitHub integration spec. Whether another
 GitHub user can authorize a private app owned by a personal account was not
 checked, for want of a second account; Seshat's account-ID check refuses other
 accounts either way. All three spike Workers were deleted with their data on

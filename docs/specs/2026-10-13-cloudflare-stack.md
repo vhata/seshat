@@ -340,13 +340,14 @@ integration spec listed as [not
 verified](2026-10-12-github-integration.md#not-verified): whether an All
 repositories installation on a personal account delivers and lists a
 repository created later, and whether other GitHub users can authorize a
-private app owned by a personal account. The owner ran the checks on 2026-10-14 UTC, after the stack was
-accepted, with routes the spike added for the purpose: `/app/new` registered a
-private app through the manifest flow with the four read-only permissions,
-subscribed to events including `repository`, `/app/status` minted installation tokens from the
-PKCS#1 key and listed the installation's repositories and the lifecycle events
-received, and `/app/sign-in` ran the user authorization, compared the account
-ID with the app owner's and revoked the token. The status page's output was
+private app owned by a personal account. The owner ran the checks on
+2026-10-14 UTC, after the stack was accepted, with routes the spike added for
+the purpose: `/app/new` registered a private app through the manifest flow
+with the four read-only permissions and subscribed to events including
+`repository`; `/app/status` minted installation tokens from the PKCS#1 key and
+listed the installation's repositories and the lifecycle events received; and
+`/app/sign-in` ran the user authorization, compared the account ID with the
+app owner's and revoked the token. The status page's output was
 kept with the spike.
 
 - **A repository created after installation is picked up without owner
