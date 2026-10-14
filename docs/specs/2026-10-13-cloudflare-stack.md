@@ -335,12 +335,15 @@ step 4 in [Setup burden](2026-10-12-github-integration.md#setup-burden).
 
 ## GitHub App checks
 
-The queue entry also asked this spike to confirm the first two items under
-[Not verified](2026-10-12-github-integration.md#not-verified) in the GitHub
-integration spec. The owner ran them on 2026-10-14 UTC, after the stack was
+The queue entry also asked this spike to confirm two items the GitHub
+integration spec listed as [not
+verified](2026-10-12-github-integration.md#not-verified): whether an All
+repositories installation on a personal account delivers and lists a
+repository created later, and whether other GitHub users can authorize a
+private app owned by a personal account. The owner ran the checks on 2026-10-14 UTC, after the stack was
 accepted, with routes the spike added for the purpose: `/app/new` registered a
-private app through the manifest flow with the four read-only permissions and
-the `repository` event, `/app/status` minted installation tokens from the
+private app through the manifest flow with the four read-only permissions,
+subscribed to events including `repository`, `/app/status` minted installation tokens from the
 PKCS#1 key and listed the installation's repositories and the lifecycle events
 received, and `/app/sign-in` ran the user authorization, compared the account
 ID with the app owner's and revoked the token. The status page's output was
@@ -356,21 +359,22 @@ kept with the spike.
   `DELETE /applications/{client_id}/token` returned 204, and exchanging the
   refresh token issued with it then failed with `bad_refresh_token`. The
   tokens were expiring ones (`expires_in` 28,800 seconds, refresh token about
-  six months). A `github_app_authorization` `revoked` delivery arrived about a
-  minute later.
+  six months). A `github_app_authorization` `revoked` delivery was received at
+  06:41:20 UTC, after the probe; the probe's own time was not recorded.
 - **The collaborator permission endpoint returns `read` for a user with no
   access to a public repository.** For `octocat` on one of the owner's public
   repositories it answered 200 with `"permission": "read"`, not 404 or
   `none`.
 - **Not run: whether other GitHub users can authorize a private app owned by a
   personal account.** It needs a second GitHub account, and GitHub would not
-  let the owner create one. The design does
-  not depend on the answer, since Seshat's account-ID check refuses any other
-  account either way, and acceptance check 1 in
+  let the owner create one. The design does not depend on the answer, since
+  Seshat's account-ID check refuses any other account either way, and
+  acceptance check 1 in
   [DELIVERABLE.md](../DELIVERABLE.md#acceptance-checks) accepts refusal by
   GitHub or by Seshat.
 
 ## Not verified
+
 - **Review and commit status events end to end.** The real deliveries measured
   were `pull_request`, `check_run` and `check_suite`; no review was submitted
   and no commit status reported during the spike. They take the same path
