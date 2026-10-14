@@ -321,7 +321,8 @@ storage. Against that:
   `show-project-index` needs Contents across monitored repositories anyway for
   branch and commit evidence.
 
-The proof of concept is `self-host-index-repo` in [TODO.md](../../TODO.md).
+The proof of concept is `self-host-index-repo` in [TODO.md](../../TODO.md);
+its findings are in [2026-10-13-self-host-index-repo.md](2026-10-13-self-host-index-repo.md).
 
 ### Field ownership and provenance
 
