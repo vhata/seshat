@@ -624,8 +624,9 @@ would exceed the external limit. That is for `choose-change-detection` and
 `choose-cloudflare-stack` to settle; it favours GraphQL or spreading the work
 over several invocations. The [stack
 decision](../DECISIONS.md#2026-10-13--cloudflare-stack) batches reconciliation
-at 50 requests per invocation, each RPC call into the Durable Object getting
-its own budget.
+at 50 requests per invocation; the stack spec's
+[Measurements](2026-10-13-cloudflare-stack.md#measurements) found that each RPC
+call into the Durable Object gets its own budget.
 
 ### Setup burden
 

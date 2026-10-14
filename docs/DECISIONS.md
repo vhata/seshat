@@ -266,7 +266,6 @@ which need the owner in a browser and a second GitHub account. They move to
 stays deployed until they have run. The two spike Workers for
 `self-host-index-repo` were deleted with their data on 2026-10-14 UTC.
 
-
 ## 2026-10-13 — Project index stays on GitHub
 
 The owner accepted the recommendation in

@@ -40,8 +40,9 @@ work draft.
 
 ## Current scope
 
-The stack is chosen ([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)).
-Application code, installing dependencies and deployment still require a
-subsequent product decision. Workflow tooling is authorized for this initial setup.
+The stack is chosen
+([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)). Application code,
+installing dependencies and deployment still require a subsequent product
+decision. Workflow tooling is authorized for this initial setup.
 Do not infer that a public GitHub repository authorizes exposing private
 project information in the future application.
