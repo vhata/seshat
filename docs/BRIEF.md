@@ -43,6 +43,9 @@ The personal inventory is deliberately not copied into this public repository.
 
 - Choose a frontend and Cloudflare runtime/storage approach after confirming
   current free-tier constraints. Decide reactive updates versus bounded polling.
+  Decided: one Worker and one Durable Object per instance, pushing updates to
+  a React frontend over WebSockets; see
+  [DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack).
 - Choose GitHub authentication and authorization, permissions, repository scope
   and credential lifecycle. Compare a GitHub App with OAuth-based integration.
   Decided: a GitHub App per instance; see

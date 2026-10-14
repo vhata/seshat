@@ -1,6 +1,7 @@
 # Cloudflare stack
 
-Status: **accepted by the owner on 2026-10-13** ([decision](../DECISIONS.md#2026-10-13--cloudflare-stack)).
+Status: **accepted by the owner on 2026-10-13**
+([decision](../DECISIONS.md#2026-10-13--cloudflare-stack)).
 This answers the queue entry `choose-cloudflare-stack` and is judged against
 [DELIVERABLE.md](../DELIVERABLE.md), within the GitHub App chosen in
 [DECISIONS.md](../DECISIONS.md#2026-10-12--github-integration). Facts about
@@ -37,7 +38,8 @@ costs, which that decision works within.
   The interval and catch-up bound are `choose-change-detection`'s to set.
 - **The frontend** is a reactive client built to static files. On connecting it
   receives a snapshot of the model, then a message per change, and re-renders.
-  Any framework fits this; which one is [question 2](#questions-for-the-owner).
+  Any framework fits this; the owner chose React with Vite ([question
+  2](#questions-for-the-owner)).
 - **No other storage product.** KV, D1, R2, Queues, Workflows and Secrets Store
   are not needed for the first deliverable; see [Options
   considered](#options-considered).
@@ -63,7 +65,7 @@ on 2026-10-14), which is a paid-only setting ([Wrangler
 configuration][cf-wrangler-limits]).
 
 The spike was throwaway code kept outside this repository, which has no
-application stack yet. It did the following:
+application code yet. It did the following:
 
 - `POST /webhook` checked `X-Hub-Signature-256` with Web Crypto HMAC and a
   constant-time comparison, parsed the payload, reduced it to a summary and

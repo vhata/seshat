@@ -38,7 +38,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Depends on: `define-index-format`
   - Related: `write-survey-prompt`
   - Commands from the decision: list by classification (paths or JSON), run a command across projects in given classifications, check the file against the format and the directories on disk, and `survey`, which prints the local-only signals (checked-out branch, uncommitted and untracked files, unpushed commits, local-only branches and repositories) in a stable table and JSON form. See the Seshat CLI section of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md).
-  - Needs a language and distribution choice; no application stack is selected. Commit counts must count named branches only, not hidden refs that tools create.
+  - Needs a language and distribution choice; the hosted app's stack ([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)) does not settle the CLI's. Commit counts must count named branches only, not hidden refs that tools create.
   - Uses only git, with no GitHub assumption; the index repository's remote is configuration.
 
 - [PRODUCT] `write-survey-prompt` — **Write the optional laptop-agent prompt or skill that surveys local checkouts and proposes index updates.** Local-only evidence reaches the index only through this survey.
@@ -82,8 +82,8 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Must meet the freshness requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md#freshness): changes visible within 60 seconds, convergence after missed or late notifications, and the overdue-sync threshold and catch-up bound this decision sets.
   - GitHub access is a GitHub App with read-only Metadata, Pull requests, Checks and Commit statuses ([decision](docs/DECISIONS.md#2026-10-12--github-integration)). The events it can receive and the constraints that bear on this choice (no automatic redelivery, fork CI events matched by head SHA, no event for mergeability, no push or top-level PR comment events without more permissions, rate and subrequest limits) are under [Webhook events](docs/specs/2026-10-12-github-integration.md#webhook-events) and [Rate limits](docs/specs/2026-10-12-github-integration.md#rate-limits) in the spec.
 
-- [GITHUB] `check-github-app-installation` — **Confirm how a personal-account GitHub App installation behaves before implementation relies on it.** The Cloudflare stack spike was asked to check two GitHub behaviours but they need the owner in a browser and a second GitHub account, so they had not run when the stack was accepted.
-  - Source: choose-cloudflare-stack decision, [docs/DECISIONS.md](docs/DECISIONS.md#2026-10-13--cloudflare-stack), 2026-10-13
+- [GITHUB] `check-github-app-installation` — **Confirm how a personal-account GitHub App installation behaves before implementation relies on it.** The owner runs this, since it needs a browser and a second GitHub account; the Cloudflare stack spike was asked to check these two behaviours, and they had not run when the stack was accepted.
+  - Source: PR #8, choose-cloudflare-stack decision ([docs/DECISIONS.md](docs/DECISIONS.md#2026-10-13--cloudflare-stack)), 2026-10-13
   - Remaining from: `choose-cloudflare-stack`
   - Related: `choose-change-detection`
   - Confirm the first two items under [Not verified](docs/specs/2026-10-12-github-integration.md#not-verified) in the GitHub integration spec: whether an all-repositories installation on a personal account receives `repository` `created` and `installation_repositories` `added` for a repository created later and lists it in `GET /installation/repositories`, and whether other GitHub users can authorize a private app owned by a personal account. Record the results in that spec.

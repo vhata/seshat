@@ -6,8 +6,9 @@ A self-hosted dashboard for GitHub project health and open pull requests,
 intended to run on Cloudflare's free tier. Named after Seshat, the Egyptian
 goddess of writing and record keeping.
 
-Seshat is at the planning stage. There is no application, deployment or
-selected technology stack yet.
+Seshat is at the planning stage. There is no application or deployment yet;
+the technology stack is chosen in
+[DECISIONS.md](docs/DECISIONS.md#2026-10-13--cloudflare-stack).
 
 The intended dashboard connects to GitHub, lets the instance owner monitor
 selected repositories, groups projects by their state, and shows open pull

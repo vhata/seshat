@@ -471,8 +471,9 @@ side, and needs no Seshat credential.
   own GitHub CLI login, for use without an instance, they are labelled as
   GitHub's.
 
-How the CLI is built and distributed waits for a stack decision; no
-application stack is selected yet.
+How the CLI is built and distributed is still open. The hosted app's stack
+([decision](../DECISIONS.md#2026-10-13--cloudflare-stack)) does not settle
+it.
 
 ## Hosted writes and self-PR behaviour
 
@@ -697,6 +698,7 @@ Queue entries in [TODO.md](../../TODO.md):
 - `show-project-index`: ingest the index and show it beside GitHub evidence,
   after the PR overview.
 - `self-host-index-repo`: a proof of concept for hosting the index repository
-  on Cloudflare.
+  on Cloudflare. Resolved on 2026-10-13: the index stays on GitHub for now
+  ([decision](../DECISIONS.md#2026-10-13--project-index-stays-on-github)).
 
 `evaluate-optional-llm-refresh` is unblocked by this decision.

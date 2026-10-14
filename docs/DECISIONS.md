@@ -229,10 +229,12 @@ fallback is not forced.
   stores it, updates the model and pushes the change to every open page.
 - Heavy work (GitHub reads, parsing, bucketing) runs in the object, where the
   spike completed invocations of up to 18 seconds of CPU on Free; the Worker's
-  own paths stay within the documented 10 ms. Reconciliation runs from an
-  alarm or a Cron Trigger in batches of at most 50 GitHub requests, the Free
-  plan's per-invocation subrequest limit. How often, and how missed events are
-  caught up, is left to `choose-change-detection`.
+  own paths stay within the documented 10 ms. Cloudflare's documentation gives
+  both 10 ms and 30 s for objects on Free and enforcement could change, so
+  each invocation stays well under 30 s and is measured. Reconciliation runs
+  from an alarm or a Cron Trigger in batches of at most 50 GitHub requests,
+  the Free plan's per-invocation subrequest limit. How often, and how missed
+  events are caught up, is left to `choose-change-detection`.
 - The frontend is React built with Vite to static files. On connecting it
   receives a snapshot of the model, then a message per change.
 - No other storage or background product: KV, D1, R2, Queues, Workflows and
@@ -241,6 +243,13 @@ fallback is not forced.
   integration decision chose, because the Free plan has no encrypted store a
   Worker can write itself. The Worker converts the PKCS#1 key GitHub issues,
   so the owner pastes it unchanged.
+
+Free-plan quotas belong to the Cloudflare account and are shared with the
+owner's other Workers, and going over the daily rows-written quota stopped a
+spike's objects even for reads because they wrote on start-up. The
+implementation therefore keeps writes out of object constructors and bounds
+its writes; these and the other limits it must respect are under [Constraints
+for implementation](specs/2026-10-13-cloudflare-stack.md#constraints-for-implementation).
 
 Rejected: KV for webhook state (1,000 writes a day and eventual consistency);
 D1 (the same quotas, a second component, and pushing to browsers still needs a
@@ -255,7 +264,8 @@ The spike did not run the two GitHub App checks the queue entry asked for,
 which need the owner in a browser and a second GitHub account. They move to
 `check-github-app-installation`, and the spike Worker `seshat-spike-stack`
 stays deployed until they have run. The two spike Workers for
-`self-host-index-repo` were deleted with their data on 2026-10-13.
+`self-host-index-repo` were deleted with their data on 2026-10-14 UTC.
+
 
 ## 2026-10-13 — Project index stays on GitHub
 

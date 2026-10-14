@@ -1,6 +1,7 @@
 # Self-hosting the project index repository
 
-Status: **accepted by the owner on 2026-10-13** ([decision](../DECISIONS.md#2026-10-13--project-index-stays-on-github)).
+Status: **accepted by the owner on 2026-10-13**
+([decision](../DECISIONS.md#2026-10-13--project-index-stays-on-github)).
 This answers the queue entry `self-host-index-repo`: prove or rule out hosting
 the project index's git repository on Cloudflare instead of GitHub. The
 trade-offs it tests are under [Where the repository is
@@ -160,7 +161,7 @@ measured.
 ## Questions for the owner
 
 The owner answered both as recommended on 2026-10-13, and the two spike
-Workers and their Durable Object data were deleted the same day.
+Workers and their Durable Object data were deleted on 2026-10-14 UTC.
 
 1. Rule out self-hosting the index for now and keep it on GitHub, leaving the
    host-agnostic interface in place? Recommended.
