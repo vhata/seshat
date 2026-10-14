@@ -333,21 +333,44 @@ put`. Because the Worker converts the key itself, the owner pastes the PEM
 GitHub issued without converting it, which removes the conversion from setup
 step 4 in [Setup burden](2026-10-12-github-integration.md#setup-burden).
 
-## Not verified
+## GitHub App checks
 
-- **The GitHub App items this spike was asked to confirm**, the first two under
-  [Not verified](2026-10-12-github-integration.md#not-verified) in the GitHub
-  integration spec: whether an all-repositories installation on a personal
-  account receives `repository` `created` and `installation_repositories`
-  `added` for a repository created later and lists it in `GET
-  /installation/repositories`, and whether other GitHub users can authorize a
-  private app owned by a personal account. Registering an app needs the owner
-  in a browser, and the second check needs a second GitHub account. The spike
-  has routes ready for both: `/app/new` registers a private app through the
-  manifest flow with the four read-only permissions, `/app/status` mints
-  installation tokens and lists the installation's repositories and the
-  lifecycle events received, and `/app/sign-in` runs the user authorization,
-  compares the account ID with the app owner's and revokes the token.
+The queue entry also asked this spike to confirm the first two items under
+[Not verified](2026-10-12-github-integration.md#not-verified) in the GitHub
+integration spec. The owner ran them on 2026-10-14 UTC, after the stack was
+accepted, with routes the spike added for the purpose: `/app/new` registered a
+private app through the manifest flow with the four read-only permissions and
+the `repository` event, `/app/status` minted installation tokens from the
+PKCS#1 key and listed the installation's repositories and the lifecycle events
+received, and `/app/sign-in` ran the user authorization, compared the account
+ID with the app owner's and revoked the token. The status page's output was
+kept with the spike.
+
+- **A repository created after installation is picked up without owner
+  action.** The app was installed on the owner's personal account with All
+  repositories. The owner then created a private repository at 06:40:22 UTC.
+  `repository` `created` reached the Worker at 06:40:25 and
+  `installation_repositories` `added` at 06:40:27, and `GET
+  /installation/repositories` listed the new repository among 73.
+- **Revoking the owner's user token also invalidates its refresh token.**
+  `DELETE /applications/{client_id}/token` returned 204, and exchanging the
+  refresh token issued with it then failed with `bad_refresh_token`. The
+  tokens were expiring ones (`expires_in` 28,800 seconds, refresh token about
+  six months). A `github_app_authorization` `revoked` delivery arrived about a
+  minute later.
+- **The collaborator permission endpoint returns `read` for a user with no
+  access to a public repository.** For `octocat` on one of the owner's public
+  repositories it answered 200 with `"permission": "read"`, not 404 or
+  `none`.
+- **Not run: whether other GitHub users can authorize a private app owned by a
+  personal account.** It needs a second GitHub account, and GitHub would not
+  let the owner create one. The design does
+  not depend on the answer, since Seshat's account-ID check refuses any other
+  account either way, and acceptance check 1 in
+  [DELIVERABLE.md](../DELIVERABLE.md#acceptance-checks) accepts refusal by
+  GitHub or by Seshat.
+
+## Not verified
 - **Review and commit status events end to end.** The real deliveries measured
   were `pull_request`, `check_run` and `check_suite`; no review was submitted
   and no commit status reported during the spike. They take the same path
@@ -366,10 +389,11 @@ step 4 in [Setup burden](2026-10-12-github-integration.md#setup-burden).
 ## Questions for the owner
 
 The owner answered on 2026-10-13, accepting the stack and React with Vite as
-recommended. The GitHub App checks in question 3 had not run, so they moved
-to `check-github-app-installation` in [TODO.md](../../TODO.md). The spike
-Worker stays deployed for them and is torn down with the spike app afterwards;
-the temporary webhook on this repository had already been removed.
+recommended. The owner ran the GitHub App checks in question 3 on 2026-10-14
+UTC except the second-account one; results are under [GitHub App
+checks](#github-app-checks). The spike Worker and its data were then deleted;
+the temporary webhook on this repository had already been removed, and the
+owner deletes the spike app and the test repository.
 
 1. **Stack.** Accept one Worker with static assets, one SQLite-backed Durable
    Object per instance and hibernatable WebSockets, with no other storage

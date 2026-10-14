@@ -77,18 +77,10 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 - [GITHUB] `choose-change-detection` — **Choose change detection and missed-event reconciliation.** Evaluate webhooks versus polling and make sync freshness visible.
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
-  - Related: `check-github-app-installation`
+  - A repository created after installation is delivered and listed within seconds, so new repositories need no polling to be found ([results](docs/specs/2026-10-13-cloudflare-stack.md#github-app-checks)).
   - Works within the stack in the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack): webhooks verified by the Worker and handled in one Durable Object, reconciliation from an alarm or a Cron Trigger in batches of at most 50 GitHub requests per invocation. Measurements and Free-plan quotas are in [docs/specs/2026-10-13-cloudflare-stack.md](docs/specs/2026-10-13-cloudflare-stack.md).
   - Must meet the freshness requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md#freshness): changes visible within 60 seconds, convergence after missed or late notifications, and the overdue-sync threshold and catch-up bound this decision sets.
   - GitHub access is a GitHub App with read-only Metadata, Pull requests, Checks and Commit statuses ([decision](docs/DECISIONS.md#2026-10-12--github-integration)). The events it can receive and the constraints that bear on this choice (no automatic redelivery, fork CI events matched by head SHA, no event for mergeability, no push or top-level PR comment events without more permissions, rate and subrequest limits) are under [Webhook events](docs/specs/2026-10-12-github-integration.md#webhook-events) and [Rate limits](docs/specs/2026-10-12-github-integration.md#rate-limits) in the spec.
-
-- [GITHUB] `check-github-app-installation` — **Confirm how a personal-account GitHub App installation behaves before implementation relies on it.** The owner runs this, since it needs a browser and a second GitHub account; the Cloudflare stack spike was asked to check these two behaviours, and they had not run when the stack was accepted.
-  - Source: PR #8, choose-cloudflare-stack decision ([docs/DECISIONS.md](docs/DECISIONS.md#2026-10-13--cloudflare-stack)), 2026-10-13
-  - Remaining from: `choose-cloudflare-stack`
-  - Related: `choose-change-detection`
-  - Confirm the first two items under [Not verified](docs/specs/2026-10-12-github-integration.md#not-verified) in the GitHub integration spec: whether an all-repositories installation on a personal account receives `repository` `created` and `installation_repositories` `added` for a repository created later and lists it in `GET /installation/repositories`, and whether other GitHub users can authorize a private app owned by a personal account. Record the results in that spec.
-  - Starting point: the spike Worker `seshat-spike-stack` is still deployed for this. Register the app at `/app/new`, install it on the personal account with All repositories, create a test repository and read `/app/status`, then try `/app/sign-in` from a second GitHub account. The same routes also probe whether the refresh token still works after the user token is revoked and what the collaborator permission endpoint returns for a user with no access to a public repository. See [Not verified](docs/specs/2026-10-13-cloudflare-stack.md#not-verified) in the stack spec.
-  - Afterwards delete the spike Worker, its Durable Object data, the spike app and the test repository.
 
 ### P2 Normal
 

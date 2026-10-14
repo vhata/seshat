@@ -326,8 +326,9 @@ application for the user", which presumably includes the refresh token
 ([OAuth authorizations API][rest-oauth-auth]). For the
 owner, `DELETE /applications/{client_id}/token` is documented as revoking "a
 single token", and the documentation does not say whether the paired refresh
-token stops working too (see [Not verified](#not-verified)). If it does not,
-two fallbacks remain: delete the grant for the owner as well, at the cost of a
+token stops working too. A check on 2026-10-14 found that it does (see
+[Not verified](#not-verified)), so neither fallback is needed. Had it not, two
+fallbacks remained: delete the grant for the owner as well, at the cost of a
 consent screen at every sign-in, or opt the app out of expiring user tokens so
 that no refresh token is issued, which leaves the access token's revocation
 as the only cleanup needed.
@@ -395,8 +396,9 @@ So it covers organization members with access through teams or base
 permissions, and outside collaborators. Trusted means `permission` is `write`
 or `admin`, which takes in maintain and any custom role whose base role is
 write or higher. The endpoint's page lists only 200 and 404 responses and
-does not say what a user with no access gets; Seshat should treat 404,
-`read` and `none` alike as untrusted. Bot and app reviewers are excluded by
+does not say what a user with no access gets; a check on 2026-10-14 found it
+returns `read` for a public repository. Seshat should treat 404, `read` and
+`none` alike as untrusted. Bot and app reviewers are excluded by
 the review author's account type before any permission lookup.
 
 `author_association` on a review is not a substitute: `COLLABORATOR` means
@@ -717,9 +719,8 @@ No requirement in DELIVERABLE.md is unmeetable with the recommended option.
 - `choose-change-detection` in [TODO.md](../../TODO.md) works within the
   events and constraints under [Webhook events](#webhook-events) and
   [Rate limits](#rate-limits).
-- `check-github-app-installation` confirms the first two items under
-  [Not verified](#not-verified), using the spike Worker `seshat-spike-stack`
-  ([stack spec](2026-10-13-cloudflare-stack.md#not-verified)).
+- Three items were confirmed on 2026-10-14 with a real app; see
+  [Not verified](#not-verified).
 - The remaining unverified items are checked during implementation, before
   anything relies on them.
 
@@ -729,20 +730,13 @@ These need confirming with a real app before implementation relies on them.
 
 - Whether a private app owned by a **personal account** can be authorized by
   other GitHub users. GitHub's page states the rule for organization-owned
-  apps only ([visibility][app-visibility]).
-- Whether an "All repositories" installation on a personal account delivers
-  `repository` `created` and `installation_repositories` `added` for a
-  repository created afterwards, and includes it in
-  `GET /installation/repositories` without any owner action.
-- What the collaborator permission endpoint returns for a user with no access
-  to a public repository (404, `none` or `read`).
+  apps only ([visibility][app-visibility]). Not checked on 2026-10-14 for
+  want of a second account; the account-ID check refuses other accounts
+  either way.
 - Whether `latestOpinionatedReviews` returns only approvals and
   changes-requested reviews (the schema describes it only as the latest
   reviews per user), and whether `writersOnly: true` counts maintain, admin
   and custom roles the same way as the collaborator permission endpoint.
-- Whether `DELETE /applications/{client_id}/token` also invalidates the
-  refresh token issued with that user token. The fallbacks are in
-  [Sign-in and the owner boundary](#sign-in-and-the-owner-boundary).
 - That an app can have only one installation per account. The single-result
   `GET /users/{username}/installation` implies it, but the pages cited do
   not say so.
@@ -753,9 +747,17 @@ These need confirming with a real app before implementation relies on them.
   GitHub pages disagree). This matters only if option C is reconsidered.
 - The redelivery window, given as both 3 and 7 days.
 
-The first two are `check-github-app-installation` in
-[TODO.md](../../TODO.md), using the spike Worker `seshat-spike-stack`
-([stack spec](2026-10-13-cloudflare-stack.md#not-verified)).
+Confirmed on 2026-10-14 with a private app installed on the owner's personal
+account ([results](2026-10-13-cloudflare-stack.md#github-app-checks)):
+
+- An "All repositories" installation delivers `repository` `created` and
+  `installation_repositories` `added` for a repository created afterwards,
+  within seconds, and lists it in `GET /installation/repositories` without
+  any owner action.
+- `DELETE /applications/{client_id}/token` also invalidates the refresh token
+  issued with that user token.
+- The collaborator permission endpoint returns 200 with `read` for a user with
+  no access to a public repository.
 
 ## Questions for the owner
 

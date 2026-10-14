@@ -260,11 +260,16 @@ Workflows, since alarms on the one object give scheduling and retries without
 another product. Preact and a page without a framework were the frontend
 alternatives; React was chosen for its ecosystem.
 
-The spike did not run the two GitHub App checks the queue entry asked for,
-which need the owner in a browser and a second GitHub account. They move to
-`check-github-app-installation`, and the spike Worker `seshat-spike-stack`
-stays deployed until they have run. The two spike Workers for
-`self-host-index-repo` were deleted with their data on 2026-10-14 UTC.
+The owner ran the GitHub App checks the queue entry asked for on 2026-10-14
+UTC ([results](specs/2026-10-13-cloudflare-stack.md#github-app-checks)). A
+repository created after installing with All repositories was delivered and
+listed within seconds, so new repositories are monitored without owner
+action. Revoking the owner's user token also invalidated its refresh token, so
+sign-in needs neither fallback in the GitHub integration spec. Whether another
+GitHub user can authorize a private app owned by a personal account was not
+checked, for want of a second account; Seshat's account-ID check refuses other
+accounts either way. All three spike Workers were deleted with their data on
+2026-10-14 UTC.
 
 ## 2026-10-13 — Project index stays on GitHub
 
