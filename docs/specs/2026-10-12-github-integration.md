@@ -568,7 +568,9 @@ The manifest flow returns the credentials to the instance, not to the owner's
 shell, so either the setup page shows them once for the owner to store as
 secrets, or the instance stores them itself. Which is possible depends on
 `choose-cloudflare-stack`; [question 3](#questions-for-the-owner) asks the
-owner's preference.
+owner's preference. Settled by the [stack
+decision](../DECISIONS.md#2026-10-13--cloudflare-stack): the Free plan has no
+encrypted store a Worker can write itself, so credentials stay Worker secrets.
 
 **When things are revoked.**
 
@@ -620,7 +622,11 @@ fetches, such as calls to GitHub, and 1,000 to Cloudflare's internal services
 ([Workers limits][cf-limits]); a REST pass over many PRs in one invocation
 would exceed the external limit. That is for `choose-change-detection` and
 `choose-cloudflare-stack` to settle; it favours GraphQL or spreading the work
-over several invocations.
+over several invocations. The [stack
+decision](../DECISIONS.md#2026-10-13--cloudflare-stack) batches reconciliation
+at 50 requests per invocation; the stack spec's
+[Measurements](2026-10-13-cloudflare-stack.md#measurements) found that each RPC
+call into the Durable Object gets its own budget.
 
 ### Setup burden
 
@@ -711,8 +717,9 @@ No requirement in DELIVERABLE.md is unmeetable with the recommended option.
 - `choose-change-detection` in [TODO.md](../../TODO.md) works within the
   events and constraints under [Webhook events](#webhook-events) and
   [Rate limits](#rate-limits).
-- The `choose-cloudflare-stack` spike confirms the first two items under
-  [Not verified](#not-verified).
+- `check-github-app-installation` confirms the first two items under
+  [Not verified](#not-verified), using the spike Worker `seshat-spike-stack`
+  ([stack spec](2026-10-13-cloudflare-stack.md#not-verified)).
 - The remaining unverified items are checked during implementation, before
   anything relies on them.
 
@@ -746,8 +753,9 @@ These need confirming with a real app before implementation relies on them.
   GitHub pages disagree). This matters only if option C is reconsidered.
 - The redelivery window, given as both 3 and 7 days.
 
-The first two can be checked in the `choose-cloudflare-stack` spike, which
-already receives a GitHub webhook.
+The first two are `check-github-app-installation` in
+[TODO.md](../../TODO.md), using the spike Worker `seshat-spike-stack`
+([stack spec](2026-10-13-cloudflare-stack.md#not-verified)).
 
 ## Questions for the owner
 
@@ -783,7 +791,8 @@ The owner answered all four as recommended on 2026-10-12.
    in instance storage, or the instance needs a Cloudflare API token to write
    its own secrets). *Recommended:* show once for the owner to store, unless
    `choose-cloudflare-stack` finds encrypted storage that is as good.
-   *Decided:* as recommended.
+   *Decided:* as recommended. The [stack
+   decision](../DECISIONS.md#2026-10-13--cloudflare-stack) found none.
 4. **Owner user token.** Discard the owner's user token after each sign-in, or
    keep and refresh it to enable later features that must act as the owner
    (`show-review-requests`, `track-upstream-prs`). *Recommended:* discard it

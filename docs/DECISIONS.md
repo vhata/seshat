@@ -211,3 +211,78 @@ remote change. Seshat's ingestion reads the index at a commit through an
 interface that does not assume GitHub, though the first implementation uses
 GitHub. Self-hosting on Cloudflare goes to a proof of concept,
 `self-host-index-repo`.
+
+## 2026-10-13 — Cloudflare stack
+
+The owner accepted the proposal in
+[specs/2026-10-13-cloudflare-stack.md](specs/2026-10-13-cloudflare-stack.md),
+answering its questions as recommended. A throwaway spike on a Workers Free
+account carried real GitHub deliveries to an open socket in about 1 to 3
+seconds, so the owner's working hypothesis holds and the bounded-polling
+fallback is not forced.
+
+- Each instance is one Worker, written in TypeScript, that serves the frontend
+  as static assets, receives GitHub webhooks, runs sign-in and serves the API.
+- All instance state lives in one SQLite-backed Durable Object per instance,
+  which also holds every open browser connection through hibernatable
+  WebSockets. The Worker verifies a webhook and hands it to the object, which
+  stores it, updates the model and pushes the change to every open page.
+- Heavy work (GitHub reads, parsing, bucketing) runs in the object, where the
+  spike completed invocations of up to 18 seconds of CPU on Free; the Worker's
+  own paths stay within the documented 10 ms. Cloudflare's documentation gives
+  both 10 ms and 30 s for objects on Free and enforcement could change, so
+  each invocation stays well under 30 s and is measured. Reconciliation runs
+  from an alarm or a Cron Trigger in batches of at most 50 GitHub requests,
+  the Free plan's per-invocation subrequest limit. How often, and how missed
+  events are caught up, is left to `choose-change-detection`.
+- The frontend is React built with Vite to static files. On connecting it
+  receives a snapshot of the model, then a message per change.
+- No other storage or background product: KV, D1, R2, Queues, Workflows and
+  Secrets Store are not used for the first deliverable.
+- Credentials stay Worker secrets that the owner sets, as the GitHub
+  integration decision chose, because the Free plan has no encrypted store a
+  Worker can write itself. The Worker converts the PKCS#1 key GitHub issues,
+  so the owner pastes it unchanged.
+
+Free-plan quotas belong to the Cloudflare account and are shared with the
+owner's other Workers, and going over the daily rows-written quota stopped a
+spike's objects even for reads because they wrote on start-up. The
+implementation therefore keeps writes out of object constructors and bounds
+its writes; these and the other limits it must respect are under [Constraints
+for implementation](specs/2026-10-13-cloudflare-stack.md#constraints-for-implementation).
+
+Rejected: KV for webhook state (1,000 writes a day and eventual consistency);
+D1 (the same quotas, a second component, and pushing to browsers still needs a
+Durable Object); R2 (enabling it needs a subscription and a payment method);
+server-sent events from the Worker (a stateless Worker cannot fan out to other
+tabs); polling from the page except as the resync on reconnect; Queues and
+Workflows, since alarms on the one object give scheduling and retries without
+another product. Preact and a page without a framework were the frontend
+alternatives; React was chosen for its ecosystem.
+
+The spike did not run the two GitHub App checks the queue entry asked for,
+which need the owner in a browser and a second GitHub account. They move to
+`check-github-app-installation`, and the spike Worker `seshat-spike-stack`
+stays deployed until they have run. The two spike Workers for
+`self-host-index-repo` were deleted with their data on 2026-10-14 UTC.
+
+## 2026-10-13 — Project index stays on GitHub
+
+The owner accepted the recommendation in
+[specs/2026-10-13-self-host-index-repo.md](specs/2026-10-13-self-host-index-repo.md)
+to rule out hosting the project index repository on Cloudflare for now. This
+settles where the index is hosted, which the
+[project index decision](#2026-10-12--project-index-source-of-truth) left open.
+
+A git server on Durable Objects does run on Free and serves a small index with
+little CPU, but the one candidate that runs without R2 has four days of public
+history by one author, gating reads needed a wrapper around it, a single bulk
+push exhausted the account's daily Durable Object write quota, and the index
+would lose GitHub's web and mobile editing, CI checks and PRs. The saving, an
+index-specific Contents grant, is small because `show-project-index` needs
+Contents across monitored repositories anyway.
+
+The index stays in a private GitHub repository. The laptop agent and the CLI
+still assume only git, and Seshat's ingestion still reads the index through an
+interface that does not assume GitHub, so the index can move later with a
+remote change if a better-maintained server appears.

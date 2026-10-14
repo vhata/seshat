@@ -3,9 +3,10 @@
 Decided with the owner on 2026-10-11 and amended twice on 2026-10-12 (see
 [DECISIONS.md](DECISIONS.md)). This
 defines what the first implementation must do and how it will be judged. It does
-not choose a stack or a change-detection mechanism; those remain open in
-[TODO.md](../TODO.md) and must meet the requirements here. GitHub access uses a
-GitHub App, as decided in
+not choose a stack or a change-detection mechanism. The stack is decided in
+[DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack); change detection
+remains open in [TODO.md](../TODO.md); both must meet the requirements here.
+GitHub access uses a GitHub App, as decided in
 [DECISIONS.md](DECISIONS.md#2026-10-12--github-integration) and specified in
 [specs/2026-10-12-github-integration.md](specs/2026-10-12-github-integration.md).
 Visual references, which do not override this document, are in

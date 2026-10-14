@@ -321,13 +321,14 @@ storage. Against that:
   `show-project-index` needs Contents across monitored repositories anyway for
   branch and commit evidence.
 
-The proof of concept is `self-host-index-repo` in [TODO.md](../../TODO.md).
-Its findings, in
+The proof of concept was `self-host-index-repo`. Its findings, in
 [2026-10-13-self-host-index-repo.md](2026-10-13-self-host-index-repo.md),
 settle the unverified points above: a Durable Object on Free got about 30 s
 of CPU and a small index's pack handling took tens of milliseconds, while
 git-on-cloudflare's dependence on R2 rules it out on the Free plan, since
-enabling R2 needs a subscription and a payment method.
+enabling R2 needs a subscription and a payment method. On 2026-10-13 the owner
+accepted its recommendation to keep the index on GitHub for now
+([decision](../DECISIONS.md#2026-10-13--project-index-stays-on-github)).
 
 ### Field ownership and provenance
 
@@ -470,8 +471,9 @@ side, and needs no Seshat credential.
   own GitHub CLI login, for use without an instance, they are labelled as
   GitHub's.
 
-How the CLI is built and distributed waits for a stack decision; no
-application stack is selected yet.
+How the CLI is built and distributed is still open. The hosted app's stack
+([decision](../DECISIONS.md#2026-10-13--cloudflare-stack)) does not settle
+it.
 
 ## Hosted writes and self-PR behaviour
 
@@ -696,6 +698,7 @@ Queue entries in [TODO.md](../../TODO.md):
 - `show-project-index`: ingest the index and show it beside GitHub evidence,
   after the PR overview.
 - `self-host-index-repo`: a proof of concept for hosting the index repository
-  on Cloudflare.
+  on Cloudflare. Resolved on 2026-10-13: the index stays on GitHub for now
+  ([decision](../DECISIONS.md#2026-10-13--project-index-stays-on-github)).
 
 `evaluate-optional-llm-refresh` is unblocked by this decision.
