@@ -50,11 +50,11 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 - [PRODUCT] `show-project-index` — **Ingest the project index and show it beside GitHub evidence.** The index decision defines what the dashboard shows; this is the deliverable that builds it, after the PR overview.
   - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Depends on: `define-index-format`, `choose-change-detection`, `choose-cloudflare-stack`
+  - Depends on: `define-index-format`, `choose-change-detection`
   - Blocked by: the first deliverable (PR overview) landing
   - Related: `design-project-classifications`
   - Needs Contents read added to the GitHub App chosen for the integration ([decision](docs/DECISIONS.md#2026-10-12--github-integration)): for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
-  - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. See `self-host-index-repo`.
+  - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. The index stays on GitHub for now ([decision](docs/DECISIONS.md#2026-10-13--project-index-stays-on-github)).
   - Requirements are in the model and evidence-boundary sections of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md): per-field provenance and survey dates, "not reported" rather than "none", rename-safe joins, last good parse kept on errors, and a warning when the index repository is public.
 
 ## Needs proof of concept
@@ -63,24 +63,11 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### P1 High
 
-- [HOSTING] `choose-cloudflare-stack` — **Choose a stack that fits current Cloudflare free-tier constraints.** Compare runtime, storage and frontend update mechanisms before adding dependencies.
-  - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
-  - Related: `choose-change-detection`
-  - Starting point: a throwaway spike, outside the main tree, that receives a GitHub webhook in a Worker, persists it and pushes an update to an open browser tab, all on the free plan; confirm current limits from Cloudflare's documentation rather than memory. The same spike can inform `choose-change-detection`.
-  - The spike should also confirm the first two items under [Not verified](docs/specs/2026-10-12-github-integration.md#not-verified) in the GitHub integration spec: whether an all-repositories installation on a personal account receives events for repositories created later, and whether other GitHub users can authorize a private app owned by a personal account.
-  - Owner's working hypothesis (2026-10-11): webhooks persisted in Cloudflare storage, with a reactive frontend (for example React) re-rendering when the data model changes, so the page updates without a reload. Test this shape first; the fallback discussed is bounded polling within about five minutes. Requirements are in [docs/DELIVERABLE.md](docs/DELIVERABLE.md).
-
 ### P2 Normal
 
 ### P3 Low
 
 ### Unprioritized
-
-- [HOSTING] `self-host-index-repo` — **Prove or rule out hosting the project index repository on Cloudflare.** A self-hosted git repository would remove the GitHub permission story for the index and let Seshat read it from its own storage, at the cost of running a push endpoint.
-  - Source: owner, during replace-projects-index (PR #5), 2026-10-13
-  - Starting point: try an existing git smart-HTTP server on Workers, Durable Objects and R2 (for example git-on-cloudflare or durable-git) with a small repository on the free plan. Measure CPU per request against the Workers Free limit, find out what CPU Durable Objects get on Free, and check storage. Confirm that reads are gated as well as pushes, since the index is private (durable-git serves reads publicly unless a repository is flagged private; git-on-cloudflare's private repositories rely on its own OIDC sign-in, an extra identity dependency). Try push authentication with a Seshat-issued token, and list what is lost compared with GitHub (web and mobile editing, CI format checks, PRs). Self-hosting makes Seshat's storage the canonical copy of the index, so the spec's rules that storage is a rebuildable cache and that revoking access and clearing storage removes the index would need revisiting. Can share the `choose-cloudflare-stack` spike.
-  - Related: `choose-cloudflare-stack`, `show-project-index`
-  - Trade-offs and citations are in the "Where the repository is hosted" section of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md).
 
 ## Ready for separate work
 
@@ -90,9 +77,18 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 - [GITHUB] `choose-change-detection` — **Choose change detection and missed-event reconciliation.** Evaluate webhooks versus polling and make sync freshness visible.
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
-  - Related: `choose-cloudflare-stack`
+  - Related: `check-github-app-installation`
+  - Works within the stack in the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack): webhooks verified by the Worker and handled in one Durable Object, reconciliation from an alarm or a Cron Trigger in batches of at most 50 GitHub requests per invocation. Measurements and Free-plan quotas are in [docs/specs/2026-10-13-cloudflare-stack.md](docs/specs/2026-10-13-cloudflare-stack.md).
   - Must meet the freshness requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md#freshness): changes visible within 60 seconds, convergence after missed or late notifications, and the overdue-sync threshold and catch-up bound this decision sets.
   - GitHub access is a GitHub App with read-only Metadata, Pull requests, Checks and Commit statuses ([decision](docs/DECISIONS.md#2026-10-12--github-integration)). The events it can receive and the constraints that bear on this choice (no automatic redelivery, fork CI events matched by head SHA, no event for mergeability, no push or top-level PR comment events without more permissions, rate and subrequest limits) are under [Webhook events](docs/specs/2026-10-12-github-integration.md#webhook-events) and [Rate limits](docs/specs/2026-10-12-github-integration.md#rate-limits) in the spec.
+
+- [GITHUB] `check-github-app-installation` — **Confirm how a personal-account GitHub App installation behaves before implementation relies on it.** The Cloudflare stack spike was asked to check two GitHub behaviours but they need the owner in a browser and a second GitHub account, so they had not run when the stack was accepted.
+  - Source: choose-cloudflare-stack decision, [docs/DECISIONS.md](docs/DECISIONS.md#2026-10-13--cloudflare-stack), 2026-10-13
+  - Remaining from: `choose-cloudflare-stack`
+  - Related: `choose-change-detection`
+  - Confirm the first two items under [Not verified](docs/specs/2026-10-12-github-integration.md#not-verified) in the GitHub integration spec: whether an all-repositories installation on a personal account receives `repository` `created` and `installation_repositories` `added` for a repository created later and lists it in `GET /installation/repositories`, and whether other GitHub users can authorize a private app owned by a personal account. Record the results in that spec.
+  - Starting point: the spike Worker `seshat-spike-stack` is still deployed for this. Register the app at `/app/new`, install it on the personal account with All repositories, create a test repository and read `/app/status`, then try `/app/sign-in` from a second GitHub account. The same routes also probe whether the refresh token still works after the user token is revoked and what the collaborator permission endpoint returns for a user with no access to a public repository. See [Not verified](docs/specs/2026-10-13-cloudflare-stack.md#not-verified) in the stack spec.
+  - Afterwards delete the spike Worker, its Durable Object data, the spike app and the test repository.
 
 ### P2 Normal
 

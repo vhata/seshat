@@ -1,7 +1,7 @@
 # Cloudflare stack
 
-Status: **proposed on 2026-10-13, awaiting the owner.** This answers the queue
-entry `choose-cloudflare-stack` and is judged against
+Status: **accepted by the owner on 2026-10-13** ([decision](../DECISIONS.md#2026-10-13--cloudflare-stack)).
+This answers the queue entry `choose-cloudflare-stack` and is judged against
 [DELIVERABLE.md](../DELIVERABLE.md), within the GitHub App chosen in
 [DECISIONS.md](../DECISIONS.md#2026-10-12--github-integration). Facts about
 Cloudflare were checked against Cloudflare's documentation on 2026-10-13 and
@@ -363,6 +363,12 @@ step 4 in [Setup burden](2026-10-12-github-integration.md#setup-burden).
 
 ## Questions for the owner
 
+The owner answered on 2026-10-13, accepting the stack and React with Vite as
+recommended. The GitHub App checks in question 3 had not run, so they moved
+to `check-github-app-installation` in [TODO.md](../../TODO.md). The spike
+Worker stays deployed for them and is torn down with the spike app afterwards;
+the temporary webhook on this repository had already been removed.
+
 1. **Stack.** Accept one Worker with static assets, one SQLite-backed Durable
    Object per instance and hibernatable WebSockets, with no other storage
    product? Recommended.
@@ -382,12 +388,6 @@ step 4 in [Setup burden](2026-10-12-github-integration.md#setup-burden).
    public repository.
 4. **Teardown.** After the checks, delete the spike Worker, the temporary
    webhook on this repository and the spike app.
-
-Once the owner answers, the decision goes into [DECISIONS.md](../DECISIONS.md)
-and `choose-cloudflare-stack` leaves [TODO.md](../../TODO.md). If the GitHub
-App checks in question 3 have not run by then, they become a remainder entry
-rather than being dropped, since the queue entry asked this spike to confirm
-them.
 
 ## Sources
 

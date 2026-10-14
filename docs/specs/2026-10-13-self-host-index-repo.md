@@ -1,9 +1,9 @@
 # Self-hosting the project index repository
 
-Status: **proposed on 2026-10-13, awaiting the owner.** This answers the queue
-entry `self-host-index-repo`: prove or rule out hosting the project index's git
-repository on Cloudflare instead of GitHub. The trade-offs it tests are under
-[Where the repository is
+Status: **accepted by the owner on 2026-10-13** ([decision](../DECISIONS.md#2026-10-13--project-index-stays-on-github)).
+This answers the queue entry `self-host-index-repo`: prove or rule out hosting
+the project index's git repository on Cloudflare instead of GitHub. The
+trade-offs it tests are under [Where the repository is
 hosted](2026-10-12-projects-index.md#where-the-repository-is-hosted) in the
 project index spec. The work ran on the same Workers Free account and on the
 same days as the [Cloudflare stack spike](2026-10-13-cloudflare-stack.md),
@@ -159,14 +159,13 @@ measured.
 
 ## Questions for the owner
 
+The owner answered both as recommended on 2026-10-13, and the two spike
+Workers and their Durable Object data were deleted the same day.
+
 1. Rule out self-hosting the index for now and keep it on GitHub, leaving the
    host-agnostic interface in place? Recommended.
 2. Teardown: delete the two spike Workers, `seshat-spike-git-dgit` and
    `seshat-spike-git-gated`, and their data.
-
-Once the owner answers, the decision goes into [DECISIONS.md](../DECISIONS.md),
-`self-host-index-repo` leaves [TODO.md](../../TODO.md), and the entries that
-mention it are updated.
 
 [goc]: https://github.com/zllovesuki/git-on-cloudflare
 [dgit]: https://github.com/littledivy/durable-git

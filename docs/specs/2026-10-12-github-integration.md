@@ -711,8 +711,8 @@ No requirement in DELIVERABLE.md is unmeetable with the recommended option.
 - `choose-change-detection` in [TODO.md](../../TODO.md) works within the
   events and constraints under [Webhook events](#webhook-events) and
   [Rate limits](#rate-limits).
-- The `choose-cloudflare-stack` spike confirms the first two items under
-  [Not verified](#not-verified).
+- `check-github-app-installation` confirms the first two items under
+  [Not verified](#not-verified), using the `choose-cloudflare-stack` spike.
 - The remaining unverified items are checked during implementation, before
   anything relies on them.
 
@@ -746,7 +746,8 @@ These need confirming with a real app before implementation relies on them.
   GitHub pages disagree). This matters only if option C is reconsidered.
 - The redelivery window, given as both 3 and 7 days.
 
-The first two can be checked in the `choose-cloudflare-stack` spike, which
+The first two are `check-github-app-installation` in
+[TODO.md](../../TODO.md), using the `choose-cloudflare-stack` spike, which
 already receives a GitHub webhook.
 
 ## Questions for the owner
