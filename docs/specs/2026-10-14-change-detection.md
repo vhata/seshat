@@ -23,12 +23,11 @@ verified](#not-verified).
 - **A sweep every 2 minutes reconciles everything.** For each accepted
   installation it lists the repositories, counts open PRs per repository in
   one GraphQL query, and reads every open PR in the repositories that have
-  any. A change
-  whose webhook was lost, and a change that has no webhook at all (top-level
-  comments, reviewer permission changes, conflicts caused by a push to a base
-  branch), is picked up by the next sweep. For the owner's 48 monitored
-  repositories this measured about 8 GraphQL points and 3 subrequests per
-  sweep (4 when the installation token is renewed).
+  any. A change whose webhook was lost, and a change that has no webhook at
+  all (top-level comments, reviewer permission changes, conflicts caused by a
+  push to a base branch), is picked up by the next sweep. For the owner's 48
+  monitored repositories this measured about 8 GraphQL points and 3
+  subrequests per sweep (4 when the installation token is renewed).
 - **Mergeability that GitHub is still computing is re-read** through the REST
   endpoint that starts the computation, at increasing intervals, until it
   resolves or the next sweep takes over.
@@ -37,7 +36,8 @@ verified](#not-verified).
   within 5 minutes: one sweep interval, plus one late or failed sweep, plus a
   minute for the sweep's own reads and follow-ups. Overdue threshold: the
   overview flags the sync as overdue when the last successful sweep started
-  more than 5 minutes ago, and flags a failed sweep as soon as it fails.
+  more than 5 minutes ago, and flags a failed sync as soon as a sweep and its
+  retry have both failed.
 - **One Durable Object alarm schedules all of this.** Re-reads, mergeability
   checks and sweeps share it. Every request into the object makes sure it is
   set, and a Cron Trigger every 10 minutes does the same as a watchdog.
@@ -118,10 +118,10 @@ Constraints from the earlier decisions and from GitHub:
   failed, but not changes GitHub never reports (comments, permissions,
   base-branch conflicts, mergeability), and GitHub's page gives its retention
   as 7 days in its introduction and 3 days everywhere else
-  ([redelivering][wh-redeliver]). A sweep is
-  needed regardless, and once it exists the log adds only speed for a case
-  the sweep already covers. Not recommended for the first deliverable; it
-  could be added if sweeps ever had to become infrequent.
+  ([redelivering][wh-redeliver]). A sweep is needed regardless, and once it
+  exists the log adds only speed for a case the sweep already covers. Not
+  recommended for the first deliverable; it could be added if sweeps ever had
+  to become infrequent.
 - **E. Poll only, with no webhooks.** A sweep every 30 seconds would meet the
   60-second requirement, at four times the GraphQL points of a 2-minute sweep
   whether or not anything changes, with every change taking up to 30 seconds
@@ -259,7 +259,7 @@ meanwhile, as [DELIVERABLE.md](../DELIVERABLE.md#terms) asks.
 A push to a PR's base branch can introduce conflicts without any event the app
 receives, and the app cannot see the base branch's head without Contents. The
 PR's `baseRefOid` does not follow the base branch: of 28 open PRs whose base
-had moved since they were opened, 20 still gave an older commit. The design
+had moved since they were opened, 20 still gave a different commit. The design
 therefore relies on GitHub recomputing mergeability itself after a base push,
 which the sweep then reads. For those 20 PRs GraphQL's `mergeable` agreed with
 the REST endpoint's, and none was still being computed, which suggests GitHub
@@ -295,10 +295,10 @@ repositories from different installations):
    implementation](#constraints-for-implementation)).
 
 For the owner that is 3 subrequests, or 4 when the token is renewed, well
-inside one invocation's 50. A
-larger account whose sweep would pass about 40 subrequests continues in a
-second alarm invocation a moment later; the sweep counts as complete only when
-every part has succeeded, and its time is when it started. Each sweep also
+inside one invocation's 50. A larger account whose sweep would pass about 40
+subrequests continues in a second alarm invocation a moment later; the sweep
+counts as complete only when every part has succeeded, and its time is when
+it started. Each sweep also
 counts the PRs whose stored state it had to correct. A correction that a
 webhook should have delivered first is evidence that deliveries are failing,
 and the repositories screen can show the count.
@@ -308,7 +308,7 @@ as failed, so a single transient GitHub error does not raise a banner.
 
 The sweep reads `rateLimit.remaining` and `rateLimit.resetAt` from each
 response. While an installation has less than a tenth of its hourly budget
-left, the sweep interval doubles, back to 2 minutes once `resetAt` has
+left, the sweep interval is 4 minutes, back to 2 once `resetAt` has
 passed; the overview says why, and still shows the sync as overdue if the
 last success is older than 5 minutes.
 
@@ -360,8 +360,8 @@ own timer, one of these states:
 | State | When | Shown |
 | --- | --- | --- |
 | Live | Socket connected, latest sweep succeeded, last success within 5 minutes | The time of the last check, without a banner |
-| Sync failed | The latest sweep attempt failed | Prominently, with the reason and the affected repositories, until a sweep succeeds |
-| Overdue | The last successful sweep is more than 5 minutes old | Prominently, with the time of the last success; every row is marked as possibly out of date |
+| Sync failed | The latest sweep and its retry failed | Prominently, with the reason and the affected repositories, until a sweep succeeds |
+| Overdue | The last successful sweep started more than 5 minutes ago | Prominently, with the time of the last success; every row is marked as possibly out of date |
 | Disconnected | The socket is closed and reconnecting | Prominently, with the time of the last message; overdue still applies on the page's clock |
 
 The prototype's "Retry now" action on the sync banner
@@ -446,18 +446,20 @@ returning. Reviews and PR state changes were not measured.
 
 **Base branch and mergeability.** Of 45 open PRs, 28 had a base branch whose
 latest commit was newer than the PR. For 20 of those, `baseRefOid` still gave
-an older commit than the base branch's head (`baseRef.target.oid`, read with
-the owner's token; an installation without Contents may not be able to read
-it). For each of the 20, `GET /repos/{owner}/{repo}/pulls/{number}` returned
-a computed `mergeable` on the first request, agreeing with GraphQL's value; 20
-seconds later neither had changed, and `baseRefOid` had not moved.
+a different commit from the base branch's head (`baseRef.target.oid`, read
+with the owner's token; an installation without Contents may not be able to
+read it). For each of the 20, `GET /repos/{owner}/{repo}/pulls/{number}`
+returned a computed `mergeable` at once, never null, and a second request 20
+seconds later agreed with GraphQL's value; neither value had changed, and
+`baseRefOid` had not moved.
 
 ## Effect on DELIVERABLE.md
 
 On acceptance, in [Freshness](../DELIVERABLE.md#freshness):
 
 1. The overdue threshold is 5 minutes since the start of the last successful
-   sweep, and a failed sweep is flagged as soon as it fails.
+   sweep, and a failed sync is flagged as soon as a sweep and its retry have
+   both failed.
 2. The catch-up bound is 5 minutes.
 3. Top-level comments, reviewer permission changes and conflicts caused by a
    push to a base branch have no webhook the app receives, and reach the
@@ -501,12 +503,12 @@ itself is unchanged.
 - **Whether GitHub's API reflects a change by the time its webhook arrives.**
   For check runs the API showed new states about when deliveries arrive (see
   [Measurements](#measurements)), as did one push; reviews and PR state
-  changes were not measured. The design checks each read against the facts the delivery
-  reported and retries, so this affects how often retries happen, not
-  correctness.
+  changes were not measured. The design checks each read against the facts
+  the delivery reported and retries, so this affects only how often retries
+  happen.
 - **Whether GitHub recomputes mergeability promptly after a push to the base
   branch that causes a conflict.** The design relies on it, and the sample in
-  [Measurements](#measurements) had no such conflict. Implementation should
+  [Measurements](#measurements) included no push that caused a conflict. Implementation should
   test it with a conflicting push to a base branch, and if GitHub leaves the
   old value, have the sweep fetch each open PR through the REST endpoint in
   turn, a few per sweep.
