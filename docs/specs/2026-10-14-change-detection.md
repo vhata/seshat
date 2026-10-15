@@ -440,7 +440,9 @@ to 2.2 seconds after the time GitHub gives for it (`started_at` or
 truncation and up to half a second is the polling interval). The stack spike
 saw real deliveries arrive 1.0 to 2.8 seconds after the same timestamps
 ([stack spec](2026-10-13-cloudflare-stack.md#measurements)). Two check runs
-are a small sample, and the PR head and review paths were not measured.
+are a small sample. A push to this PR's branch showed as the PR's
+`headRefOid` in GraphQL on the second poll, within 1.3 seconds of `git push`
+returning. Reviews and PR state changes were not measured.
 
 **Base branch and mergeability.** Of 45 open PRs, 28 had a base branch whose
 latest commit was newer than the PR. For 20 of those, `baseRefOid` still gave
@@ -498,8 +500,8 @@ itself is unchanged.
 
 - **Whether GitHub's API reflects a change by the time its webhook arrives.**
   For check runs the API showed new states about when deliveries arrive (see
-  [Measurements](#measurements)); pushes, reviews and PR state changes were not
-  measured. The design checks each read against the facts the delivery
+  [Measurements](#measurements)), as did one push; reviews and PR state
+  changes were not measured. The design checks each read against the facts the delivery
   reported and retries, so this affects how often retries happen, not
   correctness.
 - **Whether GitHub recomputes mergeability promptly after a push to the base
