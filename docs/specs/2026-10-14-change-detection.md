@@ -652,8 +652,8 @@ Decided by the owner on 2026-10-15, and recorded in
 the object sweeps only while an overview is visible, judged by visibility
 reports rather than sessions, sockets or pings; there is no tail of sweeps
 after the last page goes; a page that becomes visible gets a catch-up sweep
-and a checking state when the last sweep is more than 2 minutes old; the
-sweep runs every 2 minutes while active; and DELIVERABLE.md says so. That
+when the last sweep is more than 2 minutes old, and a checking state while
+it runs; the sweep runs every 2 minutes while active; and DELIVERABLE.md says so. That
 also settles the earlier question about a Cron Trigger watchdog, which is no
 longer needed.
 

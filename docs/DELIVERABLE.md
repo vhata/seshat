@@ -6,8 +6,8 @@ checks GitHub
 ([DECISIONS.md](DECISIONS.md#2026-10-15--check-github-only-while-someone-is-looking)).
 This defines what the first implementation must do and how it will be judged.
 It does not choose a stack or a change-detection mechanism. The stack is
-decided in [DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack); change detection
-is proposed in
+decided in [DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack);
+change detection is proposed in
 [specs/2026-10-14-change-detection.md](specs/2026-10-14-change-detection.md);
 both must meet the requirements here.
 GitHub access uses a GitHub App, as decided in
