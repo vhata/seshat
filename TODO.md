@@ -18,7 +18,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Source: split of `build-pr-overview`, 2026-10-15
   - Split from: `build-pr-overview`
   - Depends on: `scaffold-worker-app`
-  - Starting point: [Terms](docs/DELIVERABLE.md#terms), [Buckets](docs/DELIVERABLE.md#buckets), [Order within a bucket](docs/DELIVERABLE.md#order-within-a-bucket) and [Stale flag](docs/DELIVERABLE.md#stale-flag). Acceptance check 3's logic half (fixed sample data, one case per rule, precedence cases, every combination lands in a bucket, each derivation mapping) and check 8.
+  - Starting point: [Terms](docs/DELIVERABLE.md#terms), [Buckets](docs/DELIVERABLE.md#buckets), [Order within a bucket](docs/DELIVERABLE.md#order-within-a-bucket) and [Stale flag](docs/DELIVERABLE.md#stale-flag). Acceptance check 3's logic half (fixed sample data, one case per rule, precedence cases, every combination lands in a bucket, each derivation mapping) and check 8's logic half, the flag computed from last activity.
   - Takes a plain input type for a PR and its reviews, checks and reviewer permissions, so whichever GitHub reads `choose-change-detection` settles on only have to fill it in.
 
 - [GITHUB] `owner-sign-in` — **Implement owner-only sign-in through the GitHub App, refusing every other account.** Every other route sits behind it, and it needs no change-detection choice.
