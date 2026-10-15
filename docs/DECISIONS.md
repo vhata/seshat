@@ -297,8 +297,8 @@ remote change if a better-maintained server appears.
 
 The owner accepted format 1 of the project index, defined in
 [INDEX_FORMAT.md](INDEX_FORMAT.md), answering three of its four questions as
-recommended and settling the fourth, on labels, by keeping those the current
-file already uses.
+recommended and settling the remaining one, on labels, by keeping those the
+current file already uses.
 
 - `##` sections are classifications and `###` headings are entries, read as
   CommonMark block structure. An entry's first bullet list holds its

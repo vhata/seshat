@@ -380,8 +380,9 @@ The parse is the same in every implementation. As JSON, for the start of the
 - `key` is `remote:<owner/name>` or `path:<path>`, and is absent on an entry
   with a `missing-key` error.
 - `preamble`, `notes` and `summary` are Markdown source with leading and
-  trailing blank lines removed. `preamble` leaves out the file field list,
-  joining what came before and after it as a summary does.
+  trailing blank lines removed. `preamble` leaves out the labelled items of
+  the file field list, joining what came before and after them as a summary
+  does.
 - Sections and entries are in file order. Two sections with the same name stay
   two sections in the parse; display may group them.
 
@@ -404,9 +405,9 @@ The decision's "duplicate entries" check is `duplicate-remote` and
 `duplicate-path` in the shared check. Directories excluded by the owner's
 survey settings, such as work checkouts, are not reported. Symbolic links
 under the survey root are followed, so a `Path` may name a link to a checkout
-kept elsewhere. Since one entry
-names one checkout, a second checkout of the same repository is reported as
-`checkout-without-entry` unless the survey settings exclude it.
+kept elsewhere. Since one entry names one checkout, a second checkout of the
+same repository is reported as `checkout-without-entry` unless the survey
+settings exclude it.
 
 ## Writing the file
 
