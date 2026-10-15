@@ -8,7 +8,7 @@ the owner](#questions-for-the-owner). This answers the queue entry
 chosen in [DECISIONS.md](../DECISIONS.md#2026-10-13--cloudflare-stack). Facts
 about GitHub and Cloudflare were checked against their documentation on
 2026-10-14; each claim links to its source. GitHub API costs were measured the
-same day against the owner's own repositories; see
+next morning UTC against the owner's own repositories; see
 [Measurements](#measurements). Points not yet settled are under [Not
 verified](#not-verified).
 
@@ -20,22 +20,24 @@ verified](#not-verified).
   the marked PRs from GitHub's GraphQL API in one query, stores what the read
   returned and pushes any change to open pages. No payload is written into the
   model.
-- **A sweep every 2 minutes reconciles everything.** It lists the
-  installation's repositories, counts open PRs per repository in one GraphQL
-  query, and reads every open PR in the repositories that have any. A change
+- **A sweep every 2 minutes reconciles everything.** For each accepted
+  installation it lists the repositories, counts open PRs per repository in
+  one GraphQL query, and reads every open PR in the repositories that have
+  any. A change
   whose webhook was lost, and a change that has no webhook at all (top-level
   comments, reviewer permission changes, conflicts caused by a push to a base
   branch), is picked up by the next sweep. For the owner's 48 monitored
-  repositories this measured about 8 GraphQL points and 4 or 5 subrequests per
-  sweep.
+  repositories this measured about 8 GraphQL points and 3 subrequests per
+  sweep (4 when the installation token is renewed).
 - **Mergeability that GitHub is still computing is re-read** through the REST
   endpoint that starts the computation, at increasing intervals, until it
   resolves or the next sweep takes over.
 - **Bounds for [DELIVERABLE.md](../DELIVERABLE.md#freshness).** Catch-up bound:
   a change GitHub fails to report, or reports late, reaches an open overview
-  within 5 minutes. Overdue threshold: the overview flags the sync as overdue
-  when the last successful sweep is more than 5 minutes old, and flags a failed
-  sweep as soon as it fails.
+  within 5 minutes: one sweep interval, plus one late or failed sweep, plus a
+  minute for the sweep's own reads and follow-ups. Overdue threshold: the
+  overview flags the sync as overdue when the last successful sweep started
+  more than 5 minutes ago, and flags a failed sweep as soon as it fails.
 - **One Durable Object alarm schedules all of this.** Re-reads, mergeability
   checks and sweeps share it. Every request into the object makes sure it is
   set, and a Cron Trigger every 10 minutes does the same as a watchdog.
@@ -114,8 +116,9 @@ Constraints from the earlier decisions and from GitHub:
   to failures, and ask for a redelivery, both with a JWT ([app webhooks
   API][rest-app-hooks]). This repairs deliveries GitHub attempted and that
   failed, but not changes GitHub never reports (comments, permissions,
-  base-branch conflicts, mergeability), and GitHub's own pages give its
-  retention as both 3 and 7 days ([redelivering][wh-redeliver]). A sweep is
+  base-branch conflicts, mergeability), and GitHub's page gives its retention
+  as 7 days in its introduction and 3 days everywhere else
+  ([redelivering][wh-redeliver]). A sweep is
   needed regardless, and once it exists the log adds only speed for a case
   the sweep already covers. Not recommended for the first deliverable; it
   could be added if sweeps ever had to become infrequent.
@@ -135,21 +138,21 @@ Measured on the owner's repositories (see [Measurements](#measurements)):
 | --- | --- | --- | --- |
 | Full read of every monitored repository, 50 PRs, reviews and checks each | 96 | 1 or 2 | Points are charged for the page sizes requested, not the PRs found; one query took 6.6 to 7.5 s, near the 10 s timeout |
 | Full read of every repository with smaller pages (10 PRs, 20 reviews, 30 checks) | 20 | 1 | Still charges for 39 repositories that have no open PR |
-| **Count open PRs per repository, then read only repositories that have some** (20 PRs, 30 reviews, 50 checks) | **1 + 7** | **2 or 3** | Recommended; pages beyond those sizes are fetched only where a count says they exist |
+| **Count open PRs per repository, then read only repositories that have some** (20 PRs, 30 reviews, 50 checks) | **1 + 7** | **2** | Recommended; pages beyond those sizes are fetched only where a count says they exist |
 | Search for open PRs across the account | 4 | 1 | GitHub does not document how soon search reflects a change, and a reconciliation pass must be authoritative |
-| REST with conditional requests | near 0 when unchanged | about 135 | A request per repository and two per PR for CI; 304 responses cost no rate limit ([conditional requests][rest-conditional]) but each is a subrequest, so one sweep would span three invocations |
+| REST with conditional requests | none (REST has its own limit, and 304 responses cost none of it) | about 220 | A request for the repository list, one per repository for its PRs, and four per PR (the PR for mergeability, reviews, check runs, statuses); 304 responses cost no rate limit ([conditional requests][rest-conditional]) but each is a subrequest, so one sweep would span five invocations |
 
 The count-then-read sweep scales with the repositories that have open PRs,
 not with every repository the account owns.
 
 ## Recommended design
 
-### Events subscribed
+### Events handled
 
-The app's manifest subscribes to these events; `installation`,
-`installation_repositories`, `github_app_authorization` and
-`installation_target` are delivered without a subscription
-([webhook events][wh-events]).
+The app's manifest subscribes to the events in this table except
+`installation` and `installation_repositories`, which, like
+`github_app_authorization` and `installation_target`, are delivered without a
+subscription ([webhook events][wh-events]).
 
 | Event | What it marks |
 | --- | --- |
@@ -164,8 +167,15 @@ The app's manifest subscribes to these events; `installation`,
 `check_suite` repeats what the `check_run` events already reported, and costs
 one more delivery per suite; it is kept because a burst of marks for the same
 PR collapses into one read, so a second signal costs almost nothing and covers
-a lost `check_run`. A CI event whose SHA matches no known PR marks nothing;
-the next sweep finds the PR if it exists.
+a lost `check_run`.
+
+A CI event can arrive before the re-read that stores a PR's new head, for
+example a `status` event, or a fork PR's `check_run`, racing the
+`synchronize` that preceded it. A CI SHA that matches no known PR is
+therefore held for a minute against its repository; any re-read that stores
+that SHA as a PR's head in the meantime marks the PR again. A SHA still
+unmatched after a minute is dropped, and the next sweep finds the PR if it
+exists.
 
 ### Receiving a delivery
 
@@ -173,9 +183,10 @@ the next sweep finds the PR if it exists.
    installations that are not accepted, and reduces the payload to its marks
    (PR node IDs or repository and number, a head SHA, a repository ID) plus the
    facts a re-read should be able to see (see [Re-reads](#re-reads)).
-2. It calls the object over RPC. The object writes one row per mark, keyed by
-   PR so repeated marks overwrite each other, and sets its alarm for 2 seconds
-   ahead unless it is already due sooner.
+2. It calls the object over RPC. The object writes one row per marked PR, so
+   a burst of deliveries for one PR leaves one row; the facts each delivery
+   reported are added to that row rather than replacing earlier ones. It sets
+   its alarm for 2 seconds ahead unless it is already due sooner.
 3. The Worker answers 202 once the object has stored the marks. A delivery the
    object did not store is answered with an error, so it shows as failed in the
    app's delivery log, where the owner can redeliver it by hand, and the next
@@ -194,17 +205,40 @@ their commit and author, every check run and commit status on the head
 commit, and the latest comment time. It compares the result with the stored
 PR, writes and pushes only what changed, and clears the marks.
 
-A read can come back before GitHub's API shows what the webhook reported; how
-often this happens is [not verified](#not-verified). So each mark keeps the
-facts its delivery reported: the head SHA for `pull_request`, the review ID
-for `pull_request_review`, the check run's ID and status for `check_run`, the
-context and state for `status`. If the read does not show them yet, the mark
-stays and is re-read after 5, 15 and 30 seconds, and after that is left to the
-sweep. That keeps the worst case for a reported change near a minute.
+A read can come back before GitHub's API shows what the webhook reported. On
+this repository's own PR, the API showed each check run's new state 1.2 to
+2.2 seconds after the time GitHub gives for it, about when the stack spike saw
+deliveries arrive (see [Measurements](#measurements)), so a read 2 seconds
+after delivery should usually see it. To cover the rest, each mark keeps the
+facts its deliveries reported:
+
+| Delivery | Fact the read must show |
+| --- | --- |
+| `pull_request` `opened`, `reopened`, `closed` | The PR's state (open, closed or merged) |
+| `pull_request` `converted_to_draft`, `ready_for_review` | The draft flag |
+| `pull_request` `synchronize` | The head SHA |
+| `pull_request` other actions | Nothing beyond the PR itself |
+| `pull_request_review` `submitted`, `dismissed` | The review's ID and state |
+| `check_run` | The check run's ID with that status, or a later one |
+| `status` | That context with that state on that SHA |
+
+A fact counts as shown when the read shows it or a later state: a check run
+that is already completed satisfies an `in_progress` delivery that arrived
+out of order, and a head SHA superseded by a newer push satisfies the older
+`synchronize`, since the PR's head has moved on. Facts that are shown are
+cleared. If any remain, the PR is read again 5, 15 and 30 seconds after the
+first read; facts still missing after that are left to the sweep. With
+GitHub's delivery delay of a few seconds, the last retry happens about 35
+seconds after the change, inside the 60 seconds. A reported change that the
+API shows only after that counts as missed, and appears within the catch-up
+bound.
 
 Reviewer permission comes from the REST collaborator permission endpoint, as
-the GitHub spec chose, read once per sweep for each pair of repository and
-reviewer that has an approval or a request for changes on an open PR, with
+the GitHub spec chose. A re-read that finds an approval or a request for
+changes from a reviewer whose permission on that repository is not yet known
+looks it up before the PR is bucketed, so a review from a new reviewer is
+bucketed correctly within the 60 seconds. Each sweep then refreshes every
+pair of repository and reviewer that has such a review on an open PR, with
 conditional requests so an unchanged answer costs no rate limit. The GraphQL
 field `authorCanPushToRepository` might replace it, once its meaning is
 confirmed ([GitHub spec](2026-10-12-github-integration.md#not-verified)). The
@@ -218,18 +252,26 @@ getting a PR through the REST API starts the computation ([get a pull
 request][rest-pull]; [checking mergeability][rest-mergeability]); it says
 nothing about GraphQL doing so. When a read returns `UNKNOWN`, the object
 therefore fetches that PR with `GET /repos/{owner}/{repo}/pulls/{number}`,
-and again after 5, 15 and 45 seconds until `mergeable` is no longer null,
+and again 5, 15 and 30 seconds later until `mergeable` is no longer null,
 after which the sweep takes over. The row says mergeability is being checked
 meanwhile, as [DELIVERABLE.md](../DELIVERABLE.md#terms) asks.
 
 A push to a PR's base branch can introduce conflicts without any event the app
-receives. The next sweep sees `UNKNOWN` or `CONFLICTING` on that PR and
-proceeds as above, so such conflicts appear within the catch-up bound rather
-than 60 seconds. They are not in the Freshness list.
+receives, and the app cannot see the base branch's head without Contents. The
+PR's `baseRefOid` does not follow the base branch: of 28 open PRs whose base
+had moved since they were opened, 20 still gave an older commit. The design
+therefore relies on GitHub recomputing mergeability itself after a base push,
+which the sweep then reads. For those 20 PRs GraphQL's `mergeable` agreed with
+the REST endpoint's, and none was still being computed, which suggests GitHub
+does; whether it does promptly after a push that causes a conflict is [not
+verified](#not-verified). Such conflicts appear within the catch-up bound
+rather than 60 seconds; they are not in the Freshness list.
 
 ### The sweep
 
-Every 2 minutes, from the alarm:
+Every 2 minutes, from the alarm, for each accepted installation (each has
+its own token, repository list and GraphQL budget, and one query cannot mix
+repositories from different installations):
 
 1. Mint an installation token if the cached one is within a few minutes of
    expiring (one subrequest an hour).
@@ -241,25 +283,34 @@ Every 2 minutes, from the alarm:
    ID, up to 100 repositories per query. Measured at 1 point for 48.
 4. GraphQL queries reading every open PR on each repository with a nonzero
    count: 20 PRs, the last 30 reviews and the first 50 check contexts per PR,
-   fetching further pages only where a count says there are more. Repositories
-   are batched so each query stays well inside GitHub's 10-second limit; the
-   measured query for 9 repositories took 2.5 to 4.3 seconds.
+   fetching further pages only where a count says there are more. At most 10
+   repositories go in one query, to stay well inside GitHub's 10-second
+   limit; the measured query for 9 repositories took 2.5 to 4.3 seconds.
 5. Reviewer permission lookups, as under [Re-reads](#re-reads).
 6. Compare with the stored model: update changed PRs, drop PRs that are no
-   longer open, push the changes, record the sweep's result and time, and
-   start mergeability checks for any `UNKNOWN`.
+   longer open, including every stored PR of a repository whose count came
+   back as zero, push the changes, record the sweep's result and start time,
+   and start mergeability checks for any `UNKNOWN`. A repository whose count
+   or read failed keeps its stored PRs (see [Constraints for
+   implementation](#constraints-for-implementation)).
 
-For the owner that is 4 or 5 subrequests, well inside one invocation's 50. A
+For the owner that is 3 subrequests, or 4 when the token is renewed, well
+inside one invocation's 50. A
 larger account whose sweep would pass about 40 subrequests continues in a
 second alarm invocation a moment later; the sweep counts as complete only when
-every part has succeeded. Each sweep also counts the PRs whose stored state it
-had to correct. A correction that a webhook should have delivered first is
-evidence that deliveries are failing, and the repositories screen can show
-the count.
+every part has succeeded, and its time is when it started. Each sweep also
+counts the PRs whose stored state it had to correct. A correction that a
+webhook should have delivered first is evidence that deliveries are failing,
+and the repositories screen can show the count.
 
-The sweep reads `rateLimit.remaining` from each response. If the installation
-falls below a tenth of its hourly budget the sweep interval is lengthened and
-the overview says why, rather than spending the rest of the budget.
+A sweep that fails is retried once, 15 seconds later, before it is reported
+as failed, so a single transient GitHub error does not raise a banner.
+
+The sweep reads `rateLimit.remaining` and `rateLimit.resetAt` from each
+response. While an installation has less than a tenth of its hourly budget
+left, the sweep interval doubles, back to 2 minutes once `resetAt` has
+passed; the overview says why, and still shows the sync as overdue if the
+last success is older than 5 minutes.
 
 On a new installation the first sweep is the initial load, and the page shows
 that it is in progress rather than an empty overview.
@@ -278,8 +329,12 @@ times, and after that is not run again until `setAlarm` is next called
 ([pricing][do-pricing]), so on a day the account's write quota runs out the
 object cannot set its alarm either. Two things re-arm it:
 
-- every RPC, socket connection and API request into the object checks that an
-  alarm is set and sets one if not;
+- every RPC, socket connection, socket message and API request into the
+  object checks that an alarm is set and sets one if not;
+- when the page's own timer finds the sync overdue, it sends the object one
+  message, which re-arms the alarm; keep-alive pings do not, since they are
+  answered without waking the object
+  ([stack spec](2026-10-13-cloudflare-stack.md#measurements));
 - a Cron Trigger every 10 minutes calls the object to do the same, and nothing
   else, so it stays within the 10 ms of CPU a scheduled handler has on Free
   ([Workers limits][cf-limits-cpu]).
@@ -304,7 +359,7 @@ own timer, one of these states:
 
 | State | When | Shown |
 | --- | --- | --- |
-| Live | Socket connected, latest sweep succeeded, last success within 5 minutes | The time of the last check, quietly |
+| Live | Socket connected, latest sweep succeeded, last success within 5 minutes | The time of the last check, without a banner |
 | Sync failed | The latest sweep attempt failed | Prominently, with the reason and the affected repositories, until a sweep succeeds |
 | Overdue | The last successful sweep is more than 5 minutes old | Prominently, with the time of the last success; every row is marked as possibly out of date |
 | Disconnected | The socket is closed and reconnecting | Prominently, with the time of the last message; overdue still applies on the page's clock |
@@ -337,7 +392,7 @@ budget](2026-10-13-cloudflare-stack.md#free-plan-budget)):
 | Worker requests | about 700 (550 deliveries, 144 watchdog runs, page loads) | 100,000 |
 | Durable Object requests | about 1,500 to 2,000 (720 sweep alarms, a few hundred re-read alarms, 550 RPCs, 144 watchdog calls) | 100,000 |
 | Rows written | a few thousand (marks, sweep results, each `setAlarm`, changed PRs) | 100,000 |
-| Subrequests | 4 or 5 per sweep, 1 or 2 per re-read | 50 per invocation |
+| Subrequests | 3 or 4 per sweep, 1 or 2 per re-read | 50 per invocation |
 
 Sweep cost grows with the repositories that have open PRs: as arithmetic on
 the measured rate, 30 such repositories would cost about 24 points a sweep, or
@@ -345,7 +400,8 @@ the measured rate, 30 such repositories would cost about 24 points a sweep, or
 
 ## Measurements
 
-Measured on 2026-10-14 against the owner's own GitHub account, with the
+Measured between 06:38 and 07:10 UTC on 2026-10-15 (the evening of 2026-10-14
+in the owner's time zone) against the owner's own GitHub account, with the
 GitHub CLI's user token rather than an installation token; GraphQL charges the
 same way for both, but the budget differs ([GraphQL rate
 limits][gql-limits]). The account owned 72 repositories, 24 of them forks and
@@ -375,12 +431,31 @@ connection at its full page size, divided by 100 ([GraphQL rate
 limits][gql-limits]). That is why the first row costs 96 for 42 PRs, and why
 counting first is the cheapest authoritative sweep.
 
+**When the API shows a CI result.** While this PR's own CI ran, a script
+polled the REST check runs endpoint for its head commit every half second,
+with conditional requests, and recorded when each state first appeared. For
+the two check runs, `queued`, `in_progress` and `completed` each appeared 1.2
+to 2.2 seconds after the time GitHub gives for it (`started_at` or
+`completed_at`, truncated to the second, so up to a second of each figure is
+truncation and up to half a second is the polling interval). The stack spike
+saw real deliveries arrive 1.0 to 2.8 seconds after the same timestamps
+([stack spec](2026-10-13-cloudflare-stack.md#measurements)). Two check runs
+are a small sample, and the PR head and review paths were not measured.
+
+**Base branch and mergeability.** Of 45 open PRs, 28 had a base branch whose
+latest commit was newer than the PR. For 20 of those, `baseRefOid` still gave
+an older commit than the base branch's head (`baseRef.target.oid`, read with
+the owner's token; an installation without Contents may not be able to read
+it). For each of the 20, `GET /repos/{owner}/{repo}/pulls/{number}` returned
+a computed `mergeable` on the first request, agreeing with GraphQL's value; 20
+seconds later neither had changed, and `baseRefOid` had not moved.
+
 ## Effect on DELIVERABLE.md
 
 On acceptance, in [Freshness](../DELIVERABLE.md#freshness):
 
-1. The overdue threshold is 5 minutes since the last successful sweep, and a
-   failed sweep is flagged as soon as it fails.
+1. The overdue threshold is 5 minutes since the start of the last successful
+   sweep, and a failed sweep is flagged as soon as it fails.
 2. The catch-up bound is 5 minutes.
 3. Top-level comments, reviewer permission changes and conflicts caused by a
    push to a base branch have no webhook the app receives, and reach the
@@ -391,6 +466,17 @@ On acceptance, in [Freshness](../DELIVERABLE.md#freshness):
 Acceptance check 6 then reads as written with a bound of 5 minutes: a test
 drops a delivery and shows the change appearing within 5 minutes, by the next
 sweep.
+
+## Effect on earlier decisions
+
+The [stack decision](../DECISIONS.md#2026-10-13--cloudflare-stack) and its
+[spec](2026-10-13-cloudflare-stack.md#recommendation) describe the object as
+storing each delivery and updating the model from it, with delivery IDs as
+the de-duplication key and a bounded delivery log. Under this design the
+object stores marks, not deliveries, builds the model only from GitHub reads,
+and keeps no delivery log or de-duplication store. On acceptance, the
+decision entry records that this supersedes those three points; the stack
+itself is unchanged.
 
 ## Constraints for implementation
 
@@ -411,19 +497,31 @@ sweep.
 ## Not verified
 
 - **Whether GitHub's API reflects a change by the time its webhook arrives.**
-  The design re-reads 2 seconds after the first mark and checks the read
-  against the facts the delivery reported, retrying if they are missing. How
-  often the retry is needed is not known.
+  For check runs the API showed new states about when deliveries arrive (see
+  [Measurements](#measurements)); pushes, reviews and PR state changes were not
+  measured. The design checks each read against the facts the delivery
+  reported and retries, so this affects how often retries happen, not
+  correctness.
+- **Whether GitHub recomputes mergeability promptly after a push to the base
+  branch that causes a conflict.** The design relies on it, and the sample in
+  [Measurements](#measurements) had no such conflict. Implementation should
+  test it with a conflicting push to a base branch, and if GitHub leaves the
+  old value, have the sweep fetch each open PR through the REST endpoint in
+  turn, a few per sweep.
 - **Whether a GraphQL read starts the mergeability computation.** The design
   uses the REST endpoint, which is documented to.
 - **Costs with an installation token.** The measurements used a user token. The
   documented point rule does not depend on the token, but GraphQL access with
   an installation token to `nodes` by repository ID is not yet exercised.
 - **Subrequest budget in an alarm.** The stack spike found a fresh budget of 50
-  for an RPC call into the object, and alarms were not tested; Cloudflare's
-  "per invocation" does not define an invocation ([Workers
+  for an RPC call into the object, and alarms were not tested. Cloudflare's
+  limits page lists alarm handlers as an invocation type for wall time, but
+  does not say that the 50 subrequests apply per alarm ([Workers
   limits][cf-limits-subrequests]). The sweep keeps each alarm under 50 either
   way.
+- **Whether a deploy keeps a scheduled alarm.** Cloudflare's alarm pages do not
+  say. Each request into the object, including the reconnecting pages after a
+  deploy, and the watchdog re-arm it regardless.
 - **Whether a Cron Trigger run counts toward the daily Worker requests**
   (already listed in the [stack spec](2026-10-13-cloudflare-stack.md#not-verified));
   144 a day is negligible either way.
@@ -436,17 +534,18 @@ sweep.
    counts open PRs and then reads the repositories that have them, with no
    delivery-log redelivery? *Recommended.*
 2. **Numbers.** Sweep every 2 minutes, with a catch-up bound and overdue
-   threshold of 5 minutes. A 1-minute sweep doubles the GraphQL points (about
-   480 an hour for the owner, 6% of the budget) for a bound of perhaps 3
-   minutes; a 5-minute sweep, the figure the brief's polling fallback named,
-   uses about 100 an hour for a bound of 10 minutes. *Recommended: 2 and 5.*
+   threshold of 5 minutes. The bound is twice the interval plus a minute, so
+   a 1-minute sweep doubles the GraphQL points (about 480 an hour for the
+   owner, 6% of the budget) for a bound of 3 minutes, and a 5-minute sweep,
+   the figure the brief's polling fallback named, uses about 100 an hour for
+   a bound of 11 minutes. *Recommended: 2 and 5.*
 3. **No new permissions.** Leave Contents and Issues out, so top-level
    comments and base-branch conflicts arrive by sweep rather than by webhook?
    *Recommended.*
 4. **Watchdog.** Spend one of the account's Cron Triggers on a 10-minute
    watchdog that re-arms the alarm, given that the account also runs other
    Workers? *Recommended*; without it, a broken alarm chain is repaired by the
-   next webhook or page load.
+   next webhook, page load or overdue page.
 
 ## Sources
 
