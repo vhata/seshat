@@ -296,8 +296,9 @@ remote change if a better-maintained server appears.
 ## 2026-10-15 — Project index format
 
 The owner accepted format 1 of the project index, defined in
-[INDEX_FORMAT.md](INDEX_FORMAT.md), answering its four questions as
-recommended and keeping the labels the current file already uses.
+[INDEX_FORMAT.md](INDEX_FORMAT.md), answering three of its four questions as
+recommended and settling the fourth, on labels, by keeping those the current
+file already uses.
 
 - `##` sections are classifications and `###` headings are entries, read as
   CommonMark block structure. An entry's first bullet list holds its
@@ -322,5 +323,6 @@ recommended and keeping the labels the current file already uses.
   added.
 
 Migrating the current file mostly adds a `Path` to each entry, since the
-format no longer implies the path from the heading, and replaces the file-wide
-survey date with per-entry `Surveyed` lines.
+format no longer implies the path from the heading, reduces each `Remote` to
+exactly `owner/name` or `none`, and replaces the file-wide survey date with
+per-entry `Surveyed` lines.

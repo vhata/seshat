@@ -67,18 +67,20 @@ entry body          a field list and a summary
 ### Preamble
 
 Everything before the first second-level heading. It may hold a first-level
-title, prose, and a file field list: the preamble's first bullet list, read
-like an entry's [field list](#field-list), whose unlabelled items stay in the
-preamble. One file field is defined:
+title, prose, and a file field list: the preamble's first bullet list whose
+first item is labelled, read like an entry's [field list](#field-list). Lists
+whose first item has no label, such as a list of rules or a legend, are
+ordinary preamble content. One file field is defined:
 
 | Label | Value | Meaning |
 | --- | --- | --- |
 | `Format` | `1` | The format version. Absent means `1`. |
 
 A reader that meets a version it does not support reports an error instead of
-guessing. Other preamble content is kept as the preamble's Markdown source and
-has no meaning to the format, so a legend describing the sections can stay
-there as prose. There is no file-level survey date; the old file-wide line is
+guessing. Everything else in the preamble, including any unlabelled items of
+the file field list with their list markers, is kept as the preamble's
+Markdown source and has no meaning to the format, so a legend describing the
+sections can stay there as prose. There is no file-level survey date; the old file-wide line is
 replaced by per-entry `Surveyed:` lines (see
 [Migration](#migrating-the-current-file)).
 
@@ -135,12 +137,11 @@ item has the form
   has no label; the search does not move on to a later colon.
 - Labels match case-insensitively, with runs of whitespace treated as one
   space. Files use the case shown in the tables below.
-- The value is the Markdown source after the label and its colon (and after
-  the closing `**`, when there is one): the rest of the item's first line, any
-  continuation lines of the same paragraph, and any nested lists or
-  paragraphs under the item, with the item's content indent removed from
-  every line after the first. Leading and trailing whitespace is trimmed.
-  A field with an empty value is ignored entirely: it is not in the parse and
+- The value is the Markdown source after the label and its colon: the rest of
+  the item's first line, any continuation lines of the same paragraph, and any
+  nested lists or paragraphs under the item, with the item's content indent
+  removed from every line after the first. Leading and trailing whitespace is
+  trimmed. A field with an empty value is ignored entirely: it is not in the parse and
   does not count as a repeat.
 - An item in the field list that does not start with a label is part of the
   summary, as hand-written entries often put a one-line description among
@@ -185,13 +186,15 @@ compared exactly. A relative path works on machines whose roots differ and
 keeps home directory names out of the index and Seshat's storage.
 
 The entry key is `Remote` when it is `owner/name`, lower-cased, and `Path`
-otherwise. An entry with neither, or with `Remote: none` and no `Path`, is an
-error. Two entries may not name the same repository, and two entries may not
-name the same path even when one is keyed by its remote, since one checkout
-cannot belong to two entries. An entry may have both fields, or only `Remote`
-when the project is not checked out on the surveyed machine. The entry name
-never stands in for a missing `Path`, so an entry for a checkout records its
-path even when the path is the same as the name.
+otherwise. A `Remote` or `Path` with an `invalid-remote` or `invalid-path`
+error does not count towards the key, and an invalid `Path` takes no part in
+`duplicate-path`. An entry with neither, or with `Remote: none` and no `Path`,
+is an error. Two entries may not name the same repository, and two entries may
+not name the same path even when one is keyed by its remote, since one
+checkout cannot belong to two entries. An entry may have both fields, or only
+`Remote` when the project is not checked out on the surveyed machine. The entry
+name never stands in for a missing `Path`, so an entry for a directory under
+the survey root records its path even when the path is the same as the name.
 
 Only `Remote` joins to GitHub. Seshat resolves it to GitHub's repository
 ID and follows renames from there, as the
@@ -324,7 +327,7 @@ status, and the CLI reports them without failing unless `--strict` is given.
 | Code | Problem |
 | --- | --- |
 | `unknown-field` | A field label is not defined, in an entry or the preamble |
-| `misplaced-field` | A defined field label appears as a list item outside a field list (in section notes or a later list in the entry), or as `**Label:**` inside another field's value |
+| `misplaced-field` | A defined field label appears as a list item outside a field list (in section notes or a later list in the entry), or as `**Label:**` or `**Label**:` inside another field's value |
 | `missing-survey-date` | An entry has laptop observations and no `Surveyed` |
 | `duplicate-section` | Two sections have the same name |
 | `duplicate-name` | Two entries have the same name |
@@ -399,7 +402,9 @@ Seshat never runs it. Its problems use the same shape and are warnings:
 
 The decision's "duplicate entries" check is `duplicate-remote` and
 `duplicate-path` in the shared check. Directories excluded by the owner's
-survey settings, such as work checkouts, are not reported. Since one entry
+survey settings, such as work checkouts, are not reported. Symbolic links
+under the survey root are followed, so a `Path` may name a link to a checkout
+kept elsewhere. Since one entry
 names one checkout, a second checkout of the same repository is reported as
 `checkout-without-entry` unless the survey settings exclude it.
 
@@ -484,11 +489,12 @@ one-line descriptions among them, and mostly the labels used here. The
 [follow-up step](specs/2026-10-12-projects-index.md#follow-up-work) of moving
 it into the private index repository also brings it to format 1:
 
-- Add `Path` to every entry with a checkout. The current file implies the path
-  from the heading, which this format does not, so most entries gain a
-  `Path` equal to their name.
-- Reduce each `Remote` to `owner/name` or `none`, moving any commentary after
-  it into `Next` or `Note`.
+- Add `Path` to every entry for a directory under the survey root, projects
+  and non-projects alike. The current file implies the path from the heading,
+  which this format does not, so most entries gain a `Path` equal to their
+  name.
+- Reduce each `Remote` to exactly `owner/name` or `none`, dropping a trailing
+  full stop and moving any commentary into `Next` or `Note`.
 - Split items that hold two fields, such as `Started` and `Last commit` on one
   line, into one item each; `misplaced-field` finds them.
 - Reword descriptions that open with a short phrase and a colon, which would
@@ -525,8 +531,8 @@ The owner answered all four on 2026-10-15.
 2. **Paths.** `Path` is relative to a survey root each machine configures.
    Absolute or `~/` paths would differ between machines and put home
    directory layouts in the index and Seshat's storage. Seshat itself never
-   knows the root. The cost is that a checkout outside the survey root cannot
-   have a path.
+   knows the root. A checkout kept outside the root needs a symbolic link
+   under it to have a path.
 3. **Labels.** The proposed labels stand except where the current file
    already uses another: `Remote`, `Next` and `Note` replace the proposed
    `Repository`, `Next action` and `Notes`.
