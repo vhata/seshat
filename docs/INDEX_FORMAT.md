@@ -10,7 +10,9 @@ all read and check the file by these rules, and any tool that writes it
 follows [Writing the file](#writing-the-file). Why the index is a Markdown
 file, who writes which fields and how Seshat shows them are decided in
 [specs/2026-10-12-projects-index.md](specs/2026-10-12-projects-index.md); this
-document turns that decision into a format.
+document turns that decision into a format. It sits beside
+[DELIVERABLE.md](DELIVERABLE.md) rather than under `specs/` because
+implementations follow it for as long as format 1 lasts.
 
 ## Principles
 
@@ -35,13 +37,16 @@ document turns that decision into a format.
 
 - One UTF-8 Markdown file. The default is `PROJECTS.md` at the root of the
   index repository; the path is configuration. A leading byte-order mark is
-  ignored, and lines may end in LF or CRLF.
+  ignored, and lines may end in LF or CRLF. In the parse, every line ending is
+  LF.
 - Markdown is CommonMark as GitHub renders it. Parsers read the block
   structure with a CommonMark parser rather than matching lines, so a `##`
   line inside a fenced code block is not a heading.
-- Only ATX headings (`#`, `##`, `###`) define structure. A setext heading (text
-  underlined with `===` or `---`) is an error, because a stray `---` under a
-  paragraph would otherwise create a section by accident.
+- Only top-level ATX headings (`#`, `##`, `###`) define structure. Top-level
+  means a direct child of the document, so a heading inside a blockquote or a
+  list item is content. A top-level setext heading (text underlined with `===`
+  or `---`) is an error, because a stray `---` under a paragraph would
+  otherwise create a section by accident.
 - The text of a heading is its content with inline markup removed and runs of
   whitespace collapsed to one space, so `` ### `kiln` `` names the entry
   `kiln`.
@@ -67,7 +72,8 @@ like an entry's [field list](#field-list). One file field is defined:
 | `Format` | `1` | The format version. Absent means `1`. |
 
 A reader that meets a version it does not support reports an error instead of
-guessing. Other preamble content is kept and ignored. There is no file-level
+guessing. Other preamble content is kept as the preamble's Markdown source and
+has no meaning to the format. There is no file-level
 survey date; the old file-wide line is replaced by per-entry `Surveyed:` lines
 (see [Migration](#migrating-the-current-file)) and is reported as an unknown
 field if it stays in the field list.
@@ -106,16 +112,19 @@ it, and the check warns.
 ### Field list
 
 An entry's field list is its first top-level bullet list (`-`, `*` or `+`),
-wherever it appears in the entry. Fields should come directly after the
+wherever it appears in the entry, where top-level again means a direct child
+of the document. Fields should come directly after the
 heading. Each item in it has the form
 
 ```markdown
 - Label: value
 ```
 
-- A label starts with a letter and contains letters, digits, spaces and
-  hyphens. It ends at the first colon, which is followed by a space or the end
-  of the line.
+- The label is the text of the item's first line up to its first colon. It
+  must start with an ASCII letter and contain only ASCII letters, digits,
+  spaces and hyphens, and the colon must be followed by a space or the end of
+  the line. Otherwise the item has no label; the search does not move on to a
+  later colon.
 - The label, or the label and its colon, may be wrapped in strong emphasis
   (`- **Stack:** TypeScript`), since hand-written lists often look like that.
   Tools that write the file use the plain form.
@@ -123,8 +132,10 @@ heading. Each item in it has the form
   space. Files use the case shown in the tables below.
 - The value is the Markdown source after the label: the rest of the item's
   first line, any continuation lines of the same paragraph, and any nested
-  lists or paragraphs under the item. Leading and trailing whitespace is
-  trimmed. An empty value is the same as an absent field.
+  lists or paragraphs under the item, with the item's content indent removed
+  from every line after the first. Leading and trailing whitespace is trimmed.
+  A field with an empty value is ignored entirely: it is not in the parse and
+  does not count as a repeat.
 - An item in the field list that does not start with a label is kept as
   unlabelled text and reported as a warning.
 - A defined field appears at most once per entry; a repeat is an error,
@@ -134,7 +145,10 @@ heading. Each item in it has the form
 
 Everything in the entry other than the field list is its summary: prose,
 other lists, code blocks and lower-level headings, kept as Markdown source in
-order. The summary is owner judgment.
+order. It is the entry's source lines after its heading with the field list's
+lines removed. Where the field list sat between two parts of the summary, they
+are joined by one blank line, and leading and trailing blank lines are
+removed. The summary is owner judgment.
 
 ## Fields
 
@@ -148,10 +162,10 @@ order. The summary is owner judgment.
 `Repository` is `owner/name` as GitHub spells it, optionally in backticks. The
 owner is 1 to 39 letters, digits and hyphens; the name is letters, digits,
 `.`, `-` and `_`, and is not `.` or `..`. It is compared case-insensitively,
-as GitHub compares it. `none` records that the project has no remote
-repository, which differs from an absent field: absent means nobody recorded
-one. Any other value is an error. Repositories on other hosts are not defined
-in format 1.
+as GitHub compares it. `none`, in any case, records that the project has no
+remote repository, which differs from an absent field: absent means nobody
+recorded one. Any other value is an error. Repositories on other hosts are not
+defined in format 1.
 
 `Path` is relative to the survey root, which each machine configures for the
 CLI and the laptop agent. It uses forward slashes, optionally in backticks, and
@@ -172,6 +186,13 @@ ID and follows renames from there, as the
 requires; a renamed repository keeps its evidence even before the owner updates
 the field. Changing an entry's heading or moving it to another section never
 changes its key.
+
+After a rename, two entries can name the old and the new name of one
+repository. The check cannot see this, since it does not ask GitHub. Seshat
+finds it when it joins: it joins GitHub evidence to the entry that names the
+repository's current name, shows the other from the file alone, and warns
+about both on its index status, as it does for a repository it cannot
+resolve.
 
 ### Owner judgment
 
@@ -202,14 +223,17 @@ convention for the laptop agent, not something the check enforces. Seshat
 shows each observation as written, with the entry's survey date and the label
 "laptop survey", and never merges it into a GitHub value.
 
-`Surveyed` must be a real calendar date in exactly the form `YYYY-MM-DD`;
-anything else is an error. It dates every laptop observation in the entry,
-which is why a survey that refreshes an entry rewrites all of its
+`Surveyed` must be a real calendar date in the form `YYYY-MM-DD`, optionally in
+backticks; anything else is an error. It dates every laptop observation in the
+entry, which is why a survey that refreshes an entry rewrites all of its
 observations or removes the ones it no longer reports (see
 [Writing the file](#writing-the-file)). An entry with observations and no
-`Surveyed` gets a warning, and Seshat shows its observations with "survey date
-not recorded". An entry with neither observations nor `Surveyed` has no laptop
-survey, and Seshat says so.
+`Surveyed` gets a warning. Because the
+[decision](specs/2026-10-12-projects-index.md#keeping-the-evidence-boundary)
+never shows an observation without its date, Seshat does not show those
+observations; it says the entry has laptop observations with no survey date,
+and the CLI shows them. An entry with neither observations nor `Surveyed` has
+no laptop survey, and Seshat says so.
 
 Commit counts, if a later version adds them, count commits reachable from
 named branches only
@@ -227,6 +251,8 @@ own additions survive surveys and a newer tool's fields survive an older one.
 One check, shared by every reader, keeps their parsers from drifting. Seshat
 runs it on ingestion, the CLI runs it as `check`, the laptop agent runs it
 before it pushes, and the index repository's CI can run it through the CLI.
+Until the CLI or the shared module exists, the laptop agent follows these rules
+itself and the owner's review of its diff stands in for the check.
 
 The check reads the file and produces the parse below and a list of problems.
 Each problem has:
@@ -236,6 +262,10 @@ Each problem has:
 - `line`: the 1-based line where the offending construct starts.
 - `entry`: the name of the entry it is in, if any.
 - `message`: a human-readable explanation, free to change between versions.
+
+A problem about a repeat (a duplicate field, key, section or name) is reported
+once for each later occurrence, at that occurrence's line. Problems are sorted
+by line, then by code.
 
 For people the CLI prints one line per problem, in the form
 
@@ -300,6 +330,7 @@ The parse is the same in every implementation. As JSON, for the start of the
 ```json
 {
   "format": 1,
+  "preamble": "# Projects",
   "fields": [{ "label": "Format", "kind": "file", "value": "1", "line": 3 }],
   "sections": [
     {
@@ -332,8 +363,8 @@ The parse is the same in every implementation. As JSON, for the start of the
   `key` but not in `value`.
 - `key` is `repository:<owner/name>` or `path:<path>`, and is absent on an
   entry with a `missing-key` error.
-- `notes` and `summary` are Markdown source with leading and trailing blank
-  lines removed.
+- `preamble`, `notes` and `summary` are Markdown source with leading and
+  trailing blank lines removed; `preamble` leaves out the file field list.
 - Sections and entries are in file order. Two sections with the same name stay
   two sections in the parse; display may group them.
 - Unlabelled field-list items are kept in `fields` with `kind` `unknown` and an
@@ -356,24 +387,28 @@ Seshat never runs it. Its problems use the same shape and are warnings:
 
 The decision's "duplicate entries" check is `duplicate-repository` and
 `duplicate-path` in the shared check. Directories excluded by the owner's
-survey settings, such as work checkouts, are not reported.
+survey settings, such as work checkouts, are not reported. Since one entry
+names one checkout, a second checkout of the same repository is reported as
+`checkout-without-entry` unless the survey settings exclude it.
 
 ## Writing the file
 
-These rules bind the laptop agent, the CLI and any later hosted refresh.
+These rules bind any tool that writes the file: the laptop agent, any later
+hosted refresh, and the CLI if it gains a command that writes.
 
 - Change only what you own, and leave every other byte as it was: ordering,
   formatting, blank lines, unknown fields, unlabelled items, section notes and
   summaries.
-- The laptop agent writes laptop observations, `Surveyed`, and the join keys
-  of entries it creates or confirms. It only proposes changes to owner
+- The laptop agent writes laptop observations and `Surveyed`. It may add a
+  missing `Repository` or `Path`, and only proposes changes to an existing
+  one, which `remote-mismatch` can prompt. It only proposes changes to owner
   judgment, including the section an entry sits under, and never deletes an
   entry for a checkout it did not find without the owner's confirmation
   ([decision](specs/2026-10-12-projects-index.md#laptop-agent-workflow)).
-- When it sets an entry's `Surveyed`, every laptop observation left in the
-  entry must be as of that date. It rewrites the observations it reports and
-  removes the ones it no longer reports, rather than leaving old values under a
-  new date.
+- When it sets an entry's `Surveyed`, every defined laptop observation left in
+  the entry must be as of that date. It rewrites the observations it reports
+  and removes the ones it no longer reports, rather than leaving old values
+  under a new date. Unknown fields are left alone.
 - New fields are written in the plain label form, in the order of the tables
   above, after any existing fields. New entries go at the end of their
   section.
