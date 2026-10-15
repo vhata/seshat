@@ -298,10 +298,9 @@ For the owner that is 3 subrequests, or 4 when the token is renewed, well
 inside one invocation's 50. A larger account whose sweep would pass about 40
 subrequests continues in a second alarm invocation a moment later; the sweep
 counts as complete only when every part has succeeded, and its time is when
-it started. Each sweep also
-counts the PRs whose stored state it had to correct. A correction that a
-webhook should have delivered first is evidence that deliveries are failing,
-and the repositories screen can show the count.
+it started. Each sweep also counts the PRs whose stored state it had to
+correct. A correction that a webhook should have delivered first is evidence
+that deliveries are failing, and the repositories screen can show the count.
 
 A sweep that fails is retried once, 15 seconds later, before it is reported
 as failed, so a single transient GitHub error does not raise a banner.
@@ -508,10 +507,10 @@ itself is unchanged.
   happen.
 - **Whether GitHub recomputes mergeability promptly after a push to the base
   branch that causes a conflict.** The design relies on it, and the sample in
-  [Measurements](#measurements) included no push that caused a conflict. Implementation should
-  test it with a conflicting push to a base branch, and if GitHub leaves the
-  old value, have the sweep fetch each open PR through the REST endpoint in
-  turn, a few per sweep.
+  [Measurements](#measurements) included no push that caused a conflict.
+  Implementation should test it with a conflicting push to a base branch,
+  and if GitHub leaves the old value, have the sweep fetch each open PR
+  through the REST endpoint in turn, a few per sweep.
 - **Whether a GraphQL read starts the mergeability computation.** The design
   uses the REST endpoint, which is documented to.
 - **Costs with an installation token.** The measurements used a user token. The
