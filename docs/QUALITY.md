@@ -54,8 +54,10 @@ main runs are not. Jobs have five-minute timeouts and read-only permissions.
 ## Review and schedules
 
 The empty review index means no whole-codebase review has been recorded.
-Independent PR review is separate and belongs in the PR body. Scheduled
-extended validation, browser checks, builds and application tests are deferred.
+Independent PR review is separate and belongs in the PR body. Builds and
+application tests arrive with `scaffold-worker-app`; scheduled extended
+validation and browser checks wait until there is an application to run them
+against.
 A red main must be addressed the same day or filed as P1 with evidence (P0 if
 release-blocking); recovery requires a green run on main.
 

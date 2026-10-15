@@ -188,8 +188,10 @@ and no LLM provider key.
 
 ## Acceptance checks
 
-The first implementation PR must demonstrate each of these, by automated test
-where practical and otherwise by a recorded manual scenario.
+The deliverable is done when each of these has been demonstrated, by automated
+test where practical and otherwise by a recorded manual scenario. It is built
+over several PRs, each demonstrating the checks its [TODO.md](../TODO.md) entry
+names.
 
 1. A second GitHub account attempts sign-in and is refused, either by GitHub
    before authorization completes or by Seshat afterwards. It sees no instance

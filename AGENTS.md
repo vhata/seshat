@@ -43,9 +43,10 @@ work draft.
 Application code and installing dependencies are authorized
 ([decision](docs/DECISIONS.md#2026-10-15--application-work-begins)), within
 the chosen stack
-([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)) and the open
-design decisions recorded in [docs/DECISIONS.md](docs/DECISIONS.md) and
-[TODO.md](TODO.md). Deploying still needs the owner's word each time, as the
-Docket section above says.
+([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)) and the other
+decisions in [docs/DECISIONS.md](docs/DECISIONS.md). Open questions are
+settled by their own entries in [TODO.md](TODO.md), not held as a reason to
+wait. Deploying still needs the owner's word each time, as the Docket section
+above says.
 Do not infer that a public GitHub repository authorizes exposing private
 project information in the future application.

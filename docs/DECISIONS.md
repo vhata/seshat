@@ -343,5 +343,10 @@ as a reason not to start.
   change-detection choice and follow it; the rest of the overview
   (`build-pr-overview`) waits for `choose-change-detection`.
 - Dependencies are chosen in the PR that adds them, within the stack decision.
-- Deploying stays a separate step: each deploy, and anything that creates or
-  changes Cloudflare or GitHub resources, needs the owner's word at the time.
+  The CLI's language is chosen in its own PR, since the stack does not settle
+  it.
+- Deploying stays a separate step: each deploy needs the owner's word at the
+  time, as Docket requires, and so does creating or changing Cloudflare or
+  GitHub resources such as registering the GitHub App.
+- Changing CI or hooks still needs the owner's word in the turn it is made,
+  as Docket requires; the scaffold is the first PR that will ask.

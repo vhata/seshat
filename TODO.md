@@ -11,7 +11,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 - [PRODUCT] `build-pr-overview` — **Build the rest of the PR overview: monitored repositories, GitHub reads, change detection, live updates, sync status and the overview page.** With sign-in and bucketing split off, this is what remains of the first deliverable.
   - Source: TODO.md triage, 2026-10-14
   - Depends on: `choose-change-detection`, `bucket-prs`, `owner-sign-in`
-  - Starting point: [docs/DELIVERABLE.md](docs/DELIVERABLE.md), within the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack) and the [GitHub integration decision](docs/DECISIONS.md#2026-10-12--github-integration). Visual references are in [docs/design/README.md](docs/design/README.md). Covers acceptance checks 2 and 4 to 10, and check 3's end-to-end half: every open PR on a monitored repository appears exactly once.
+  - Starting point: [docs/DELIVERABLE.md](docs/DELIVERABLE.md), within the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack) and the [GitHub integration decision](docs/DECISIONS.md#2026-10-12--github-integration). Visual references are in [docs/design/README.md](docs/design/README.md). Covers acceptance checks 2, 4 to 7, 9 and 10; the end-to-end halves of check 3 (every open PR on a monitored repository appears exactly once) and check 8 (the stale flag shown on a row from GitHub's activity data); and the manual half of check 1 if a second GitHub account is available by then, which is otherwise the owner's call to waive.
   - Split further before parallel work starts, for example repository selection, sync and live updates, and the page.
 
 - [PRODUCT] `bucket-prs` — **Implement PR bucketing, the CI and review-state derivations, ordering within buckets and the stale flag as pure functions with exhaustive tests.** These rules are most of the first deliverable's logic and need no GitHub access or change-detection choice.
@@ -26,7 +26,8 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Split from: `build-pr-overview`
   - Depends on: `scaffold-worker-app`
   - Starting point: [Sign-in](docs/DELIVERABLE.md#sign-in) and acceptance check 1, and the sign-in and credential sections of [docs/specs/2026-10-12-github-integration.md](docs/specs/2026-10-12-github-integration.md). The owner is configured by account ID; the stubbed `GET /user` test with a matching username and a different ID is required.
-  - The manual half of check 1 needs a second GitHub account, which the owner could not create on 2026-10-14 ([results](docs/specs/2026-10-13-cloudflare-stack.md#github-app-checks)); record that gap rather than claim the check.
+  - This entry's gate is check 1's automated half: the stubbed `GET /user` test and tests that a refused account sees no instance data and leaves no stored credential. The manual second-account scenario moves to `build-pr-overview`, since the owner could not create a second account on 2026-10-14 ([results](docs/specs/2026-10-13-cloudflare-stack.md#github-app-checks)).
+  - Includes the App's [registration and installation](docs/specs/2026-10-12-github-integration.md#registration-and-installation) setup routes, since sign-in cannot be tried by hand without them. Registering a real App creates a GitHub resource and needs the owner's word at the time.
 
 ### P2 Normal
 
@@ -40,6 +41,18 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Parses the index with the shared parser and check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building that module and its conformance fixtures if `ship-projects-cli` has not ([implementation](docs/INDEX_FORMAT.md#implementation)).
 
 ### P3 Low
+
+- [PRODUCT] `ship-projects-cli` — **Ship a Seshat command-line tool for working with the project index locally.** Power users want to list projects by classification, run commands across them and check the index against disk without the hosted app.
+  - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
+  - Depends on: `scaffold-worker-app`
+  - Related: `write-survey-prompt`
+  - Commands from the decision: list by classification (paths or JSON), run a command across projects in given classifications, check the file against the format and the directories on disk, and `survey`, which prints the local-only signals (checked-out branch, uncommitted and untracked files, unpushed commits, local-only branches and repositories) in a stable table and JSON form. See the Seshat CLI section of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md).
+  - Its PR chooses the language and distribution; the hosted app's stack ([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)) does not settle the CLI's. Waits for the scaffold so that a TypeScript CLI shares its toolchain and the [shared parser module](docs/INDEX_FORMAT.md#implementation). Commit counts must count named branches only, not hidden refs that tools create.
+  - Uses only git, with no GitHub assumption; the index repository's remote is configuration.
+  - `check` runs the shared format check and the disk check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building the shared module and its conformance fixtures if `show-project-index` has not.
+  - Low because the owner's existing local tool already parses the index until this replaces it ([spec](docs/specs/2026-10-12-projects-index.md#follow-up-work)).
+
+
 
 - [GITHUB] `track-upstream-prs` — **Show PRs the owner opened in repositories they do not own.** Upstream contributions are part of the owner's open work but fall outside the monitored-repository set chosen for the first cut.
   - Source: `define-minimal-deliverable` discussion on branch todo/define-minimal-deliverable, 2026-10-11
@@ -88,7 +101,8 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Split from: `build-pr-overview`
   - Starting point: the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack) (one TypeScript Worker serving Vite-built React static assets, one SQLite-backed Durable Object, no other storage products) and [Constraints for implementation](docs/specs/2026-10-13-cloudflare-stack.md#constraints-for-implementation), which include keeping writes out of object constructors. Tests should run in the Workers runtime where they touch Worker or object code.
   - Choose and record the package manager and test runner. Ship at least one real test of the Worker and the object, since an empty suite is a failed gate, and update [docs/QUALITY.md](docs/QUALITY.md) and the README to describe the new gates.
-  - Includes local development (`wrangler dev` or equivalent) but no deploy; deploying needs the owner's word each time ([AGENTS.md](AGENTS.md#docket)).
+  - Includes local development (`wrangler dev` or equivalent) but no deploy; deploying needs the owner's word each time ([AGENTS.md](AGENTS.md#docket)). Adding the toolchain to `.github/workflows/ci.yml` and the hooks is a CI and hooks change, which the [contract](docket/CONTRACT.md) says needs the owner's word in the turn it is made; ask then.
+  - Update the expected tracked content and the deferred-checks paragraph in [docs/QUALITY.md](docs/QUALITY.md) for the new files and gates.
 
 - [GITHUB] `choose-change-detection` — **Choose change detection and missed-event reconciliation.** Evaluate webhooks versus polling and make sync freshness visible.
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
@@ -107,16 +121,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Reads and writes the file by [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), including its [writing rules](docs/INDEX_FORMAT.md#writing-the-file); until the shared check exists, the owner's review of the diff stands in for it. Can carry out the [migration](docs/INDEX_FORMAT.md#migrating-the-current-file) of the owner's current file.
 
 ### P3 Low
-
-- [PRODUCT] `ship-projects-cli` — **Ship a Seshat command-line tool for working with the project index locally.** Power users want to list projects by classification, run commands across them and check the index against disk without the hosted app.
-  - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Related: `write-survey-prompt`
-  - Commands from the decision: list by classification (paths or JSON), run a command across projects in given classifications, check the file against the format and the directories on disk, and `survey`, which prints the local-only signals (checked-out branch, uncommitted and untracked files, unpushed commits, local-only branches and repositories) in a stable table and JSON form. See the Seshat CLI section of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md).
-  - Needs a language and distribution choice; the hosted app's stack ([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)) does not settle the CLI's. Commit counts must count named branches only, not hidden refs that tools create.
-  - Uses only git, with no GitHub assumption; the index repository's remote is configuration.
-  - `check` runs the shared format check and the disk check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building the shared module and its conformance fixtures if `show-project-index` has not.
-  - Low because the owner's existing local tool already parses the index until this replaces it ([spec](docs/specs/2026-10-12-projects-index.md#follow-up-work)).
-
 
 - [PRODUCT] `evaluate-optional-llm-refresh` — **Decide whether optional LLM refresh is useful.** Define context, provider keys, approval and cost bounds without making paid AI required.
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
