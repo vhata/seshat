@@ -120,14 +120,15 @@ heading. Each item in it has the form
 - Label: value
 ```
 
-- The label is the text of the item's first line up to its first colon. It
-  must start with an ASCII letter and contain only ASCII letters, digits,
-  spaces and hyphens, and the colon must be followed by a space or the end of
-  the line. Otherwise the item has no label; the search does not move on to a
-  later colon.
 - The label, or the label and its colon, may be wrapped in strong emphasis
   (`- **Stack:** TypeScript`), since hand-written lists often look like that.
-  Tools that write the file use the plain form.
+  Tools that write the file use the plain form. The rules below apply to the
+  raw Markdown source of the item's first line after one such `**` pair is
+  removed.
+- The label is that text up to its first colon. It must start with an ASCII
+  letter and contain only ASCII letters, digits, spaces and hyphens, and the
+  colon must be followed by a space or the end of the line. Otherwise the item
+  has no label; the search does not move on to a later colon.
 - Labels match case-insensitively, with runs of whitespace treated as one
   space. Files use the case shown in the tables below.
 - The value is the Markdown source after the label: the rest of the item's
@@ -190,8 +191,9 @@ changes its key.
 After a rename, two entries can name the old and the new name of one
 repository. The check cannot see this, since it does not ask GitHub. Seshat
 finds it when it joins: it joins GitHub evidence to the entry that names the
-repository's current name, shows the other from the file alone, and warns
-about both on its index status, as it does for a repository it cannot
+repository's current name and shows the other from the file alone. If neither
+names the current name, both are shown from the file alone. Either way it
+warns about both on its index status, as it does for a repository it cannot
 resolve.
 
 ### Owner judgment
@@ -364,7 +366,8 @@ The parse is the same in every implementation. As JSON, for the start of the
 - `key` is `repository:<owner/name>` or `path:<path>`, and is absent on an
   entry with a `missing-key` error.
 - `preamble`, `notes` and `summary` are Markdown source with leading and
-  trailing blank lines removed; `preamble` leaves out the file field list.
+  trailing blank lines removed. `preamble` leaves out the file field list,
+  joining what came before and after it as a summary does.
 - Sections and entries are in file order. Two sections with the same name stay
   two sections in the parse; display may group them.
 - Unlabelled field-list items are kept in `fields` with `kind` `unknown` and an
