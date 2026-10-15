@@ -1,8 +1,12 @@
 # Change detection and reconciliation
 
-Status: **proposed on 2026-10-14**, for the owner to accept; see [Questions for
-the owner](#questions-for-the-owner). This answers the queue entry
-`choose-change-detection` and is judged against
+Status: **proposed on 2026-10-14 and revised on 2026-10-15** after the owner
+directed that Seshat check GitHub on its own only while someone is looking (see
+[When the object sweeps](#when-the-object-sweeps)); the rest is for the owner
+to accept, under [Questions for the owner](#questions-for-the-owner). The
+owner also asked for [DELIVERABLE.md](../DELIVERABLE.md#freshness) to say
+plainly what that means for freshness, which it now does. This answers the
+queue entry `choose-change-detection` and is judged against
 [DELIVERABLE.md](../DELIVERABLE.md#freshness), within the GitHub App chosen in
 [DECISIONS.md](../DECISIONS.md#2026-10-12--github-integration) and the stack
 chosen in [DECISIONS.md](../DECISIONS.md#2026-10-13--cloudflare-stack). Facts
@@ -20,27 +24,37 @@ verified](#not-verified).
   the marked PRs from GitHub's GraphQL API in one query, stores what the read
   returned and pushes any change to open pages. No payload is written into the
   model.
-- **A sweep every 2 minutes reconciles everything.** For each accepted
-  installation it lists the repositories, counts open PRs per repository in
-  one GraphQL query, and reads every open PR in the repositories that have
-  any. A change whose webhook was lost, and a change that has no webhook at
-  all (top-level comments, reviewer permission changes, conflicts caused by a
-  push to a base branch), is picked up by the next sweep. For the owner's 48
-  monitored repositories this measured about 8 GraphQL points and 3
-  subrequests per sweep (4 when the installation token is renewed).
+- **A sweep every 2 minutes while an overview is visible reconciles
+  everything.** For each accepted installation it lists the repositories,
+  counts open PRs per repository in one GraphQL query, and reads every open
+  PR in the repositories that have any. A change whose webhook was lost, and
+  a change that has no webhook at all (top-level comments, reviewer
+  permission changes, conflicts caused by a push to a base branch), is picked
+  up by the next sweep. For the owner's 48 monitored repositories this
+  measured about 8 GraphQL points and 3 subrequests per sweep (4 when the
+  installation token is renewed).
+- **No overview visible, no sweeps.** Pages report their visibility to the
+  object. When none is visible the object stops sweeping, while webhooks and
+  the re-reads they trigger carry on, so the stored model stays close to
+  current. A page that becomes visible gets a catch-up sweep at once if the
+  last one is more than 2 minutes old, and shows that it is checking until
+  that sweep finishes, a few seconds for the owner's account.
 - **Mergeability that GitHub is still computing is re-read** through the REST
   endpoint that starts the computation, at increasing intervals, until it
   resolves or the next sweep takes over.
 - **Bounds for [DELIVERABLE.md](../DELIVERABLE.md#freshness).** Catch-up bound:
-  a change GitHub fails to report, or reports late, reaches an open overview
-  within 5 minutes: one sweep interval, plus one late or failed sweep, plus a
-  minute for the sweep's own reads and follow-ups. Overdue threshold: the
-  overview flags the sync as overdue when the last successful sweep started
-  more than 5 minutes ago, and flags a failed sync as soon as a sweep and its
-  retry have both failed.
+  while an overview is visible, a change GitHub fails to report, or reports
+  late, reaches it within 5 minutes: one sweep interval, plus one late or
+  failed sweep, plus a minute for the sweep's own reads and follow-ups. When
+  an overview becomes visible after none was, it converges within a minute.
+  Overdue threshold: the overview flags the sync as overdue when the last
+  successful sweep started more than 5 minutes ago and the page has been
+  visible for at least a minute, and flags a failed sync as soon as a sweep
+  and its retry have both failed.
 - **One Durable Object alarm schedules all of this.** Re-reads, mergeability
-  checks and sweeps share it. Every request into the object makes sure it is
-  set, and a Cron Trigger every 10 minutes does the same as a watchdog.
+  checks and sweeps share it, and every request into the object makes sure it
+  is set. No Cron Trigger is needed, since nothing has to run on a timer while
+  no page is visible.
 - **The page judges staleness on its own clock.** It receives the time of the
   last successful sweep and works out whether that is overdue itself, so an
   object that has stopped cannot make stale data look current.
@@ -59,6 +73,12 @@ From [DELIVERABLE.md](../DELIVERABLE.md#freshness):
   sync is said prominently; stale data never looks current.
 - Changes GitHub fails to report, or reports late, still appear without owner
   action, within a catch-up bound this decision sets (acceptance check 6).
+
+Before this decision those last two points left the overdue threshold and the
+catch-up bound open, and did not say whether Seshat had to keep checking
+GitHub while nobody looked. The owner decided on 2026-10-15 that it does not,
+and [DELIVERABLE.md](../DELIVERABLE.md#freshness) now says so (see [Changes to
+DELIVERABLE.md](#changes-to-deliverablemd)).
 
 Constraints from the earlier decisions and from GitHub:
 
@@ -129,6 +149,32 @@ Constraints from the earlier decisions and from GitHub:
   GitHub App has its webhook anyway. Rejected.
 - **F. Webhooks plus a periodic sweep** (recommended). Webhooks carry nearly
   every change in seconds; the sweep is the authority that catches the rest.
+
+### When to sweep
+
+- **Always, every 2 minutes.** About 720 sweeps a day whether or not anyone
+  looks. For the owner that is about 3% of the installation's GraphQL budget
+  and under 1% of Cloudflare's daily requests: small, but wasted whenever
+  nobody is looking, and it grows with the repositories that have open PRs.
+  This was the first version of this proposal. Rejected by the owner.
+- **While the owner is signed in.** A session lasts days and says nothing
+  about whether anyone is watching. Rejected.
+- **While a page has its socket open.** A dashboard is the kind of page left
+  pinned in a background tab all day, which would sweep all day. Rejected.
+- **While a page is visible** (recommended, and directed by the owner). The
+  page reports its visibility; see [When the object
+  sweeps](#when-the-object-sweeps).
+- **The same, plus 10 minutes after the last page goes.** The owner's first
+  suggestion. Nothing reads the stored model during those 10 minutes, and the
+  page that opens next needs a catch-up sweep anyway unless the last one was
+  under 2 minutes ago, so the tail spends up to 5 sweeps to save one sweep and
+  a few seconds of the checking state. Dropped with the owner's agreement.
+- **A periodic ping from the page that wakes the object.** At one every 30
+  seconds that is 2,880 object requests a day per open tab, which the stack
+  chose an auto-response for keep-alives to avoid
+  ([stack spec](2026-10-13-cloudflare-stack.md#not-verified)). Visibility
+  reports, sent when visibility changes and every 10 minutes while visible,
+  carry the same information. Rejected.
 
 ### How the sweep reads GitHub
 
@@ -267,9 +313,52 @@ does; whether it does promptly after a push that causes a conflict is [not
 verified](#not-verified). Such conflicts appear within the catch-up bound
 rather than 60 seconds; they are not in the Freshness list.
 
+### When the object sweeps
+
+The object sweeps only while some overview is visible on a screen. Webhooks,
+re-reads and mergeability checks carry on regardless: they are driven by
+GitHub's events, not a timer, and cost little. While nobody is looking they
+keep the stored model close to current, so an overview opened later starts
+from mostly right data, and the catch-up sweep corrects the rest.
+
+- **Pages report their visibility.** The page uses the Page Visibility API
+  ([MDN][mdn-visibility]) and sends the object one message when it connects
+  and one on each `visibilitychange`. The object keeps each socket's latest
+  report with the socket, through `serializeAttachment`, which survives
+  hibernation ([WebSockets][do-websockets]), and forgets it when the socket
+  closes.
+- **A report expires.** A machine that goes to sleep with the page visible
+  sends nothing more, and its socket may stay open for a while. So a visible
+  page repeats its report every 10 minutes, and a report older than 15
+  minutes counts as hidden. That is at most 6 object requests an hour per
+  visible page; keep-alive pings stay on the auto-response and never wake the
+  object.
+- **Active** means at least one socket with a current report of visible. While
+  the object is active it sweeps every 2 minutes.
+- **Becoming active.** When a page connects visible, or reports that it has
+  become visible, the object sweeps at once if the last successful sweep
+  started more than 2 minutes ago and no sweep is running. For the owner's
+  account this catch-up sweep is the count query and one read, 3 to 7 seconds
+  of wall time as measured (see [Measurements](#measurements)).
+- **Dormant.** When a sweep falls due and no page is active, the object skips
+  it and schedules no further sweep. Its alarm then serves only work that
+  deliveries started: re-reads, their retries and mergeability checks.
+- **"Retry now"**, the prototype's action on the sync banner ([design
+  notes](../design/README.md#notes-for-implementation)), asks for a sweep at
+  once, at most once a minute. The 30-second interval its copy assumes becomes
+  the 2 minutes decided here.
+
+The rule is that the object sweeps while something is reading the data.
+Today the only reader is a visible overview. Later features that read the
+model when no owner page is visible, such as notifications, a public view
+(`define-public-view`) or an API or command-line client, would each count as a
+reader by a rule of their own, and would make the object active by the same
+mechanism.
+
 ### The sweep
 
-Every 2 minutes, from the alarm, for each accepted installation (each has
+Every 2 minutes while the object is active, from the alarm, for each accepted
+installation (each has
 its own token, repository list and GraphQL budget, and one query cannot mix
 repositories from different installations):
 
@@ -326,22 +415,20 @@ A failed alarm is retried with exponential backoff, from 2 seconds, up to 6
 times, and after that is not run again until `setAlarm` is next called
 ([alarms API][do-alarms]). Setting an alarm is billed as a row written
 ([pricing][do-pricing]), so on a day the account's write quota runs out the
-object cannot set its alarm either. Two things re-arm it:
+object cannot set its alarm either. These re-arm it:
 
-- every RPC, socket connection, socket message and API request into the
-  object checks that an alarm is set and sets one if not;
+- every RPC, socket connection, socket message (visibility reports included)
+  and API request into the object checks that an alarm is set when one is
+  needed, and sets one if not;
 - when the page's own timer finds the sync overdue, it sends the object one
   message, which re-arms the alarm; keep-alive pings do not, since they are
   answered without waking the object
-  ([stack spec](2026-10-13-cloudflare-stack.md#measurements));
-- a Cron Trigger every 10 minutes calls the object to do the same, and nothing
-  else, so it stays within the 10 ms of CPU a scheduled handler has on Free
-  ([Workers limits][cf-limits-cpu]).
+  ([stack spec](2026-10-13-cloudflare-stack.md#measurements)).
 
-Cloudflare's pages disagree on how many Cron Triggers Free allows (5 per
-account, per Worker, or 3 per Worker) ([Workers limits][cf-limits-account];
-[Cron Triggers][cf-cron-limits]; [alarms API][do-alarms]); this design uses
-one.
+No Cron Trigger watchdog is needed. While no page is visible nothing needs to
+run on a timer, and a broken alarm chain left behind with pending re-reads is
+covered by the catch-up sweep when a page next becomes visible. While a page
+is visible, its visibility reports and its overdue message re-arm the alarm.
 
 ### Sync status on the overview
 
@@ -354,19 +441,21 @@ The object sends the page, in the snapshot and whenever it changes:
 - its own clock, so the page can correct for the browser's.
 
 The page shows "Checked with GitHub *n* minutes ago" at all times and, on its
-own timer, one of these states:
+own timer, one of these states. "Visible for" counts from the moment the page
+last became visible, so a tab brought back to the front starts again:
 
 | State | When | Shown |
 | --- | --- | --- |
+| Checking | Visible for less than a minute, and the last successful sweep started more than 5 minutes ago | Without a banner: "Checking with GitHub", with the time of the last check; rows stay as stored until the sweep's changes arrive |
 | Live | Socket connected, latest sweep succeeded, last success within 5 minutes | The time of the last check, without a banner |
 | Sync failed | The latest sweep and its retry failed | Prominently, with the reason and the affected repositories, until a sweep succeeds |
-| Overdue | The last successful sweep started more than 5 minutes ago | Prominently, with the time of the last success; every row is marked as possibly out of date |
+| Overdue | Visible for at least a minute, and the last successful sweep started more than 5 minutes ago | Prominently, with the time of the last success; every row is marked as possibly out of date |
 | Disconnected | The socket is closed and reconnecting | Prominently, with the time of the last message; overdue still applies on the page's clock |
 
-The prototype's "Retry now" action on the sync banner
-([design notes](../design/README.md#notes-for-implementation)) asks the object
-to sweep at once, at most once a minute; the 30-second interval its copy
-assumes becomes the sweep interval decided here.
+Checking exists so that an overview opened after a quiet spell does not open
+on an overdue banner it is about to clear, which would teach the owner to
+ignore the banner. If the catch-up sweep has not succeeded within the minute,
+the page moves to Overdue or Sync failed as usual.
 
 Updates that arrive through re-reads do not reset the time shown: a re-read
 proves that one PR is current, and the overview only shows that everything was
@@ -382,20 +471,23 @@ to run before assets.
 
 Estimates for the owner's instance as measured, plus the heavy-user activity
 the stack spec assumed (550 deliveries a day; [Free-plan
-budget](2026-10-13-cloudflare-stack.md#free-plan-budget)):
+budget](2026-10-13-cloudflare-stack.md#free-plan-budget)), and, as an
+assumption, an overview visible for 2 hours a day across 10 openings:
 
 | Item | Per day | Against |
 | --- | --- | --- |
-| GraphQL points for sweeps | about 5,800 (720 sweeps at 8) | 7,600 an hour for this installation, so about 240 an hour, 3% |
+| GraphQL points for sweeps | about 560 (60 timed sweeps and 10 catch-up sweeps at 8) | 7,600 an hour for this installation; about 240 an hour while a page is visible, none otherwise |
 | GraphQL points for re-reads | a few hundred | the same |
-| Worker requests | about 700 (550 deliveries, 144 watchdog runs, page loads) | 100,000 |
-| Durable Object requests | about 1,500 to 2,000 (720 sweep alarms, a few hundred re-read alarms, 550 RPCs, 144 watchdog calls) | 100,000 |
+| Worker requests | about 600 (550 deliveries, page loads and socket opens) | 100,000 |
+| Durable Object requests | about 1,000 (70 sweep alarms, a few hundred re-read alarms, 550 RPCs, a few dozen visibility reports) | 100,000 |
 | Rows written | a few thousand (marks, sweep results, each `setAlarm`, changed PRs) | 100,000 |
 | Subrequests | 3 or 4 per sweep, 1 or 2 per re-read | 50 per invocation |
 
-Sweep cost grows with the repositories that have open PRs: as arithmetic on
-the measured rate, 30 such repositories would cost about 24 points a sweep, or
-720 an hour.
+Sweeping only while a page is visible cuts sweeps from 720 a day to about 70
+on that assumption; a page left visible all day costs what the always-on
+design did. Sweep cost grows with the repositories that have open PRs: as
+arithmetic on the measured rate, 30 such repositories would cost about 24
+points a sweep, or 720 an hour while a page is visible.
 
 ## Measurements
 
@@ -452,23 +544,25 @@ returned a computed `mergeable` at once, never null, and a second request 20
 seconds later agreed with GraphQL's value; neither value had changed, and
 `baseRefOid` had not moved.
 
-## Effect on DELIVERABLE.md
+## Changes to DELIVERABLE.md
 
-On acceptance, in [Freshness](../DELIVERABLE.md#freshness):
+Made at the owner's direction on 2026-10-15, in
+[Freshness](../DELIVERABLE.md#freshness) and the acceptance checks:
 
-1. The overdue threshold is 5 minutes since the start of the last successful
-   sweep, and a failed sync is flagged as soon as a sweep and its retry have
-   both failed.
-2. The catch-up bound is 5 minutes.
-3. Top-level comments, reviewer permission changes and conflicts caused by a
-   push to a base branch have no webhook the app receives, and reach the
-   overview within the catch-up bound rather than 60 seconds. None of them is
-   in the Freshness list today; saying so prevents the list being read as
-   covering them.
-
-Acceptance check 6 then reads as written with a bound of 5 minutes: a test
-drops a delivery and shows the change appearing within 5 minutes, by the next
-sweep.
+1. Seshat checks GitHub on its own only while an overview is visible. While
+   none is, it still updates from GitHub's notifications, and changes that
+   were not reported wait until an overview is next visible.
+2. The catch-up bound is 5 minutes while an overview is visible, and a minute
+   after an overview becomes visible when none was.
+3. A sync is overdue when the last successful one started more than 5 minutes
+   ago and the overview has been visible for at least a minute; until then an
+   overview opened after a quiet spell says it is checking. A sync has failed
+   when it and one retry have failed.
+4. Top-level comments, reviewer permission changes and conflicts caused by a
+   push to a base branch have no notification the app receives, and arrive
+   within the catch-up bound rather than 60 seconds.
+5. Acceptance check 6 tests both bounds and that no scheduled reads of GitHub
+   run while no overview is visible; check 7 tests the checking state.
 
 ## Effect on earlier decisions
 
@@ -523,32 +617,31 @@ itself is unchanged.
   limits][cf-limits-subrequests]). The sweep keeps each alarm under 50 either
   way.
 - **Whether a deploy keeps a scheduled alarm.** Cloudflare's alarm pages do not
-  say. Each request into the object, including the reconnecting pages after a
-  deploy, and the watchdog re-arm it regardless.
-- **Whether a Cron Trigger run counts toward the daily Worker requests**
-  (already listed in the [stack spec](2026-10-13-cloudflare-stack.md#not-verified));
-  144 a day is negligible either way.
+  say. The pages that reconnect after a deploy re-arm it regardless.
+- **How long a socket stays open after the client's machine sleeps.** The
+  design does not depend on it, since a visibility report expires after 15
+  minutes.
 - **Search freshness.** Not needed by this design; listed because the
   search-based sweep was rejected on it.
 
 ## Questions for the owner
 
+Decided by the owner on 2026-10-15: the object sweeps only while an overview
+is visible, judged by visibility reports rather than sessions, sockets or
+pings; there is no tail of sweeps after the last page goes; a page that
+becomes visible gets a catch-up sweep and a checking state; the sweep runs
+every 2 minutes while active, with the 5-minute bound and threshold above;
+and DELIVERABLE.md says so. That also settles the earlier question about a
+Cron Trigger watchdog, which is no longer needed.
+
+Still open:
+
 1. **Mechanism.** Accept webhooks as marks for re-reading, plus a sweep that
    counts open PRs and then reads the repositories that have them, with no
    delivery-log redelivery? *Recommended.*
-2. **Numbers.** Sweep every 2 minutes, with a catch-up bound and overdue
-   threshold of 5 minutes. The bound is twice the interval plus a minute, so
-   a 1-minute sweep doubles the GraphQL points (about 480 an hour for the
-   owner, 6% of the budget) for a bound of 3 minutes, and a 5-minute sweep,
-   the figure the brief's polling fallback named, uses about 100 an hour for
-   a bound of 11 minutes. *Recommended: 2 and 5.*
-3. **No new permissions.** Leave Contents and Issues out, so top-level
+2. **No new permissions.** Leave Contents and Issues out, so top-level
    comments and base-branch conflicts arrive by sweep rather than by webhook?
    *Recommended.*
-4. **Watchdog.** Spend one of the account's Cron Triggers on a 10-minute
-   watchdog that re-arms the alarm, given that the account also runs other
-   Workers? *Recommended*; without it, a broken alarm chain is repaired by the
-   next webhook, page load or overdue page.
 
 ## Sources
 
@@ -571,9 +664,13 @@ Cloudflare documentation, read 2026-10-14:
 
 - [Durable Objects alarms API][do-alarms]
 - [Durable Objects pricing][do-pricing]
-- [Workers limits][cf-limits-cpu]
-- [Cron Triggers][cf-cron-limits]
+- [Workers limits][cf-limits-subrequests]
+- [Durable Objects WebSockets][do-websockets]
 - [Static assets billing][cf-assets-billing]
+
+Other:
+
+- [MDN: Page Visibility API][mdn-visibility]
 
 [wh-events]: https://docs.github.com/en/webhooks/webhook-events-and-payloads
 [wh-check-run]: https://docs.github.com/en/webhooks/webhook-events-and-payloads#check_run
@@ -591,8 +688,7 @@ Cloudflare documentation, read 2026-10-14:
 [gql-mergeable]: https://docs.github.com/en/graphql/reference/enums#mergeablestate
 [do-alarms]: https://developers.cloudflare.com/durable-objects/api/alarms/
 [do-pricing]: https://developers.cloudflare.com/durable-objects/platform/pricing/
-[cf-limits-cpu]: https://developers.cloudflare.com/workers/platform/limits/#cpu-time
-[cf-limits-account]: https://developers.cloudflare.com/workers/platform/limits/#account-plan-limits
 [cf-limits-subrequests]: https://developers.cloudflare.com/workers/platform/limits/#subrequests
-[cf-cron-limits]: https://developers.cloudflare.com/workers/configuration/cron-triggers/#limits
+[do-websockets]: https://developers.cloudflare.com/durable-objects/best-practices/websockets/
+[mdn-visibility]: https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API
 [cf-assets-billing]: https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/#billing
