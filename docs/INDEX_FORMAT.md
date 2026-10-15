@@ -78,10 +78,10 @@ ordinary preamble content. One file field is defined:
 
 A reader that meets a version it does not support reports an error instead of
 guessing. Everything else in the preamble, including any unlabelled items of
-the file field list with their list markers, is kept as the preamble's
-Markdown source and has no meaning to the format, so a legend describing the
-sections can stay there as prose. There is no file-level survey date; the old file-wide line is
-replaced by per-entry `Surveyed:` lines (see
+the file field list with their list markers, is kept as the preamble's Markdown
+source and has no meaning to the format, so a legend describing the sections
+can stay there as prose. There is no file-level survey date; the old file-wide
+line is replaced by per-entry `Surveyed:` lines (see
 [Migration](#migrating-the-current-file)).
 
 ### Sections
@@ -141,8 +141,8 @@ item has the form
   the item's first line, any continuation lines of the same paragraph, and any
   nested lists or paragraphs under the item, with the item's content indent
   removed from every line after the first. Leading and trailing whitespace is
-  trimmed. A field with an empty value is ignored entirely: it is not in the parse and
-  does not count as a repeat.
+  trimmed. A field with an empty value is ignored entirely: it is not in the
+  parse and does not count as a repeat.
 - An item in the field list that does not start with a label is part of the
   summary, as hand-written entries often put a one-line description among
   their fields. Because the label rule is strict, a description such as
