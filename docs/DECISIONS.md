@@ -372,13 +372,15 @@ decided:
   an overdue banner. The owner's first suggestion of 10 more minutes of checks
   after the last page closes was dropped: nothing reads the data in that time,
   and the next page needs a catch-up check anyway.
-- While an overview is visible, the instance checks every 2 minutes, missed
-  changes appear within 5 minutes, and a sync is overdue after 5 minutes.
-  After an overview becomes visible they appear within 2 minutes.
+- While an overview is visible, the instance checks every 2 minutes. The
+  catch-up bounds and overdue threshold that DELIVERABLE.md now states are
+  the proposal's figures and await the owner's acceptance with the rest of
+  it.
 - [DELIVERABLE.md](DELIVERABLE.md#freshness) says all of this plainly,
   including which changes GitHub never reports to the app.
 
-Rejected: checking around the clock. At the measured cost it was a few
-percent of the GitHub and Cloudflare budgets, but all of it was spent whether
-or not anyone looked, and it grows with the number of repositories with open
-PRs. The rest of the change-detection proposal awaits the owner's acceptance.
+Rejected: checking around the clock. At the measured cost it was about 3% of
+the installation's GitHub budget and under 1% of Cloudflare's daily requests,
+but all of it was spent whether or not anyone looked, and it grows with the
+number of repositories with open PRs. The rest of the change-detection
+proposal awaits the owner's acceptance.

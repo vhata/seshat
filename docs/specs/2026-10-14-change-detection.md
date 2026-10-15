@@ -46,9 +46,10 @@ verified](#not-verified).
   while an overview is visible, a change GitHub fails to report, or reports
   late, reaches it within 5 minutes: one sweep interval, plus one late or
   failed sweep, plus a minute for the sweep's own reads and follow-ups. When
-  an overview becomes visible after none was, it converges within 2 minutes,
-  and within seconds when the last sweep is more than 2 minutes old, which is
-  the usual case after a quiet spell.
+  an overview becomes visible after none was, it converges within 3 minutes
+  (the next timed sweep is under 2 minutes away, plus the same minute), and
+  within seconds when the last sweep is more than 2 minutes old, which is the
+  usual case after a quiet spell.
   Overdue threshold: the overview flags the sync as overdue when the last
   successful sweep started more than 5 minutes ago and the page has been
   visible for at least a minute, and flags a failed sync as soon as a sweep
@@ -320,24 +321,23 @@ rather than 60 seconds; they are not in the Freshness list.
 
 The object sweeps only while some overview is visible, as the browser reports
 it: the foreground tab of a window that is not minimized, even if other
-windows cover it ([MDN][mdn-visibility]). Webhooks,
-re-reads and mergeability checks carry on regardless: they are driven by
-GitHub's events, not a timer, and cost little. While nobody is looking they
-keep the stored model close to current, so an overview opened later starts
-from mostly right data, and the catch-up sweep corrects the rest.
+windows cover it ([MDN][mdn-visibility]). Webhooks, re-reads and
+mergeability checks carry on regardless: they are driven by GitHub's events,
+not a timer, and cost little. While nobody is looking they keep the stored
+model close to current, so an overview opened later starts from mostly right
+data, and the catch-up sweep corrects the rest.
 
 - **Pages report their visibility.** The page uses the Page Visibility API
   ([MDN][mdn-visibility]) and sends the object one message when it connects
   and one on each `visibilitychange`. The overdue message and "Retry now"
-  (below) carry a report too. A page whose own timer finds a gap of more
-  than a minute between two ticks, as after the machine wakes from sleep,
-  treats that as becoming visible: it reports again and restarts its
+  (below) carry a report too. A visible page whose own timer finds a gap of
+  more than a minute between two ticks, as after the machine wakes from
+  sleep, treats that as becoming visible: it reports again and restarts its
   "visible for" clock (see [Sync status](#sync-status-on-the-overview)),
   since browsers are not documented to fire `visibilitychange` on waking.
-  The object keeps each socket's latest
-  report with the socket, through `serializeAttachment`, which survives
-  hibernation ([WebSockets][do-websockets]), and forgets it when the socket
-  closes.
+  The object keeps each socket's latest report with the socket, through
+  `serializeAttachment`, which survives hibernation
+  ([WebSockets][do-websockets]), and forgets it when the socket closes.
 - **A report expires.** A machine that goes to sleep with the page visible
   sends nothing more, and its socket may stay open for a while. So a visible
   page repeats its report every 10 minutes, and a report older than 15
@@ -464,7 +464,7 @@ than 5 minutes ago, so its initial load shows as Checking:
 
 | State | When | Shown |
 | --- | --- | --- |
-| Disconnected | The socket is closed and reconnecting | Prominently, with the time of the last message |
+| Disconnected | The socket is closed and reconnecting | Prominently, with the time of the last message; once the last success is more than 5 minutes old, every row is marked as possibly out of date |
 | Checking | Visible for less than a minute, the last successful sweep started more than 5 minutes ago, and no sweep has failed with its retry since the page became visible | Without a banner: "Checking with GitHub", with the time of the last check; rows stay as stored until the sweep's changes arrive |
 | Sync failed | The latest sweep and its retry failed | Prominently, with the reason and the affected repositories, until a sweep succeeds |
 | Overdue | The last successful sweep started more than 5 minutes ago | Prominently, with the time of the last success; every row is marked as possibly out of date |
@@ -566,12 +566,14 @@ seconds later agreed with GraphQL's value; neither value had changed, and
 ## Changes to DELIVERABLE.md
 
 Made at the owner's direction on 2026-10-15, in
-[Freshness](../DELIVERABLE.md#freshness) and the acceptance checks:
+[Freshness](../DELIVERABLE.md#freshness) and the acceptance checks. The
+figures in items 2 and 3 are this proposal's and await the owner's answer to
+question 2 below; DELIVERABLE.md says so:
 
 1. Seshat checks GitHub on its own only while an overview is visible. While
    none is, it still updates from GitHub's notifications, and changes that
    were not reported wait until an overview is next visible.
-2. The catch-up bound is 5 minutes while an overview is visible, and 2
+2. The catch-up bound is 5 minutes while an overview is visible, and 3
    minutes after an overview becomes visible when none was.
 3. A sync is overdue when the last successful one started more than 5 minutes
    ago and the overview has been visible for at least a minute; until then an
@@ -650,17 +652,22 @@ Decided by the owner on 2026-10-15, and recorded in
 the object sweeps only while an overview is visible, judged by visibility
 reports rather than sessions, sockets or pings; there is no tail of sweeps
 after the last page goes; a page that becomes visible gets a catch-up sweep
-and a checking state; the sweep runs every 2 minutes while active, with the
-bounds and threshold above; and DELIVERABLE.md says so. That also settles
-the earlier question about a Cron Trigger watchdog, which is no longer
-needed.
+and a checking state when the last sweep is more than 2 minutes old; the
+sweep runs every 2 minutes while active; and DELIVERABLE.md says so. That
+also settles the earlier question about a Cron Trigger watchdog, which is no
+longer needed.
 
 Still open:
 
 1. **Mechanism.** Accept webhooks as marks for re-reading, plus a sweep that
    counts open PRs and then reads the repositories that have them, with no
    delivery-log redelivery? *Recommended.*
-2. **No new permissions.** Leave Contents and Issues out, so top-level
+2. **Bounds.** A catch-up bound of 5 minutes while an overview is visible
+   and 3 minutes after one becomes visible, and an overdue threshold of 5
+   minutes. Each bound is the time to the next sweep plus a minute for its
+   reads and follow-ups, with the 5-minute one allowing for one late or
+   failed sweep. *Recommended.*
+3. **No new permissions.** Leave Contents and Issues out, so top-level
    comments and base-branch conflicts arrive by sweep rather than by webhook?
    *Recommended.*
 

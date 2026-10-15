@@ -3,10 +3,10 @@
 Decided with the owner on 2026-10-11, amended twice on 2026-10-12 (see
 [DECISIONS.md](DECISIONS.md)) and amended on 2026-10-15 to say when Seshat
 checks GitHub
-([DECISIONS.md](DECISIONS.md#2026-10-15--check-github-only-while-someone-is-looking)). This
-defines what the first implementation must do and how it will be judged. It does
-not choose a stack or a change-detection mechanism. The stack is decided in
-[DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack); change detection
+([DECISIONS.md](DECISIONS.md#2026-10-15--check-github-only-while-someone-is-looking)).
+This defines what the first implementation must do and how it will be judged.
+It does not choose a stack or a change-detection mechanism. The stack is
+decided in [DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack); change detection
 is proposed in
 [specs/2026-10-14-change-detection.md](specs/2026-10-14-change-detection.md);
 both must meet the requirements here.
@@ -189,7 +189,10 @@ why a PR is where it is.
   failed.
 - Changes that GitHub fails to report, or reports late, are still picked up
   without owner action: within 5 minutes while an overview is visible, and
-  within 2 minutes of an overview becoming visible when none was.
+  within 3 minutes of an overview becoming visible when none was. These
+  bounds and the overdue threshold above are the ones proposed in
+  [specs/2026-10-14-change-detection.md](specs/2026-10-14-change-detection.md#questions-for-the-owner)
+  and await the owner's acceptance.
 
 ## Evidence boundary
 
@@ -231,7 +234,7 @@ names.
    overview within 60 seconds, with no reload.
 6. A change made while Seshat receives no notification of it (simulated by
    dropping the notification) still appears without owner action: within 5
-   minutes while an overview is visible, and within 2 minutes of an overview
+   minutes while an overview is visible, and within 3 minutes of an overview
    becoming visible when none was visible at the time of the change. While
    no overview is visible, Seshat makes no scheduled reads of GitHub, only
    reads that follow a notification.
