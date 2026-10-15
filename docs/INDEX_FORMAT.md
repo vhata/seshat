@@ -1,8 +1,8 @@
 # Project index format
 
-Proposed on 2026-10-14 for the `define-index-format` queue entry, and awaiting
-the owner's answers to the [owner decisions](#owner-decisions) below. Once
-accepted, the decision is recorded in [DECISIONS.md](DECISIONS.md).
+Accepted by the owner on 2026-10-15 for the `define-index-format` queue entry,
+with the [owner decisions](#owner-decisions) answered as recorded below and in
+[DECISIONS.md](DECISIONS.md#2026-10-15--project-index-format).
 
 This is the one definition of the project index file. Seshat's ingestion, the
 Seshat CLI (`ship-projects-cli`) and the laptop agent (`write-survey-prompt`)
@@ -50,6 +50,9 @@ implementations follow it for as long as format 1 lasts.
 - The text of a heading is its content with inline markup removed and runs of
   whitespace collapsed to one space, so `` ### `kiln` `` names the entry
   `kiln`.
+- Top-level thematic breaks (such as `---` after a blank line) are dividers
+  with no meaning. They are left out of the preamble, section notes
+  and summaries.
 
 ## Structure
 
@@ -58,14 +61,15 @@ preamble            everything before the first ## heading
 ## Section          a classification
 section notes       anything between the ## heading and its first ### heading
 ### Entry           a project, or a directory that is not one
-entry body          a field list, then the summary
+entry body          a field list and a summary
 ```
 
 ### Preamble
 
 Everything before the first second-level heading. It may hold a first-level
 title, prose, and a file field list: the preamble's first bullet list, read
-like an entry's [field list](#field-list). One file field is defined:
+like an entry's [field list](#field-list), whose unlabelled items stay in the
+preamble. One file field is defined:
 
 | Label | Value | Meaning |
 | --- | --- | --- |
@@ -73,10 +77,10 @@ like an entry's [field list](#field-list). One file field is defined:
 
 A reader that meets a version it does not support reports an error instead of
 guessing. Other preamble content is kept as the preamble's Markdown source and
-has no meaning to the format. There is no file-level
-survey date; the old file-wide line is replaced by per-entry `Surveyed:` lines
-(see [Migration](#migrating-the-current-file)) and is reported as an unknown
-field if it stays in the field list.
+has no meaning to the format, so a legend describing the sections can stay
+there as prose. There is no file-level survey date; the old file-wide line is
+replaced by per-entry `Surveyed:` lines (see
+[Migration](#migrating-the-current-file)).
 
 ### Sections
 
@@ -113,18 +117,18 @@ it, and the check warns.
 
 An entry's field list is its first top-level bullet list (`-`, `*` or `+`),
 wherever it appears in the entry, where top-level again means a direct child
-of the document. Fields should come directly after the
-heading. Each item in it has the form
+of the document. Fields should come directly after the heading. A labelled
+item has the form
 
 ```markdown
 - Label: value
 ```
 
-- The label, or the label and its colon, may be wrapped in strong emphasis
-  (`- **Stack:** TypeScript`), since hand-written lists often look like that.
-  Tools that write the file use the plain form. The rules below apply to the
-  raw Markdown source of the item's first line, after the list marker, with
-  one such `**` pair removed.
+- The rules below apply to the raw Markdown source of the item's first line,
+  after the list marker. If that text starts with `**Label:**` or
+  `**Label**:`, the two `**` are removed first, so `- **Stack:** TypeScript`
+  is the `Stack` field, as hand-written lists often have it. Tools that write
+  the file use the plain form.
 - The label is that text up to its first colon. It must start with an ASCII
   letter and contain only ASCII letters, digits, spaces and hyphens, and the
   colon must be followed by a space or the end of the line. Otherwise the item
@@ -132,25 +136,29 @@ heading. Each item in it has the form
 - Labels match case-insensitively, with runs of whitespace treated as one
   space. Files use the case shown in the tables below.
 - The value is the Markdown source after the label and its colon (and after
-  the `**` pair, when there is one): the rest of the item's first line, any
+  the closing `**`, when there is one): the rest of the item's first line, any
   continuation lines of the same paragraph, and any nested lists or
-  paragraphs under the item, with the item's content indent removed
-  from every line after the first. Leading and trailing whitespace is trimmed.
+  paragraphs under the item, with the item's content indent removed from
+  every line after the first. Leading and trailing whitespace is trimmed.
   A field with an empty value is ignored entirely: it is not in the parse and
   does not count as a repeat.
-- An item in the field list that does not start with a label is kept as
-  unlabelled text and reported as a warning.
+- An item in the field list that does not start with a label is part of the
+  summary, as hand-written entries often put a one-line description among
+  their fields. Because the label rule is strict, a description such as
+  `A kiln scheduler. Rewritten 2026-09: ...` has no label, but one that opens
+  with a short phrase and a colon does, and is reported as an unknown field.
 - A defined field appears at most once per entry; a repeat is an error,
   because two readers could reasonably keep different copies.
 
 ### Summary
 
-Everything in the entry other than the field list is its summary: prose,
-other lists, code blocks and lower-level headings, kept as Markdown source in
-order. It is the entry's source lines after its heading with the field list's
-lines removed. Where the field list sat between two parts of the summary, they
-are joined by one blank line, and leading and trailing blank lines are
-removed. The summary is owner judgment.
+The summary is everything in the entry that is not a field: the unlabelled
+items of the field list, and all other prose, lists, code blocks and
+lower-level headings, kept as Markdown source in order. It is built from the
+entry's source lines after its heading. The labelled items are removed;
+each unlabelled item becomes a paragraph of its own, with its list marker and
+content indent removed; the remaining parts are joined by one blank line; and
+leading and trailing blank lines are removed. The summary is owner judgment.
 
 ## Fields
 
@@ -158,16 +166,17 @@ removed. The summary is owner judgment.
 
 | Label | Value |
 | --- | --- |
-| `Repository` | The GitHub repository as `owner/name`, or `none` |
+| `Remote` | The project's GitHub repository as `owner/name`, or `none` |
 | `Path` | Where the checkout is, relative to the survey root |
 
-`Repository` is `owner/name` as GitHub spells it, optionally in backticks. The
+`Remote` is `owner/name` as GitHub spells it, optionally in backticks. The
 owner is 1 to 39 letters, digits and hyphens; the name is letters, digits,
 `.`, `-` and `_`, and is not `.` or `..`. It is compared case-insensitively,
 as GitHub compares it. `none`, in any case, records that the project has no
 remote repository, which differs from an absent field: absent means nobody
-recorded one. Any other value is an error. Repositories on other hosts are not
-defined in format 1.
+recorded one. Any other value, including `owner/name` or `none` followed by
+commentary, is an error; commentary belongs in `Next` or `Note`. Repositories
+on other hosts are not defined in format 1.
 
 `Path` is relative to the survey root, which each machine configures for the
 CLI and the laptop agent. It uses forward slashes, optionally in backticks, and
@@ -175,14 +184,16 @@ has no leading `/` or `~`, no trailing `/`, and no `.` or `..` segments. It is
 compared exactly. A relative path works on machines whose roots differ and
 keeps home directory names out of the index and Seshat's storage.
 
-The entry key is `Repository` when it is `owner/name`, lower-cased, and `Path`
-otherwise. An entry with neither, or with `Repository: none` and no `Path`, is
-an error. Two entries may not name the same repository, and two entries may
-not name the same path even when one is keyed by repository, since one
-checkout cannot belong to two entries. An entry may have both fields, or only
-`Repository` when the project is not checked out on the surveyed machine.
+The entry key is `Remote` when it is `owner/name`, lower-cased, and `Path`
+otherwise. An entry with neither, or with `Remote: none` and no `Path`, is an
+error. Two entries may not name the same repository, and two entries may not
+name the same path even when one is keyed by its remote, since one checkout
+cannot belong to two entries. An entry may have both fields, or only `Remote`
+when the project is not checked out on the surveyed machine. The entry name
+never stands in for a missing `Path`, so an entry for a checkout records its
+path even when the path is the same as the name.
 
-Only `Repository` joins to GitHub. Seshat resolves it to GitHub's repository
+Only `Remote` joins to GitHub. Seshat resolves it to GitHub's repository
 ID and follows renames from there, as the
 [decision](specs/2026-10-12-projects-index.md#joining-entries-to-repositories)
 requires; a renamed repository keeps its evidence even before the owner updates
@@ -201,8 +212,8 @@ resolve.
 
 | Label | Value |
 | --- | --- |
-| `Next action` | What the owner means to do next |
-| `Notes` | Anything else the owner wants recorded |
+| `Next` | What the owner means to do next |
+| `Note` | Anything else the owner wants recorded |
 
 Free text. The classification (the section) and the summary are owner
 judgment too. The laptop agent may propose changes to these; the owner
@@ -301,11 +312,11 @@ status, and the CLI reports them without failing unless `--strict` is given.
 | `empty-heading` | A section or entry heading has no text |
 | `entry-outside-section` | An entry comes before any section |
 | `duplicate-field` | A defined field appears twice in one entry, or `Format` twice in the preamble |
-| `invalid-repository` | `Repository` is neither `owner/name` nor `none` |
+| `invalid-remote` | `Remote` is not exactly `owner/name` or `none` |
 | `invalid-path` | `Path` is absolute, starts with `~`, ends with `/`, uses backslashes or has `.` or `..` segments |
 | `invalid-survey-date` | `Surveyed` is not a real date in the form `YYYY-MM-DD` |
-| `missing-key` | An entry has no `owner/name` repository and no path |
-| `duplicate-repository` | Two entries name the same repository, ignoring case |
+| `missing-key` | An entry has no `owner/name` remote and no path |
+| `duplicate-remote` | Two entries name the same repository, ignoring case |
 | `duplicate-path` | Two entries name the same path |
 
 ### Warnings
@@ -313,8 +324,7 @@ status, and the CLI reports them without failing unless `--strict` is given.
 | Code | Problem |
 | --- | --- |
 | `unknown-field` | A field label is not defined, in an entry or the preamble |
-| `unlabelled-item` | An item in a field list has no label |
-| `misplaced-field` | A defined field label appears as a list item outside a field list, in section notes or a later list in the entry |
+| `misplaced-field` | A defined field label appears as a list item outside a field list (in section notes or a later list in the entry), or as `**Label:**` inside another field's value |
 | `missing-survey-date` | An entry has laptop observations and no `Surveyed` |
 | `duplicate-section` | Two sections have the same name |
 | `duplicate-name` | Two entries have the same name |
@@ -344,9 +354,9 @@ The parse is the same in every implementation. As JSON, for the start of the
         {
           "name": "lighthouse",
           "line": 7,
-          "key": "repository:example-owner/lighthouse",
+          "key": "remote:example-owner/lighthouse",
           "fields": [
-            { "label": "Repository", "kind": "key", "value": "example-owner/lighthouse", "line": 9 },
+            { "label": "Remote", "kind": "key", "value": "example-owner/lighthouse", "line": 9 },
             { "label": "Surveyed", "kind": "survey-date", "value": "2026-10-14", "line": 17 }
           ],
           "summary": "A static site generator for project pages."
@@ -361,18 +371,16 @@ The parse is the same in every implementation. As JSON, for the start of the
 - `kind` is `file`, `key`, `owner`, `laptop`, `survey-date` or `unknown`.
 - `label` is the label as defined for defined fields and as written for
   unknown ones.
-- `value` is the Markdown source as written, except that `Repository`, `Path`
-  and `Surveyed` have backticks removed, and `Repository` is lower-cased in
-  `key` but not in `value`.
-- `key` is `repository:<owner/name>` or `path:<path>`, and is absent on an
-  entry with a `missing-key` error.
+- `value` is the Markdown source as written, except that `Remote`, `Path` and
+  `Surveyed` have backticks removed, and `Remote` is lower-cased in `key` but
+  not in `value`.
+- `key` is `remote:<owner/name>` or `path:<path>`, and is absent on an entry
+  with a `missing-key` error.
 - `preamble`, `notes` and `summary` are Markdown source with leading and
   trailing blank lines removed. `preamble` leaves out the file field list,
   joining what came before and after it as a summary does.
 - Sections and entries are in file order. Two sections with the same name stay
   two sections in the parse; display may group them.
-- Unlabelled field-list items are kept in `fields` with `kind` `unknown` and an
-  empty label.
 
 A parse with errors still carries everything that could be read, so the CLI
 can show it; Seshat does not store it.
@@ -387,9 +395,9 @@ Seshat never runs it. Its problems use the same shape and are warnings:
 | --- | --- |
 | `checkout-without-entry` | A directory directly under the survey root is neither an entry's `Path` nor a parent of one |
 | `missing-checkout` | An entry's `Path` does not exist under the survey root |
-| `remote-mismatch` | A checkout's origin remote does not match its entry's `Repository`, including a remote where the entry says `none` or no remote where it names one |
+| `remote-mismatch` | A checkout's origin remote does not match its entry's `Remote`, including a remote where the entry says `none` or no remote where it names one |
 
-The decision's "duplicate entries" check is `duplicate-repository` and
+The decision's "duplicate entries" check is `duplicate-remote` and
 `duplicate-path` in the shared check. Directories excluded by the owner's
 survey settings, such as work checkouts, are not reported. Since one entry
 names one checkout, a second checkout of the same repository is reported as
@@ -401,10 +409,10 @@ These rules bind any tool that writes the file: the laptop agent, any later
 hosted refresh, and the CLI if it gains a command that writes.
 
 - Change only what you own, and leave every other byte as it was: ordering,
-  formatting, blank lines, unknown fields, unlabelled items, section notes and
-  summaries.
+  formatting, blank lines, unknown fields, section notes and summaries,
+  including summary items inside the field list.
 - The laptop agent writes laptop observations and `Surveyed`. It may add a
-  missing `Repository` or `Path`, and only proposes changes to an existing
+  missing `Remote` or `Path`, and only proposes changes to an existing
   one, which `remote-mismatch` can prompt. It only proposes changes to owner
   judgment, including the section an entry sits under, and never deletes an
   entry for a checkout it did not find without the owner's confirmation
@@ -414,8 +422,8 @@ hosted refresh, and the CLI if it gains a command that writes.
   and removes the ones it no longer reports, rather than leaving old values
   under a new date. Unknown fields are left alone.
 - New fields are written in the plain label form, in the order of the tables
-  above, after any existing fields. New entries go at the end of their
-  section.
+  above, after any existing fields, one field per item. New entries go at the
+  end of their section.
 - Run the check before committing, and do not push a file with errors.
 
 ## Example
@@ -431,9 +439,9 @@ A fictional index:
 
 ### lighthouse
 
-- Repository: example-owner/lighthouse
+- Remote: example-owner/lighthouse
 - Path: lighthouse
-- Next action: Publish the draft theme.
+- Next: Publish the draft theme.
 - Stack: TypeScript, Vite
 - Last commit: 2026-10-13 on theme-draft
 - Checked out: theme-draft
@@ -448,9 +456,10 @@ A static site generator for project pages.
 ### kiln
 
 - Path: kiln
-- Repository: none
-- Next action: Decide whether the scheduler rewrite is worth finishing.
+- Remote: none
+- A firing scheduler for a pottery kiln controller.
 - Branches: scheduler-rewrite
+- Next: Decide whether the scheduler rewrite is worth finishing.
 - Surveyed: 2026-09-30
 
 ## Not projects
@@ -458,34 +467,42 @@ A static site generator for project pages.
 ### scratch
 
 - Path: scratch
-- Notes: Throwaway files, not a project.
+- Throwaway files, not a project.
 ```
 
-`lighthouse` is keyed by its repository and joins to GitHub. `kiln` is
-local-only and keyed by its path. `scratch` records nothing but its path, so
-the disk check does not report the directory; it has no `Repository`, so
-nobody has recorded whether it has a remote, and no `Surveyed`, so Seshat says
-it has no laptop survey.
+`lighthouse` is keyed by its remote and joins to GitHub. `kiln` is local-only
+and keyed by its path, and its unlabelled item is its summary. `scratch`
+records only its path and a summary, so the disk check does not report the
+directory; it has no `Remote`, so nobody has recorded whether it has a remote,
+and no `Surveyed`, so Seshat says it has no laptop survey.
 
 ## Migrating the current file
 
 The owner's current file already has this structure: sections by
-classification, entries by checkout directory, and labelled bullet fields. The
+classification, entries by checkout directory, bold `Label:` fields and
+one-line descriptions among them, and mostly the labels used here. The
 [follow-up step](specs/2026-10-12-projects-index.md#follow-up-work) of moving
 it into the private index repository also brings it to format 1:
 
-- Add `Path` to every entry with a checkout, normally the directory name the
-  heading already holds, and `Repository` to every entry with a GitHub remote.
+- Add `Path` to every entry with a checkout. The current file implies the path
+  from the heading, which this format does not, so most entries gain a
+  `Path` equal to their name.
+- Reduce each `Remote` to `owner/name` or `none`, moving any commentary after
+  it into `Next` or `Note`.
+- Split items that hold two fields, such as `Started` and `Last commit` on one
+  line, into one item each; `misplaced-field` finds them.
+- Reword descriptions that open with a short phrase and a colon, which would
+  otherwise be read as unknown fields.
 - Replace the file-wide survey date with `Surveyed` on each entry the last
   survey covered.
-- Rename labels to the ones defined here. A label left unchanged is kept and
-  reported as `unknown-field`, so this can happen gradually without losing
-  anything.
-- Add `- Format: 1` to the preamble, or leave it out, which means the same.
+- Add `- Format: 1` as the preamble's first bullet list, or leave it out,
+  which means the same. The preamble's description of the current script's
+  rules needs updating for `Path`; its legend can stay.
 
-The laptop agent can do this in one session with the owner reviewing the diff.
-The owner's local script, which reads the heading structure, keeps working
-until it reads fields by these labels or the Seshat CLI replaces it.
+The laptop agent can do this in one session with the owner reviewing the diff,
+running the check, once it exists, until it reports no errors. The owner's
+local script needs the same `Path` change. Its rule that every section must
+appear in the legend is the script's own and is not part of this format.
 
 ## Implementation
 
@@ -499,21 +516,22 @@ the module and its fixtures.
 
 ## Owner decisions
 
-1. **Entry key.** Should an entry be keyed by `Repository` when it names one
-   and by `Path` otherwise, with the heading a display name only?
-   Recommended: yes. Keying by heading, as the current file does, would drop
-   the join whenever a heading is renamed and would tie display names to
-   directory names.
-2. **Paths.** Should `Path` be relative to a survey root each machine
-   configures? Recommended: yes. Absolute or `~/` paths would differ between
-   machines and put home directory layouts in the index and Seshat's storage.
-   The cost is that a checkout outside the survey root cannot have a path.
-3. **Labels.** Are the labels defined here acceptable? The current file's
-   contents stay out of this public repository, so they were chosen without
-   seeing its labels. If the current labels should win, give them and the
-   tables will change; nothing else in the format depends on the names.
-4. **What blocks ingestion.** Should only the errors listed above stop
-   Seshat accepting a new version of the file, with everything else a
-   warning? Recommended: yes. Each error is a case where two readers could
-   disagree about what the file says; a stricter list would leave the
-   dashboard on an old parse for problems that have an obvious reading.
+The owner answered all four on 2026-10-15.
+
+1. **Entry key.** An entry is keyed by `Remote` when it names a repository
+   and by `Path` otherwise, and the heading is a display name only. Keying by
+   heading, as the current file does, would drop the join whenever a heading
+   is renamed and would tie display names to directory names.
+2. **Paths.** `Path` is relative to a survey root each machine configures.
+   Absolute or `~/` paths would differ between machines and put home
+   directory layouts in the index and Seshat's storage. Seshat itself never
+   knows the root. The cost is that a checkout outside the survey root cannot
+   have a path.
+3. **Labels.** The proposed labels stand except where the current file
+   already uses another: `Remote`, `Next` and `Note` replace the proposed
+   `Repository`, `Next action` and `Notes`.
+4. **What blocks ingestion.** Only the errors listed above stop Seshat
+   accepting a new version of the file; everything else is a warning. Each
+   error is a case where two readers could disagree about what the file says,
+   and a stricter list would leave the dashboard on an old parse for problems
+   that have an obvious reading.

@@ -692,7 +692,9 @@ Seshat CLI replaces it.
 Queue entries in [TODO.md](../../TODO.md):
 
 - `define-index-format`: document the index format and a shared format check.
-  Proposed in [INDEX_FORMAT.md](../INDEX_FORMAT.md) on 2026-10-14.
+  Resolved on 2026-10-15: defined in [INDEX_FORMAT.md](../INDEX_FORMAT.md),
+  where the repository field is labelled `Remote`
+  ([decision](../DECISIONS.md#2026-10-15--project-index-format)).
 - `ship-projects-cli`: the [Seshat CLI](#seshat-cli), including `survey`.
 - `write-survey-prompt`: the laptop-agent prompt or skill.
 - `design-project-classifications`: the classifications design the brief
