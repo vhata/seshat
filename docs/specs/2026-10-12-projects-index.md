@@ -395,7 +395,8 @@ repositories can wait for the classifications design.
   not as owner notes. Unknown section names are accepted and shown as written;
   this decision does not fix the set of classifications.
 - A format check that Seshat and the laptop agent share (and that the index
-  repository's CI could run) keeps the two parsers from drifting.
+  repository's CI could run) keeps the two parsers from drifting. The format
+  and the check are defined in [INDEX_FORMAT.md](../INDEX_FORMAT.md).
 - Ingestion reads the index at a given commit through an interface that does
   not assume GitHub (see
   [Where the repository is hosted](#where-the-repository-is-hosted)). The
@@ -691,6 +692,7 @@ Seshat CLI replaces it.
 Queue entries in [TODO.md](../../TODO.md):
 
 - `define-index-format`: document the index format and a shared format check.
+  Proposed in [INDEX_FORMAT.md](../INDEX_FORMAT.md) on 2026-10-14.
 - `ship-projects-cli`: the [Seshat CLI](#seshat-cli), including `survey`.
 - `write-survey-prompt`: the laptop-agent prompt or skill.
 - `design-project-classifications`: the classifications design the brief
