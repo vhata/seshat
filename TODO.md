@@ -52,8 +52,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - `check` runs the shared format check and the disk check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building the shared module and its conformance fixtures if `show-project-index` has not.
   - Low because the owner's existing local tool already parses the index until this replaces it ([spec](docs/specs/2026-10-12-projects-index.md#follow-up-work)).
 
-
-
 - [GITHUB] `track-upstream-prs` — **Show PRs the owner opened in repositories they do not own.** Upstream contributions are part of the owner's open work but fall outside the monitored-repository set chosen for the first cut.
   - Source: `define-minimal-deliverable` discussion on branch todo/define-minimal-deliverable, 2026-10-11
   - Depends on: `build-pr-overview`
