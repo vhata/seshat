@@ -1,6 +1,6 @@
 # Agent instructions
 
-Seshat is at the documentation and workflow stage. Read [the brief](docs/BRIEF.md) before proposing application work.
+Seshat is building its first deliverable, the PR overview ([docs/DELIVERABLE.md](docs/DELIVERABLE.md)). Read [the brief](docs/BRIEF.md) for the wider intent.
 
 <!-- docket:begin -->
 
@@ -40,9 +40,12 @@ work draft.
 
 ## Current scope
 
-The stack is chosen
-([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)). Application code,
-installing dependencies and deployment still require a subsequent product
-decision. Workflow tooling is authorized for this initial setup.
+Application code and installing dependencies are authorized
+([decision](docs/DECISIONS.md#2026-10-15--application-work-begins)), within
+the chosen stack
+([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)) and the open
+design decisions recorded in [docs/DECISIONS.md](docs/DECISIONS.md) and
+[TODO.md](TODO.md). Deploying still needs the owner's word each time, as the
+Docket section above says.
 Do not infer that a public GitHub repository authorizes exposing private
 project information in the future application.
