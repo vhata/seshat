@@ -350,3 +350,35 @@ as a reason not to start.
   GitHub resources such as registering the GitHub App.
 - Changing CI or hooks still needs the owner's word in the turn it is made,
   as Docket requires; the scaffold is the first PR that will ask.
+
+## 2026-10-15 — Check GitHub only while someone is looking
+
+The change-detection proposal in
+[specs/2026-10-14-change-detection.md](specs/2026-10-14-change-detection.md)
+first had the instance sweep GitHub every 2 minutes around the clock. The
+owner objected that this checks GitHub when nobody is looking, and directed
+that it check only while someone is. After discussing the details, the owner
+decided:
+
+- Seshat reads GitHub on its own only while an overview is visible, as the
+  browser reports it. Pages report their visibility to the instance; a
+  session, an open socket in a background tab and a periodic ping that wakes
+  the instance were each rejected as the signal.
+- While none is visible, GitHub's webhooks and the reads they trigger carry
+  on, so the stored data stays close to current, but changes GitHub did not
+  report wait until an overview is next visible.
+- A page that becomes visible gets a catch-up check at once when the last one
+  is more than 2 minutes old, and says it is checking rather than opening on
+  an overdue banner. The owner's first suggestion of 10 more minutes of checks
+  after the last page closes was dropped: nothing reads the data in that time,
+  and the next page needs a catch-up check anyway.
+- While an overview is visible, the instance checks every 2 minutes, missed
+  changes appear within 5 minutes, and a sync is overdue after 5 minutes.
+  After an overview becomes visible they appear within 2 minutes.
+- [DELIVERABLE.md](DELIVERABLE.md#freshness) says all of this plainly,
+  including which changes GitHub never reports to the app.
+
+Rejected: checking around the clock. At the measured cost it was a few
+percent of the GitHub and Cloudflare budgets, but all of it was spent whether
+or not anyone looked, and it grows with the number of repositories with open
+PRs. The rest of the change-detection proposal awaits the owner's acceptance.

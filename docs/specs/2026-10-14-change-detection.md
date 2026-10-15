@@ -46,7 +46,9 @@ verified](#not-verified).
   while an overview is visible, a change GitHub fails to report, or reports
   late, reaches it within 5 minutes: one sweep interval, plus one late or
   failed sweep, plus a minute for the sweep's own reads and follow-ups. When
-  an overview becomes visible after none was, it converges within a minute.
+  an overview becomes visible after none was, it converges within 2 minutes,
+  and within seconds when the last sweep is more than 2 minutes old, which is
+  the usual case after a quiet spell.
   Overdue threshold: the overview flags the sync as overdue when the last
   successful sweep started more than 5 minutes ago and the page has been
   visible for at least a minute, and flags a failed sync as soon as a sweep
@@ -72,12 +74,13 @@ From [DELIVERABLE.md](../DELIVERABLE.md#freshness):
 - The time of the last successful sync is always visible; an overdue or failed
   sync is said prominently; stale data never looks current.
 - Changes GitHub fails to report, or reports late, still appear without owner
-  action, within a catch-up bound this decision sets (acceptance check 6).
+  action, within a catch-up bound (acceptance check 6).
 
-Before this decision those last two points left the overdue threshold and the
-catch-up bound open, and did not say whether Seshat had to keep checking
-GitHub while nobody looked. The owner decided on 2026-10-15 that it does not,
-and [DELIVERABLE.md](../DELIVERABLE.md#freshness) now says so (see [Changes to
+Before this decision DELIVERABLE.md left the overdue threshold and the
+catch-up bound to it, and did not say whether Seshat had to keep checking
+GitHub while nobody looked. The owner decided on 2026-10-15 that it does not
+([DECISIONS.md](../DECISIONS.md#2026-10-15--check-github-only-while-someone-is-looking)),
+and DELIVERABLE.md now says so, with the bounds set here (see [Changes to
 DELIVERABLE.md](#changes-to-deliverablemd)).
 
 Constraints from the earlier decisions and from GitHub:
@@ -315,7 +318,9 @@ rather than 60 seconds; they are not in the Freshness list.
 
 ### When the object sweeps
 
-The object sweeps only while some overview is visible on a screen. Webhooks,
+The object sweeps only while some overview is visible, as the browser reports
+it: the foreground tab of a window that is not minimized, even if other
+windows cover it ([MDN][mdn-visibility]). Webhooks,
 re-reads and mergeability checks carry on regardless: they are driven by
 GitHub's events, not a timer, and cost little. While nobody is looking they
 keep the stored model close to current, so an overview opened later starts
@@ -323,7 +328,13 @@ from mostly right data, and the catch-up sweep corrects the rest.
 
 - **Pages report their visibility.** The page uses the Page Visibility API
   ([MDN][mdn-visibility]) and sends the object one message when it connects
-  and one on each `visibilitychange`. The object keeps each socket's latest
+  and one on each `visibilitychange`. The overdue message and "Retry now"
+  (below) carry a report too. A page whose own timer finds a gap of more
+  than a minute between two ticks, as after the machine wakes from sleep,
+  treats that as becoming visible: it reports again and restarts its
+  "visible for" clock (see [Sync status](#sync-status-on-the-overview)),
+  since browsers are not documented to fire `visibilitychange` on waking.
+  The object keeps each socket's latest
   report with the socket, through `serializeAttachment`, which survives
   hibernation ([WebSockets][do-websockets]), and forgets it when the socket
   closes.
@@ -337,14 +348,18 @@ from mostly right data, and the catch-up sweep corrects the rest.
   the object is active it sweeps every 2 minutes.
 - **Becoming active.** When a page connects visible, or reports that it has
   become visible, the object sweeps at once if the last successful sweep
-  started more than 2 minutes ago and no sweep is running. For the owner's
-  account this catch-up sweep is the count query and one read, 3 to 7 seconds
-  of wall time as measured (see [Measurements](#measurements)).
+  started more than 2 minutes ago, no sweep is running and no catch-up sweep
+  started in the last minute (so switching tabs back and forth during a
+  GitHub outage does not start a sweep each time). Otherwise the next timed
+  sweep is less than 2 minutes away. For the owner's account this catch-up
+  sweep is the count query and one read, about 5 to 7 seconds of wall time as
+  measured (see [Measurements](#measurements)).
 - **Dormant.** When a sweep falls due and no page is active, the object skips
   it and schedules no further sweep. Its alarm then serves only work that
   deliveries started: re-reads, their retries and mergeability checks.
 - **"Retry now"**, the prototype's action on the sync banner ([design
-  notes](../design/README.md#notes-for-implementation)), asks for a sweep at
+  notes](../design/README.md#notes-for-implementation)), carries a
+  visibility report, so it makes the object active, and asks for a sweep at
   once, at most once a minute. The 30-second interval its copy assumes becomes
   the 2 minutes decided here.
 
@@ -358,9 +373,8 @@ mechanism.
 ### The sweep
 
 Every 2 minutes while the object is active, from the alarm, for each accepted
-installation (each has
-its own token, repository list and GraphQL budget, and one query cannot mix
-repositories from different installations):
+installation (each has its own token, repository list and GraphQL budget,
+and one query cannot mix repositories from different installations):
 
 1. Mint an installation token if the cached one is within a few minutes of
    expiring (one subrequest an hour).
@@ -421,7 +435,8 @@ object cannot set its alarm either. These re-arm it:
   and API request into the object checks that an alarm is set when one is
   needed, and sets one if not;
 - when the page's own timer finds the sync overdue, it sends the object one
-  message, which re-arms the alarm; keep-alive pings do not, since they are
+  message, carrying a visibility report, which makes the object active and
+  re-arms the alarm; keep-alive pings do not, since they are
   answered without waking the object
   ([stack spec](2026-10-13-cloudflare-stack.md#measurements)).
 
@@ -441,21 +456,25 @@ The object sends the page, in the snapshot and whenever it changes:
 - its own clock, so the page can correct for the browser's.
 
 The page shows "Checked with GitHub *n* minutes ago" at all times and, on its
-own timer, one of these states. "Visible for" counts from the moment the page
-last became visible, so a tab brought back to the front starts again:
+own timer, the first of these states whose condition holds. "Visible for"
+counts from the moment the page last became visible, or last woke from sleep,
+so a tab brought back to the front starts again. An instance that has never
+completed a sweep, as on a new installation, counts its last success as more
+than 5 minutes ago, so its initial load shows as Checking:
 
 | State | When | Shown |
 | --- | --- | --- |
-| Checking | Visible for less than a minute, and the last successful sweep started more than 5 minutes ago | Without a banner: "Checking with GitHub", with the time of the last check; rows stay as stored until the sweep's changes arrive |
-| Live | Socket connected, latest sweep succeeded, last success within 5 minutes | The time of the last check, without a banner |
+| Disconnected | The socket is closed and reconnecting | Prominently, with the time of the last message |
+| Checking | Visible for less than a minute, the last successful sweep started more than 5 minutes ago, and no sweep has failed with its retry since the page became visible | Without a banner: "Checking with GitHub", with the time of the last check; rows stay as stored until the sweep's changes arrive |
 | Sync failed | The latest sweep and its retry failed | Prominently, with the reason and the affected repositories, until a sweep succeeds |
-| Overdue | Visible for at least a minute, and the last successful sweep started more than 5 minutes ago | Prominently, with the time of the last success; every row is marked as possibly out of date |
-| Disconnected | The socket is closed and reconnecting | Prominently, with the time of the last message; overdue still applies on the page's clock |
+| Overdue | The last successful sweep started more than 5 minutes ago | Prominently, with the time of the last success; every row is marked as possibly out of date |
+| Live | Otherwise | The time of the last check, without a banner |
 
 Checking exists so that an overview opened after a quiet spell does not open
-on an overdue banner it is about to clear, which would teach the owner to
-ignore the banner. If the catch-up sweep has not succeeded within the minute,
-the page moves to Overdue or Sync failed as usual.
+on an overdue or failed banner left from before it became visible, which the
+catch-up sweep is about to clear and which would teach the owner to ignore
+the banner. It ends when a sweep succeeds, when the catch-up sweep and its
+retry fail, or after a minute, whichever comes first.
 
 Updates that arrive through re-reads do not reset the time shown: a re-read
 proves that one PR is current, and the overview only shows that everything was
@@ -552,12 +571,12 @@ Made at the owner's direction on 2026-10-15, in
 1. Seshat checks GitHub on its own only while an overview is visible. While
    none is, it still updates from GitHub's notifications, and changes that
    were not reported wait until an overview is next visible.
-2. The catch-up bound is 5 minutes while an overview is visible, and a minute
-   after an overview becomes visible when none was.
+2. The catch-up bound is 5 minutes while an overview is visible, and 2
+   minutes after an overview becomes visible when none was.
 3. A sync is overdue when the last successful one started more than 5 minutes
    ago and the overview has been visible for at least a minute; until then an
-   overview opened after a quiet spell says it is checking. A sync has failed
-   when it and one retry have failed.
+   overview that has just become visible says it is checking. A sync has
+   failed when it and one retry have failed.
 4. Top-level comments, reviewer permission changes and conflicts caused by a
    push to a base branch have no notification the app receives, and arrive
    within the catch-up bound rather than 60 seconds.
@@ -626,12 +645,13 @@ itself is unchanged.
 
 ## Questions for the owner
 
-Decided by the owner on 2026-10-15: the object sweeps only while an overview
-is visible, judged by visibility reports rather than sessions, sockets or
-pings; there is no tail of sweeps after the last page goes; a page that
-becomes visible gets a catch-up sweep and a checking state; the sweep runs
-every 2 minutes while active, with the 5-minute bound and threshold above;
-and DELIVERABLE.md says so. That also settles the earlier question about a
+Decided by the owner on 2026-10-15, and recorded in
+[DECISIONS.md](../DECISIONS.md#2026-10-15--check-github-only-while-someone-is-looking):
+the object sweeps only while an overview is visible, judged by visibility
+reports rather than sessions, sockets or pings; there is no tail of sweeps
+after the last page goes; a page that becomes visible gets a catch-up sweep
+and a checking state; the sweep runs every 2 minutes while active, with the
+bounds and threshold above; and DELIVERABLE.md says so. That also settles the earlier question about a
 Cron Trigger watchdog, which is no longer needed.
 
 Still open:
@@ -660,7 +680,8 @@ GitHub documentation, read 2026-10-14:
 - [Rate limits and query limits for the GraphQL API][gql-limits]
 - [GraphQL enums: MergeableState][gql-mergeable]
 
-Cloudflare documentation, read 2026-10-14:
+Cloudflare documentation, read 2026-10-14 and, for the WebSockets page,
+2026-10-15:
 
 - [Durable Objects alarms API][do-alarms]
 - [Durable Objects pricing][do-pricing]
