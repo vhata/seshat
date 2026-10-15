@@ -292,3 +292,37 @@ The index stays in a private GitHub repository. The laptop agent and the CLI
 still assume only git, and Seshat's ingestion still reads the index through an
 interface that does not assume GitHub, so the index can move later with a
 remote change if a better-maintained server appears.
+
+## 2026-10-15 — Project index format
+
+The owner accepted format 1 of the project index, defined in
+[INDEX_FORMAT.md](INDEX_FORMAT.md), answering three of its four questions as
+recommended and settling the remaining one, on labels, by keeping those the
+current file already uses.
+
+- `##` sections are classifications and `###` headings are entries, read as
+  CommonMark block structure. An entry's first bullet list holds its
+  `Label: value` fields, in plain or bold-label form; unlabelled items and
+  everything else in the entry are its summary.
+- An entry is keyed by `Remote` (`owner/name`) when it names a repository and
+  by `Path` otherwise. The heading is a display name only. `Path` is relative
+  to a survey root each machine configures, which Seshat never knows.
+  `Remote: none` records a local-only project, distinct from an absent field.
+- `Surveyed: YYYY-MM-DD` on each entry dates its laptop observations, and
+  Seshat does not show observations from an entry without one.
+- Only the structure, the key, `Surveyed` and a `Format` version are checked.
+  Other values are text, shown as written. Unknown fields and section names
+  are kept, shown as written and preserved by every writer.
+- One shared check, a pure function of the file, reports problems with stable
+  codes. Only ambiguities are errors, which leave Seshat on its last good
+  parse; everything else is a warning. Checks against the disk belong to the
+  CLI.
+- The labels are those of the owner's current file where it has them
+  (`Remote`, `Next`, `Note`, `Path`, `Stack`, `Started`, `Last commit`,
+  `Branches`, `Unpushed`), with `Checked out`, `Uncommitted` and `Surveyed`
+  added.
+
+Migrating the current file mostly adds a `Path` to each entry, since the
+format no longer implies the path from the heading, reduces each `Remote` to
+exactly `owner/name` or `none`, and replaces the file-wide survey date with
+per-entry `Surveyed` lines.
