@@ -123,17 +123,18 @@ heading. Each item in it has the form
 - The label, or the label and its colon, may be wrapped in strong emphasis
   (`- **Stack:** TypeScript`), since hand-written lists often look like that.
   Tools that write the file use the plain form. The rules below apply to the
-  raw Markdown source of the item's first line after one such `**` pair is
-  removed.
+  raw Markdown source of the item's first line, after the list marker, with
+  one such `**` pair removed.
 - The label is that text up to its first colon. It must start with an ASCII
   letter and contain only ASCII letters, digits, spaces and hyphens, and the
   colon must be followed by a space or the end of the line. Otherwise the item
   has no label; the search does not move on to a later colon.
 - Labels match case-insensitively, with runs of whitespace treated as one
   space. Files use the case shown in the tables below.
-- The value is the Markdown source after the label: the rest of the item's
-  first line, any continuation lines of the same paragraph, and any nested
-  lists or paragraphs under the item, with the item's content indent removed
+- The value is the Markdown source after the label and its colon (and after
+  the `**` pair, when there is one): the rest of the item's first line, any
+  continuation lines of the same paragraph, and any nested lists or
+  paragraphs under the item, with the item's content indent removed
   from every line after the first. Leading and trailing whitespace is trimmed.
   A field with an empty value is ignored entirely: it is not in the parse and
   does not count as a repeat.
