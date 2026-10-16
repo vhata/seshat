@@ -52,7 +52,12 @@ export const running: CiResult = {
 
 let clock = NOW - 10 * DAY;
 
-/** A submitted review; each call is later than the one before. */
+/**
+ * A submitted review; by default each call is later than the one before.
+ * Tests rely only on that relative order among the reviews they build, never
+ * on the absolute default time, and Vitest loads this module afresh for each
+ * test file. A test that needs a particular time passes it.
+ */
 export function review(
   author: Account | null,
   state: ReviewSubmissionState,
