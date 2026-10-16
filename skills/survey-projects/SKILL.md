@@ -41,8 +41,10 @@ interactive mode and cannot get an answer from the owner, push nothing.
    any repository is hosted. The exceptions are `gh`, only in an unattended run
    with `index.pullRequests = gh`, and the `seshat` CLI once it exists (see
    [Signals](#signals)).
-2. **Surveyed checkouts are read-only.** Run only the commands listed under
-   [Signals](#signals) in them. Never fetch, pull, check out, stash, commit,
+2. **Surveyed checkouts are read-only.** Run only the commands given in
+   [step 3](#3-find-checkouts) and [Signals](#signals) in them, and read no
+   file there except the manifests named under Signals and the README for a
+   proposed summary. Never fetch, pull, check out, stash, commit,
    prune, `gc`, run `remote set-head` or change config in a surveyed
    checkout. Run `git status` with `--no-optional-locks` so that it does not
    rewrite the index file.
@@ -514,7 +516,9 @@ It is always interactive, and every step is reviewed as a diff.
    (add the remote to the repository the file lives in and push it, if that
    repository holds nothing else) or to start a new repository with one
    import commit. Write `index.clone` and `index.remote` into the
-   configuration if they are missing.
+   configuration if they are missing. While the remote is still empty,
+   `$remote/$branch` does not exist: skip the parts of step 1 that use it,
+   and the first push in step 8 creates the branch.
 2. **Import commit.** If starting new, copy the file unchanged to
    `index.file` and commit it as `Import the project index`, so that the
    migration diff shows only the migration.
