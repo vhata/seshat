@@ -14,6 +14,12 @@ export interface OverviewRow<T extends PrInput = PrInput> {
   readonly pr: T;
   readonly facts: PrFacts;
   readonly bucket: Bucket;
+  /**
+   * Milliseconds since the Unix epoch, or NaN when none of the PR's activity
+   * times could be read (see `lastActivityAt`). The page should show NaN as
+   * unknown rather than as a date, and likewise show the PR's age as unknown
+   * when `pr.activity.openedAt` is NaN.
+   */
   readonly lastActivityAt: number;
   readonly stale: boolean;
 }
