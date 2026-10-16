@@ -653,6 +653,13 @@ Chosen in `scaffold-worker-app`, within the
 - **Schema migrations** are numbered and run on the object's first use, not
   in its constructor, and write only when one is pending
   ([constraints](specs/2026-10-13-cloudflare-stack.md#constraints-for-implementation)).
+- **The instance object is placed in `wnam`** (western North America), the
+  owner's region, through the `INSTANCE_LOCATION_HINT` variable in
+  `wrangler.jsonc`. A hint counts only on the object's first request, which
+  may be a GitHub webhook ([constraints](specs/2026-10-13-cloudflare-stack.md#constraints-for-implementation)),
+  so routes reach the object only through `instanceStub` in `src/worker/`,
+  which always passes it. The generated types make a misspelt region a type
+  error.
 
 Rejected: pnpm (faster installs, but one more tool to install for a project
 this size); `@cloudflare/workers-types` instead of generated types (the
