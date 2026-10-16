@@ -25,10 +25,10 @@ describe("GET /api/health", () => {
   });
 });
 
-describe("unknown API paths", () => {
-  it("answer 404 with a JSON body", async () => {
-    const response = await exports.default.fetch(`${BASE}/api/nothing-here`);
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ error: "not found" });
+describe("GET /api/session", () => {
+  it("needs the owner's session", async () => {
+    const response = await exports.default.fetch(`${BASE}/api/session`);
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 });

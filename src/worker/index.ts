@@ -1,25 +1,30 @@
-import type { HealthResponse } from "../shared/health";
-import { instanceStub } from "./instance-stub";
+import { readConfig } from "../shared/config";
+import { findSession } from "./auth";
+import type { RouteContext } from "./context";
+import { dispatch, isPublic, unauthenticated } from "./routes";
 
 export { InstanceObject } from "../object/instance";
 
 export default {
   async fetch(request, env): Promise<Response> {
+    // Static assets are served before the Worker runs; only the paths listed
+    // under `run_worker_first` in wrangler.jsonc reach this point.
     const url = new URL(request.url);
-    // Static assets are served before the Worker runs; only /api, /api/* and
-    // anything else the asset handler passes on reaches this point.
-    if (url.pathname === "/api/health") {
-      if (request.method !== "GET" && request.method !== "HEAD") {
-        return Response.json(
-          { error: "method not allowed" },
-          { status: 405, headers: { allow: "GET, HEAD" } },
-        );
-      }
-      const stub = instanceStub(env);
-      const { schemaVersion } = await stub.health();
-      const body: HealthResponse = { ok: true, schemaVersion };
-      return Response.json(body, { headers: { "cache-control": "no-store" } });
+    const secure = url.protocol === "https:";
+    const now = Date.now();
+    const session = await findSession(request, env, secure, now);
+    if (session === null && !isPublic(url.pathname)) {
+      return unauthenticated(url, request.method);
     }
-    return Response.json({ error: "not found" }, { status: 404 });
+    const context: RouteContext = {
+      request,
+      env,
+      url,
+      config: readConfig(env as unknown as Record<string, unknown>),
+      secure,
+      session,
+      now,
+    };
+    return dispatch(context);
   },
 } satisfies ExportedHandler<Env>;
