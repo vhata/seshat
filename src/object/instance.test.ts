@@ -51,4 +51,17 @@ describe("InstanceObject", () => {
       expect(statement.trimStart()).toMatch(/^SELECT /);
     }
   });
+
+  it("checks the schema once per start-up, not on every request", async () => {
+    const stub = env.INSTANCE.getByName("checks-schema-once");
+    const statements = await runInDurableObject(stub, async (instance, state) => {
+      await instance.health();
+      const exec = vi.spyOn(state.storage.sql, "exec");
+      expect(await instance.health()).toEqual({
+        schemaVersion: latestVersion(MIGRATIONS),
+      });
+      return exec.mock.calls.length;
+    });
+    expect(statements).toBe(0);
+  });
 });

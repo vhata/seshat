@@ -14,20 +14,21 @@ const VERSION_TABLE = "schema_version";
  * only writes when a migration is pending.
  */
 export class InstanceObject extends DurableObject<Env> {
-  private schemaReady = false;
+  /** The current schema version, once this instance has checked it. */
+  private schemaVersion: number | undefined;
 
   /** Reports that the object is reachable and its schema is current. */
   async health(): Promise<{ schemaVersion: number }> {
-    this.ensureSchema();
-    return { schemaVersion: this.storedVersion() };
+    return { schemaVersion: this.ensureSchema() };
   }
 
   /**
-   * Applies any pending migrations. Synchronous, so no other request runs in
+   * Applies any pending migrations and returns the schema version, checking
+   * the database once per start-up. Synchronous, so no other request runs in
    * the object until it finishes.
    */
-  private ensureSchema(): void {
-    if (this.schemaReady) return;
+  private ensureSchema(): number {
+    if (this.schemaVersion !== undefined) return this.schemaVersion;
     const pending = pendingMigrations(this.storedVersion(), MIGRATIONS);
     if (pending.length > 0) {
       const sql = this.ctx.storage.sql;
@@ -45,7 +46,8 @@ export class InstanceObject extends DurableObject<Env> {
         );
       });
     }
-    this.schemaReady = true;
+    this.schemaVersion = latestVersion(MIGRATIONS);
+    return this.schemaVersion;
   }
 
   /** Reads the schema version without writing; 0 for a new database. */
