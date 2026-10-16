@@ -36,6 +36,30 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### Unprioritized
 
+- [GITHUB] `rate-limit-sign-in-callback` — **Rate-limit refused sign-ins so a stranger cannot exhaust the App's OAuth token budget.** GitHub allows 2,000 OAuth token requests an hour per app, and every refused sign-in spends one, which could lock the owner out.
+  - Source: owner-sign-in, branch todo/owner-sign-in (PR #19), 2026-10-16
+  - The [rate limits](docs/specs/2026-10-12-github-integration.md#rate-limits) section already asks implementation to rate-limit; the sign-in PR does not. Any limiter has to live in the Durable Object or a Workers binding within the [stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack).
+
+- [GITHUB] `guard-installation-webhooks` — **Run the installation guard on `installation` and `installation_repositories` deliveries, and drop deliveries from installations that are not accepted.** The sign-in PR runs the guard only when the owner opens the setup page.
+  - Source: owner-sign-in, branch todo/owner-sign-in (PR #19), 2026-10-16
+  - See the installation guard under [registration and installation](docs/specs/2026-10-12-github-integration.md#registration-and-installation). May fold into a `build-pr-overview` split, since that work handles deliveries.
+
+- [PRODUCT] `accept-org-installations` — **Let the owner accept or refuse pending organization installations.** The sign-in PR holds an organization installation as pending with no way to accept it.
+  - Source: owner-sign-in, branch todo/owner-sign-in (PR #19), 2026-10-16
+  - Could fold into the repository-selection part of a `build-pr-overview` split.
+
+- [TOOLING] `check-worker-first-paths` — **Test that every route the Worker serves is covered by `run_worker_first` in `wrangler.jsonc`.** The Workers tests call the Worker directly, so a route missing from that list passes the tests and is then served as the static page.
+  - Source: owner-sign-in, branch todo/owner-sign-in (PR #19), 2026-10-16
+
+- [PRODUCT] `confirm-dismissed-review-semantics` — **Confirm how dismissed reviews should affect review state, then make the Terms in docs/DELIVERABLE.md say so.** Read literally, Terms would let an earlier request for changes come back when a later approval is dismissed.
+  - Source: bucket-prs, branch todo/bucket-prs (PR #18), 2026-10-16
+  - The bucketing code treats a dismissal as withdrawing that reviewer's opinion without reviving an earlier one, and counts the owner's own dismissed review on the head as having reviewed it. Owner edge case: a co-maintainer dismisses the owner's request for changes, and the PR stays in Waiting on the author.
+  - Check against GitHub's own review decision after a dismissal.
+
+- [GITHUB] `verify-private-draft-prs` — **Confirm whether the owner's GitHub plan allows draft PRs in a private index repository.** The unattended survey opens a draft PR, and the hosted-writes rules rely on drafts; GitHub's documentation does not say which plans support them on private repositories.
+  - Source: write-survey-prompt validation, branch todo/write-survey-prompt (PR #17), 2026-10-16
+  - The survey skill treats a refused draft as a failure and leaves the review branch in place.
+
 - [TOOLING] `bump-checkout-action` — **Move CI from `actions/checkout@v4` to the current major version.** v4 runs on the Node 20 action runtime, which GitHub has deprecated.
   - Source: scaffold-worker-app, branch todo/scaffold-worker-app (PR #16), 2026-10-15
   - Both jobs in `.github/workflows/ci.yml` use it. Changing CI needs the owner's word in the turn it is made ([contract](docket/CONTRACT.md)).
