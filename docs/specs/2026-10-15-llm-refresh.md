@@ -27,12 +27,14 @@ revisit it when the conditions under
   whatever LLM tooling they already pay for. It sees local signals that a
   hosted refresh never can, and through the CLI's optional GitHub signals it
   can see most of what a hosted bundle would.
-- Hosted refresh needs Contents read across every repository in the
-  installation, and Contents write and Pull requests write on the index
+- Hosted refresh needs Contents write and Pull requests write on the index
   repository. Under the single GitHub App chosen for the instance, that write
-  access would reach the code of every repository the owner owns. Confining it
-  takes a second App. It also puts a provider key in Cloudflare and sends
-  private repository content to the provider.
+  access would reach the code of every repository the owner owns; confining
+  it takes a second App. Its default bundle needs no new read permission
+  beyond reading the index, but the richer bundle (commits, branches, READMEs,
+  queue files) needs Contents read across every repository in the
+  installation. It also puts a provider key in Cloudflare and sends private
+  repository content to the provider.
 - Nothing reads the index yet. `show-project-index` waits for the PR overview,
   and until the owner uses it there is no evidence that owner fields go stale
   between laptop surveys, which is the only problem refresh solves.
@@ -80,8 +82,8 @@ need no LLM.
 | GitHub signals (commits, branches, PRs, CI, READMEs) | Optionally, through the owner's own GitHub CLI login ([Seshat CLI](2026-10-12-projects-index.md#seshat-cli)) | Yes |
 | Runs while the laptop is off | No | Yes |
 | Owner present | Usually; unattended runs open a draft PR | No; the PR is the review |
-| PR author | The owner, so unattended PRs are drafts | The App's bot, so the PR lands in Awaiting your review |
-| New GitHub permissions for Seshat | None | Contents read across the installation; Contents and Pull requests write on the index repository |
+| PR author | The owner, so unattended PRs are drafts | The App's bot, so the PR lands in Awaiting your review when the index repository is monitored |
+| New GitHub permissions for Seshat | None | Contents and Pull requests write on the index repository; Contents read across the installation for the richer bundle |
 | Where the LLM credential lives | The owner's existing tool | A Worker secret on the instance |
 | Who pays | The owner, through their existing tool | The owner, per call, through their own provider account |
 
@@ -94,8 +96,8 @@ laptop path is the one already in use.
 
 ### What it would cost
 
-- **Contents read across the installation.** Commits, branches, READMEs and
-  other files all need Contents read
+- **Contents read across the installation, for the richer bundle.** Commits,
+  branches, READMEs and other files all need Contents read
   ([permissions required][perms-required]). A GitHub App's permissions apply
   to every repository in an installation, and the owner's installation covers
   all repositories, so Seshat could read all of the owner's code, monitored or
@@ -109,8 +111,8 @@ laptop path is the one already in use.
   PRs and CI. Only a second App installed on the index repository alone keeps
   write access off the rest.
 - **A second automated writer of the index.** Unattended laptop runs already
-  open draft PRs on the same file. Two PR sources editing one file conflict at
-  merge, and the owner reviews both.
+  open draft PRs on the same file. Two PR sources editing one file can
+  conflict at merge, and the owner reviews both.
 - **A provider key on the instance** and private content leaving it, both
   covered under [Design if adopted](#design-if-adopted).
 - **Build and setup.** Bundle gathering, a provider client, consent and cost
@@ -155,8 +157,10 @@ stands; the [questions](#owner-decisions) say which choices change.
    by default and at most weekly.
 2. Nothing else starts a run: not a push to the index repository, not a
    merged refresh PR, not any webhook. Merging a refresh PR therefore never
-   triggers the next refresh, which is the self-PR loop the
-   [brief](../BRIEF.md#open-design-questions) warns about.
+   triggers the next refresh, which settles the self-PR behaviour the
+   [brief](../BRIEF.md#open-design-questions) asks to be decided and avoids
+   the loop the [index decision](2026-10-12-projects-index.md#hosted-writes-and-self-pr-behaviour)
+   rules out.
 3. Seshat checks its preconditions: a provider key is set, the owner's consent
    covers the current bundle definition, the index repository is private, the
    last good parse of the index has no errors, and the run and token caps
@@ -173,8 +177,10 @@ stands; the [questions](#owner-decisions) say which choices change.
 The bundle is gathered by Seshat, not by the model. The model gets no tools
 and makes no requests of its own.
 
-**Always sent, needing no permission the instance lacks today** (Metadata,
-Pull requests, Checks and Commit statuses read):
+**Always sent.** Beyond reading the index repository itself, which
+`show-project-index` adds or the index App below holds, this needs only the
+Metadata, Pull requests, Checks and Commit statuses read the instance already
+has:
 
 - the prompt (below);
 - the index entries for monitored repositories, keyed by `Remote`, with
@@ -204,8 +210,8 @@ excluded from refresh. Entries the model never sees cannot be changed, which
 also enforces the rule that refresh never touches local-only entries.
 
 **The prompt** has a generic default in this repository. The owner can
-override it with a file in the index repository, so a private prompt stays
-private and versioned with the index.
+override it with a file in the index repository, read with the same access as
+the index, so a private prompt stays private and versioned with the index.
 
 **Proposals** come back in a fixed structure: entry key, field or section,
 proposed value and a one-line reason. Seshat discards any proposal that names
@@ -238,15 +244,25 @@ GitHub's documentation:
 
 **Writing: a second App, the index App.** Registered by the owner through the
 same manifest flow, installed on the personal account with only the index
-repository selected ([installing an app][app-installing]), with Metadata
+repository selected ([installing your own App][app-installing]), with Metadata
 read, Contents read and write and Pull requests read and write, and no
 webhook events. Its private key is a second set of Worker secrets. Requests
 made with its installation token are attributed to the App
 ([installation tokens][app-install-token]), so the refresh PR's author is the
-App's bot, someone else's PR in the overview, and lands in Awaiting your
-review, as the [index decision](2026-10-12-projects-index.md#github-access-needs)
-intends. The index App could also be how Seshat reads the index, which is
+App's bot. The index App could also be how Seshat reads the index, which is
 `show-project-index`'s call.
+
+**Where the owner sees the PR.** When the index repository is monitored,
+which is the default for a non-fork repository the personal account owns
+([index repository](2026-10-12-projects-index.md#index-repository)), the
+refresh PR is someone else's PR in the overview and lands in Awaiting your
+review, as the [index decision](2026-10-12-projects-index.md#github-access-needs)
+intends. The owner may turn monitoring off for it, and the
+[deliverable](../DELIVERABLE.md#monitored-repositories) says that removes its
+PRs from the overview; refresh does not override that choice. Instead the
+open refresh PR is always shown, with a link, where `show-project-index`
+shows the index and on the refresh settings page, since those are where the
+owner reads index content and refresh needs `show-project-index` to exist.
 
 Putting Contents write and Pull requests write on the main App instead would
 grant both on every repository the owner owns, and is rejected. If the owner
@@ -335,18 +351,19 @@ settings page with the PR it produced.
 
 **Estimated cost.** Assumptions, not measurements: the owner's 48 monitored
 repositories ([measured](2026-10-14-change-detection.md#measurements)) at a
-few hundred tokens each for the entry and repository facts, about ten of them
-active since the last run with a few thousand tokens each of richer context,
-for roughly 55,000 input tokens, and about 4,000 output tokens of proposals.
+few hundred tokens each for the entry and repository facts, for roughly
+20,000 input tokens with the default bundle. The richer bundle adds about ten
+repositories active since the last run at a few thousand tokens each, for
+roughly 55,000. Either way, about 4,000 output tokens of proposals.
 Newer Claude models' tokenizer produces about 30% more tokens for the same
 text ([Anthropic pricing][anthropic-pricing]), which these rough figures do not
 try to separate.
 
-| Price tier, per million tokens in and out | Examples | Typical run | Run at the caps |
-| --- | --- | --- | --- |
-| $0.10 and $0.50 | Claude Haiku 5.5 up to 100,000-token prompts; gpt-6-luna | under 1 cent | about 2 cents at OpenAI; Haiku 5.5 charges more above 100,000 tokens |
-| $2 and $10 | Claude Sonnet 5.5; gpt-6.1-sol | about 15 cents | about 46 cents |
-| $10 and $50 | Claude Fable 5.1; gpt-6-astra | about 75 cents | about $2.30 |
+| Price tier, per million tokens in and out | Examples | Default bundle | Richer bundle | Run at the caps |
+| --- | --- | --- | --- | --- |
+| $0.10 and $0.50 | Claude Haiku 5.5 up to 100,000-token prompts; gpt-6-luna | under 1 cent | under 1 cent | about 2 cents for gpt-6-luna; about 12 cents for Haiku 5.5, which charges $0.50 and $2.50 above 100,000 tokens |
+| $2 and $10 | Claude Sonnet 5.5; gpt-6.1-sol | about 8 cents | about 15 cents | about 46 cents |
+| $10 and $50 | Claude Fable 5.1; gpt-6-astra | about 40 cents | about 75 cents | about $2.30 |
 
 Prices are from [Anthropic pricing][anthropic-pricing] and
 [OpenAI pricing][openai-pricing], read 2026-10-15. A weekly mid-tier run
@@ -373,7 +390,7 @@ bound a month of the maximum 3 runs a day at the mid tier to about $40.
 | Changes only through PRs, never direct commits | The index App writes only its refresh branch; nothing writes the default branch |
 | At most one open refresh PR; a new refresh updates it | One branch, one PR, rebuilt each run |
 | Never triggered by a push to the index repository | Only the owner's request or a due schedule starts a run; no webhook does |
-| Authored by a non-owner identity, otherwise a draft | The index App's bot authors it; the owner-authored fallback would open as a draft |
+| Authored by a non-owner identity, otherwise a draft | The index App's bot authors it, so it lands in Awaiting your review when the index repository is monitored and is shown beside the index either way; the owner-authored fallback would open as a draft |
 | Proposes owner fields, never laptop observations | Proposals for anything but owner fields and sections are discarded |
 | New entries only for monitored repositories without one; never changes a join key; never touches local-only entries | Validated per proposal; local-only entries are never sent |
 | Decide what is sent and get consent | [Context bundle](#context-bundle) and [consent](#consent-and-approval) |
@@ -397,8 +414,9 @@ bound a month of the maximum 3 runs a day at the mid tier to about $40.
 - **Workers AI's free allocation.** It needs no owner key, and Free includes
   10,000 Neurons a day with operations failing past that
   ([Workers AI pricing][cf-workers-ai]). It serves open-weight models rather
-  than the Anthropic and OpenAI APIs the brief names, adds a Cloudflare
-  product the stack decision does without, and shares the account's quotas with the owner's other
+  than the Anthropic and OpenAI APIs the brief names, would be one more
+  Cloudflare product beside the single Worker and Durable Object the stack
+  decision chose, and shares the account's quotas with the owner's other
   Workers. It is worth a look when refresh is revisited if a free option
   matters more than model choice.
 
@@ -412,8 +430,8 @@ bound a month of the maximum 3 runs a day at the mid tier to about $40.
    App installed only on the index repository holds Contents and Pull
    requests write. Recommended: yes. The alternative within the decided
    constraints is an owner-authored draft PR and a stored owner token.
-3. **What is sent by default?** The smaller bundle, needing no new read
-   permission, with the richer one only where Contents read exists and the
+3. **What is sent by default?** The smaller bundle, needing no read
+   permission beyond the index repository, with the richer one only where Contents read exists and the
    owner consents to it. Recommended: yes.
 4. **Keys and costs.** An owner-supplied Anthropic or OpenAI key as a Worker
    secret, the caps above as defaults, and the schedule off by default.
@@ -432,7 +450,7 @@ Read 2026-10-15:
 - [Permissions required for GitHub Apps][perms-required]
 - [Approving updated permissions for a GitHub App][app-approve]
 - [Authenticating as a GitHub App installation][app-install-token]
-- [Installing a GitHub App from a third party][app-installing]
+- [Installing your own GitHub App][app-installing]
 - [Webhook events and payloads][wh-events]
 - [Cloudflare Workers secrets][cf-secrets]
 - [Cloudflare Durable Objects limits][do-limits]
@@ -447,7 +465,7 @@ Read 2026-10-15:
 [perms-required]: https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps
 [app-approve]: https://docs.github.com/en/apps/using-github-apps/approving-updated-permissions-for-a-github-app
 [app-install-token]: https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation
-[app-installing]: https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party
+[app-installing]: https://docs.github.com/en/apps/using-github-apps/installing-your-own-github-app
 [wh-events]: https://docs.github.com/en/webhooks/webhook-events-and-payloads
 [cf-secrets]: https://developers.cloudflare.com/workers/configuration/secrets/
 [do-limits]: https://developers.cloudflare.com/durable-objects/platform/limits/

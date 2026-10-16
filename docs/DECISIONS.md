@@ -428,10 +428,11 @@ evaluation, and the design refresh would follow if it is built later, are in
   (`write-survey-prompt`) already proposes the same changes with the owner
   present, sees local evidence refresh cannot, and needs nothing new from
   Seshat.
-- Refresh would need Contents read across every repository in the
-  installation and Contents and Pull requests write on the index repository.
-  On the instance's one GitHub App that write access would reach every
-  repository the owner owns, and confining it takes a second App.
+- Refresh would need Contents and Pull requests write on the index
+  repository. On the instance's one GitHub App that write access would reach
+  every repository the owner owns, and confining it takes a second App. Its
+  richer bundle would also need Contents read across every repository in the
+  installation.
 - Nothing reads the index yet, so there is no evidence that owner fields go
   stale between laptop surveys, which is the only problem refresh solves.
 - Seshat therefore still writes nothing to the index, as the [project index
@@ -448,7 +449,7 @@ recorded design:
   refresh PR or any webhook.
 - Seshat gathers the bundle; the model gets no tools. By default it receives
   the index entries for monitored repositories, repository metadata, and PR
-  and CI state, which need no new permission; commit subjects, branches,
+  and CI state, which need no read permission beyond the index repository; commit subjects, branches,
   READMEs and queue files are added only where the App has Contents read and
   the owner has consented. Local-only entries, laptop observations, code,
   diffs, comments and titles of other accounts' PRs are never sent.
@@ -457,7 +458,10 @@ recorded design:
   format's writing rules, and opens or updates one PR from one branch.
 - Writes go through a second GitHub App installed only on the index
   repository, with Contents and Pull requests write, so the PR is authored
-  by its bot and lands in Awaiting your review.
+  by its bot. It lands in Awaiting your review when the index repository is
+  monitored, and is always shown beside the index and on the refresh
+  settings page, since turning monitoring off removes a repository's PRs
+  from the overview.
 - The owner supplies an Anthropic or OpenAI key as a Worker secret, ideally
   in a dedicated workspace or project with a provider spend limit. Without a
   key nothing changes.
@@ -466,7 +470,8 @@ recorded design:
   repository is public.
 - Default caps are 150,000 input and 16,000 output tokens per run and 3 runs
   a day. As an estimate from 2026-10-15 prices, a typical run on a mid-priced
-  model costs about 15 cents.
+  model costs about 8 cents with the default bundle and 15 with the richer
+  one.
 
 Rejected: building now on the one App, letting the model rewrite the whole
 file, running on a bare timer, a personal access token for the index
