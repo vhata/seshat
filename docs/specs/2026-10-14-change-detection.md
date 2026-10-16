@@ -593,9 +593,9 @@ The [stack decision](../DECISIONS.md#2026-10-13--cloudflare-stack) and its
 storing each delivery and updating the model from it, with delivery IDs as
 the de-duplication key and a bounded delivery log. Under this design the
 object stores marks, not deliveries, builds the model only from GitHub reads,
-and keeps no delivery log or de-duplication store. On acceptance, the
-decision entry records that this supersedes those three points; the stack
-itself is unchanged.
+and keeps no delivery log or de-duplication store. The [decision
+entry](../DECISIONS.md#2026-10-15--change-detection) records that this
+supersedes those three points; the stack itself is unchanged.
 
 ## Constraints for implementation
 

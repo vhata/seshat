@@ -2,8 +2,7 @@
 
 Decided with the owner on 2026-10-11, amended twice on 2026-10-12 (see
 [DECISIONS.md](DECISIONS.md)) and amended on 2026-10-15 to say when Seshat
-checks GitHub
-([DECISIONS.md](DECISIONS.md#2026-10-15--change-detection)).
+checks GitHub ([DECISIONS.md](DECISIONS.md#2026-10-15--change-detection)).
 This defines what the first implementation must do and how it will be judged.
 It does not choose a stack or a change-detection mechanism. The stack is
 decided in [DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack) and

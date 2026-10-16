@@ -396,9 +396,9 @@ Seshat check it only while someone is.
 - **Mergeability** still being computed is re-read through the REST
   endpoint, which GitHub documents as starting the computation.
 - **No new GitHub permissions.** Contents and Issues stay out; the sweep
-  meets the catch-up bound without them, which settles the condition the
-  [GitHub integration decision](#2026-10-12--github-integration) left for
-  revisiting them.
+  meets the catch-up bound without them, which settles the change-detection
+  condition the [GitHub integration decision](#2026-10-12--github-integration)
+  left for revisiting them. `show-project-index` may still need Contents.
 - **No Cron Trigger.** One alarm schedules re-reads, mergeability checks and
   sweeps, and every request into the object re-arms it; nothing needs to run
   on a timer while no page is visible.
