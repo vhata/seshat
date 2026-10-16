@@ -40,10 +40,10 @@ It changes nothing in [INDEX_FORMAT.md](../INDEX_FORMAT.md).
   local-only entry gets no suggestion once its survey is that old.
 - **One entry per repository for now.** A project that spans several
   repositories is several entries; grouping waits until the owner needs it.
-- **No editing from the dashboard yet.** Seshat writes nothing to the index
-  until `evaluate-optional-llm-refresh` is decided, as
-  [owner decision 5](2026-10-12-projects-index.md#owner-decisions) says.
-  Accepting a suggestion means moving the entry in the file.
+- **No dashboard editing yet; `edit-index-from-dashboard` decides it.**
+  Seshat still writes nothing to the index
+  ([decision](../DECISIONS.md#2026-10-15--hosted-llm-refresh-waits)), so
+  accepting a suggestion means moving the entry in the file.
 
 ## What the design must keep
 
@@ -63,7 +63,8 @@ From the [project index decision](2026-10-12-projects-index.md) and
 - The GitHub App has read-only Metadata, Pull requests, Checks and Commit
   statuses ([decision](../DECISIONS.md#2026-10-12--github-integration)).
   Contents read is not granted; `show-project-index` may add it. Without it,
-  GitHub cannot say when commits were made, list branches or count commits.
+  GitHub cannot say when commits were made outside PRs, list branches or
+  count commits.
 
 ## The classifications
 
@@ -101,8 +102,8 @@ in the index without being archived on GitHub.
 | Created | GitHub | Metadata (`created_at`) | First activity |
 | Fork | GitHub | Metadata (`fork`) | Upstream |
 | Archived | GitHub | Metadata (`archived`) | Archived |
-| Head commit date of the owner's open PRs | GitHub | Pull requests | Last activity |
-| Head commit date of bots' open PRs | GitHub | Pull requests | Telling a bot's push from the owner's |
+| Committer date of the head commit of the owner's open PRs | GitHub | Pull requests | Last activity |
+| Committer date of the head commit of bots' open PRs | GitHub | Pull requests | Telling a bot's push from the owner's |
 | The owner's open PRs flagged stale | GitHub | Pull requests ([stale flag](../DELIVERABLE.md#stale-flag)) | Loose ends |
 | `Last commit` | Laptop survey | Index field | Last activity |
 | `Started` | Laptop survey | Index field | First activity |
@@ -112,28 +113,40 @@ in the index without being archived on GitHub.
 
 The sweep already lists each installation's repositories with
 `GET /installation/repositories`
-([change detection](2026-10-14-change-detection.md#the-sweep)), which returns
-repository objects, so the Metadata signals cost no extra request beyond the
-listing. The head commit dates of open PRs need one more field in the PR
-reads the overview already makes.
+([change detection](2026-10-14-change-detection.md#the-sweep)). GitHub's
+[OpenAPI description][openapi] gives each repository in that listing
+`pushed_at`, `created_at`, `fork` and `archived`, so the Metadata signals
+cost no request beyond the listing. The head commit dates of open PRs need
+one more field in the PR reads the overview already makes.
+
+The listing covers every repository in the installation, monitored or not,
+but PRs are read only for monitored repositories, and forks and archived
+repositories are not monitored by default
+([deliverable](../DELIVERABLE.md#monitored-repositories)). For an index
+entry joined to a repository that is not monitored, Seshat ignores the last
+push, since it cannot check it against bot PRs, so last activity comes from
+the laptop or is unknown; and loose ends from PRs are not reported, which
+the reason says. Archived repositories cannot be pushed to, and the fork and
+archived flags still apply.
 
 GitHub's last push covers any branch and any author. A bot that opens PRs,
-such as Dependabot or Renovate, pushes a branch to the repository, which
-would make a paused project look active. Seshat therefore ignores the last
-push when a bot's open PR has a head commit dated within 10 minutes of it,
-a starting value like the thresholds below. GitHub reports only the latest
-push, so an ignored push leaves no earlier push date, and last activity then
-comes from the other signals or is unknown. This misses bot pushes for PRs
-that have since closed and workflows that push straight to a branch, and it
-can hide an owner's push followed by a bot's within those minutes. With
-Contents read, the latest commit by a person, on any branch, replaces this
-guess.
+such as Dependabot or Renovate, pushes a branch to the repository, which would
+make a paused project look active. Seshat therefore ignores the last push when
+the head commit of a bot's open PR has a committer date within 10 minutes of
+it, a starting value like the thresholds below. GitHub reports only the latest push, so an
+ignored push leaves no earlier push date, and last activity then comes from
+the other signals or is unknown. This misses bot pushes for PRs that have
+since closed and workflows that push straight to a branch, and it can hide an
+owner's push followed by a bot's within those minutes. On one of the owner's
+repositories, checked on 2026-10-16, `pushed_at` matched the head commit of an
+open Dependabot PR to the second. With Contents read, the latest commit by a
+person, on any branch, replaces this guess.
 
 Laptop fields are free text with suggested forms
 ([INDEX_FORMAT.md](../INDEX_FORMAT.md#laptop-observations)). For suggestions
 Seshat reads them by those forms: a leading `YYYY-MM-DD` in `Last commit` and
-`Started`, and `none` (any case) or anything else in `Unpushed` and
-`Uncommitted`. A value it cannot read that way is not used, and the
+`Started`, and `none` (any case) or `0` against anything else in `Unpushed`
+and `Uncommitted`. A value it cannot read that way is not used, and the
 explanation of a suggestion says which field it skipped. Laptop signals are
 used only from a survey within the [warning age](#laptop-evidence-age).
 
@@ -143,7 +156,8 @@ All ages are whole UTC days, computed from the evidence and today's date, so
 the same inputs on the same day always give the same suggestion.
 
 - **Last activity (A):** the latest of the last push (unless a bot's), the
-  head commit dates of the owner's open PRs, and the laptop `Last commit`.
+  committer dates of the head commits of the owner's open PRs, and the laptop
+  `Last commit`.
 - **End of observation (E):** today for an entry joined to a GitHub
   repository, since GitHub is current to the last sync. For an entry with no
   GitHub evidence (`Remote: none`, no `Remote`, or a repository Seshat cannot
@@ -154,12 +168,15 @@ the same inputs on the same day always give the same suggestion.
   laptop `Started`. A repository created to hold an older local project has a
   late creation date, which `Started` corrects when the survey has it.
 - **Span (S):** A minus F.
-- **Loose ends (L):** any of `Unpushed` other than `none`, `Uncommitted`
-  other than `none`, or an open PR of the owner's carrying the stale flag,
-  drafts included.
+- **Loose ends (L):** any of `Unpushed` other than `none` or `0`,
+  `Uncommitted` other than `none` or `0`, or an open PR of the owner's
+  carrying the stale flag, drafts included.
 
-With no A, Seshat makes no suggestion and says there is no dated activity to
-judge from.
+With no A, Seshat applies only the rules that need no date: when GitHub
+reports the repository archived, only Archived fits and Archived is
+suggested; Upstream fits as always; and a fork in any other section is
+suggested as Upstream. Any other entry gets no suggestion, and says there is
+no dated activity to judge from.
 
 ## Rules
 
@@ -181,13 +198,15 @@ does, nothing is shown beyond the evidence itself.
 | Upstream | Always |
 | Archived | Q >= 14 |
 
-On top of the table, when GitHub reports the repository archived, only
-Archived fits.
+When GitHub reports the repository archived, Archived fits whatever Q is,
+and no other section fits.
 
 Stranded, Thin, Upstream and Archived are mostly owner judgment, so the only
 evidence that contradicts them is the project being worked on again, or
 archived on GitHub. Upstream fits even while active, since a contribution
-being worked on is still a contribution.
+being worked on is still a contribution. One cost: an entry filed under
+Stranded, Thin or Archived straight after its last commit shows "Suggests
+Active" until 14 days have passed, unless it is archived on GitHub.
 
 ### What Seshat suggests
 
@@ -222,7 +241,7 @@ last activity, and not a fork unless it says so.
 | Owner's section | Evidence | Shown |
 | --- | --- | --- |
 | Active | Last push 20 days ago | Nothing |
-| Active | Last push 60 days ago; survey 5 days ago reports 2 unpushed commits | Suggests Stranded |
+| Active | Last push 60 days ago; survey 5 days ago reports a last commit 60 days ago and 2 unpushed commits | Suggests Stranded |
 | Active | Last push 60 days ago, nothing else | Suggests Cooling |
 | Dormant | Last push 3 days ago, matching no bot PR | Suggests Active |
 | Dormant | Last push 1 day ago, matching a Dependabot PR's head commit; survey 5 days ago reports a last commit 200 days ago | Nothing |
@@ -244,19 +263,23 @@ as a hint for where to add it.
 
 - The entry stays under the owner's section, in the file's order. The
   owner's classification is the heading it sits under; the suggestion is a
-  secondary marker on the row, such as "Suggests Cooling", never styled as
+  secondary marker on the row, such as "Suggests Stranded", never styled as
   an error and never replacing the section.
 - The marker opens the reason in words, naming the rule and each fact with
   its source and date, for example: "No GitHub activity for 52 days (last
   push 2026-08-24, any branch). Laptop survey 2026-10-01: 2 unpushed commits
   on feature-x." A field skipped because it was not in the expected form is
-  named. As with buckets, the marker is never the only way to see why.
+  named. When no survey is within the warning age, the reason says that
+  laptop loose ends were not reported, and why: no survey, or a survey too
+  old to use. Where PRs are not read, it says the same of PR loose ends. As
+  with buckets, the marker is never the only way to see why.
 - The index view's header counts entries with suggestions and offers a
   filter to show only those. Suggestions do not appear in the PR overview,
   in its Needs you group or in any notification.
 - Seshat writes nothing to the index, so there is no accept button. The
-  reason ends with how to act, "Move this entry under Cooling in PROJECTS.md
-  to accept", and links to the entry's line in the file on GitHub.
+  reason ends with how to act, "Move this entry under Stranded in
+  PROJECTS.md to accept", and links to the entry's line in the file on
+  GitHub.
 - A suggestion disappears as soon as the owner moves the entry to a section
   that fits, or new evidence makes the current one fit.
 
@@ -334,13 +357,24 @@ was deleted, since that is the expected case.
 
 ## Editing from the dashboard
 
-Not yet. Owner decision 5 has Seshat write nothing to the index until
-`evaluate-optional-llm-refresh` is decided. After that, an edit the owner
-makes in the dashboard is the owner's own action and
-[could commit directly](2026-10-12-projects-index.md#hosted-writes-and-self-pr-behaviour),
-with an accept button on suggestions as its first use. It would need Contents
-write on the index repository, which, like any Contents grant, applies to
-every repository in the installation. That is `edit-index-from-dashboard`.
+No dashboard editing yet; `edit-index-from-dashboard` decides it. Seshat
+still writes nothing to the index: the
+[refresh decision](../DECISIONS.md#2026-10-15--hosted-llm-refresh-waits)
+deferred hosted refresh and kept owner decision 5 in force.
+
+If editing is built, an accept button on suggestions is its likely first use,
+and two earlier decisions shape it:
+
+- Index writes on the instance's one App would reach every repository the
+  owner owns, so they go through a second App installed only on the index
+  repository, as the
+  [refresh design](2026-10-15-llm-refresh.md#github-permissions) records.
+  Dashboard edits share that App.
+- The index decision says hosted code
+  [never moves an entry between sections](2026-10-12-projects-index.md#relationship-to-the-first-deliverable-and-classifications)
+  except through a PR the owner merges, although its section on hosted
+  writes says an owner's own dashboard edit could commit directly. Until the
+  owner amends the first rule, a dashboard accept opens a PR.
 
 ## With Contents read
 
@@ -376,12 +410,9 @@ three signals improve:
 
 ## Not verified
 
-- That the repository objects returned by `GET /installation/repositories`
-  include `pushed_at` and `created_at` as well as `fork` and `archived`.
-  GitHub documents them as full repository objects; the implementation
-  should confirm the fields.
 - How often bot pushes move `pushed_at` on the owner's repositories, and how
-  well the 10-minute match against bot PR head commits catches them.
+  well the 10-minute match against bot PR head commits catches them across
+  all of them; one repository was checked.
 - Whether a PR's head commit date is available in the GraphQL PR reads under
   Pull requests read alone, as listing a PR's commits is.
 - The thresholds. None has been tried against the owner's index; they are
@@ -412,6 +443,9 @@ and the alternative.
    changing the format.
 8. **Quiet forks.** Suggest Upstream. Alternative: never suggest Upstream,
    and show the fork flag only as evidence.
+9. **Repositories that are not monitored.** Ignore their last push, which
+   cannot be checked against bot PRs. Alternative: use it unchecked, and say
+   so in the reason.
 
 ## Follow-up work
 
@@ -428,3 +462,5 @@ Queue entries in [TODO.md](../../TODO.md):
   move an entry.
 - `edit-index-from-dashboard` and `group-multi-repo-projects`, both for
   triage.
+
+[openapi]: https://github.com/github/rest-api-description

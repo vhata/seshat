@@ -586,11 +586,15 @@ with its owner choices as recommended. This settles what the
   and the laptop `Started`; GitHub's fork and archived flags; and loose
   ends, meaning unpushed or uncommitted work on the laptop or a stale PR of
   the owner's. All are available under the App's current permissions;
-  Contents read would improve them and is not required.
+  Contents read would improve them and is not required. PRs are read only for
+  monitored repositories, so for an entry whose repository is not monitored
+  the last push is ignored and PR loose ends are not reported. With no dated
+  activity, only the archived and fork rules apply.
 - **Thresholds**, as starting values changed by PR: the owner's Active fits
   under 45 quiet days, Cooling from 14 to 180, Dormant from 90, and
   Stranded, Thin and Archived from 14; Upstream always fits; when GitHub
-  reports the repository archived, only Archived fits. When the section does
+  reports the repository archived, Archived fits whatever the quiet days, and
+  no other section fits. When the section does
   not fit, the suggestion is the first of Archived (archived on GitHub),
   Active (under 30 quiet days), Upstream (a fork), Thin (under 14 days of
   activity), Stranded (loose ends), Cooling (under 120 quiet days) and
@@ -606,9 +610,13 @@ with its owner choices as recommended. This settles what the
   classified on its own; grouping waits for `group-multi-repo-projects`. An
   Upstream entry whose repository is outside the installation is described
   as not visible to the GitHub App.
-- **No editing from the dashboard** until `evaluate-optional-llm-refresh` is
-  decided, as the index decision requires; `edit-index-from-dashboard` holds
-  it.
+- **No dashboard editing yet; `edit-index-from-dashboard` decides it.**
+  Seshat still writes nothing to the index. If editing is built, its writes
+  go through the second App, installed only on the index repository, that
+  the [refresh decision](#2026-10-15--hosted-llm-refresh-waits) records, and
+  a dashboard accept opens a PR unless the owner amends the index decision's
+  rule that hosted code moves entries between sections only through a PR
+  the owner merges.
 
 Rejected: moving entries to their suggested section; storing dismissed
 suggestions; a single set of thresholds, which flips near boundaries;

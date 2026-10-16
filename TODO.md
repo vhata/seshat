@@ -70,9 +70,10 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 - [PRODUCT] `edit-index-from-dashboard` — **Let the owner edit index fields from the dashboard, starting with accepting a classification suggestion.** Accepting a suggestion today means editing the file by hand.
   - Source: design-project-classifications decision, branch todo/design-project-classifications, 2026-10-15
-  - Depends on: `evaluate-optional-llm-refresh`
-  - Related: `suggest-classifications`
-  - Seshat writes nothing to the index until refresh is decided ([owner decision 5](docs/specs/2026-10-12-projects-index.md#owner-decisions)). An owner's own edit could then commit directly ([hosted writes](docs/specs/2026-10-12-projects-index.md#hosted-writes-and-self-pr-behaviour)), but needs Contents write, which applies to every repository in the installation. Whether that is worth it is the open question.
+  - Depends on: `show-project-index`
+  - Related: `build-hosted-refresh`, `suggest-classifications`
+  - Seshat still writes nothing to the index ([refresh decision](docs/DECISIONS.md#2026-10-15--hosted-llm-refresh-waits)); this entry decides whether owner edits lift that. Index writes go through the second App, installed only on the index repository, that the [refresh design](docs/specs/2026-10-15-llm-refresh.md#github-permissions) records, since Contents write on the main App would reach every repository the owner owns; registering it needs the owner's word at the time.
+  - Conflict to settle: the index decision says hosted code never moves an entry between sections except through a PR the owner merges ([spec](docs/specs/2026-10-12-projects-index.md#relationship-to-the-first-deliverable-and-classifications)), while its [hosted writes](docs/specs/2026-10-12-projects-index.md#hosted-writes-and-self-pr-behaviour) section says an owner's own dashboard edit could commit directly. A dashboard accept opens a PR unless the owner amends the first rule ([classifications design](docs/specs/2026-10-15-project-classifications.md#editing-from-the-dashboard)).
 
 - [PRODUCT] `group-multi-repo-projects` — **Group a project that spans several repositories under one index entry.** Format 1 joins one entry to one repository, so a quiet part of an active project is classified and suggested on its own.
   - Source: design-project-classifications decision, branch todo/design-project-classifications, 2026-10-15
