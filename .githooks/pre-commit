@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
+# Fast gates only: tests and the build run in pre-push and CI.
 set -euo pipefail
-bash scripts/check.sh
+bash scripts/check.sh --quick
