@@ -1,0 +1,17 @@
+{
+  // The Worker, the Durable Object, shared logic and their tests. Runtime and
+  // binding types come from worker-configuration.d.ts, which `npm run typegen`
+  // generates from wrangler.jsonc.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
+    "lib": ["ES2024"],
+    "types": ["@cloudflare/vitest-plugin/types"]
+  },
+  "include": [
+    "worker-configuration.d.ts",
+    "src/worker",
+    "src/object",
+    "src/shared"
+  ]
+}
