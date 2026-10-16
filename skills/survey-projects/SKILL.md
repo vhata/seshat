@@ -104,7 +104,7 @@ unattended runs stop.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `survey.root` | required | Directory whose children are surveyed. `Path` values are relative to it. |
-| `survey.machine` | output of `hostname -s` | Name used for this machine in commit messages and PR titles. Set it, since host names can change with the network. |
+| `survey.machine` | output of `hostname -s` | Name used for this machine in commit messages and PR titles, and to recognise this machine's own survey commits. Set it, since host names can change with the network. |
 | `survey.exclude` | none | Repeatable. A pattern matched against a directory's path relative to the root. |
 | `survey.excludeRemote` | none | Repeatable. A pattern matched against every remote URL of a checkout. |
 | `survey.githubHost` | none | Repeatable. Extra host names, such as SSH aliases, whose remotes are recorded as `owner/name`. `github.com` is always recognised. |
@@ -113,7 +113,7 @@ unattended runs stop.
 | `index.remote` | `origin` | Name of the index repository's remote in that clone. The URL is the clone's own remote configuration. |
 | `index.branch` | the remote's `HEAD`, else `main` | The branch Seshat reads. |
 | `index.file` | `PROJECTS.md` | Path of the index file in the repository. |
-| `index.reviewBranch` | `seshat-survey` | The branch unattended runs push to, and the head of their PR. |
+| `index.reviewBranch` | `seshat-survey` | The branch unattended runs push to, and the head of their PR. Give each machine that runs unattended its own, such as `seshat-survey-laptop`. |
 | `index.pullRequests` | `none` | `gh` to open draft PRs with the GitHub CLI in unattended runs; `none` to push the review branch only. The default is `none` because `gh` is a host-specific tool and git alone cannot tell whether the host has PRs; an index on GitHub should set `gh`. |
 
 Patterns use shell `case` matching, in which `*` also matches `/`. Shared
@@ -361,26 +361,40 @@ whatever the owner did with the earlier branch.
 3. If `refs/remotes/$remote/$B` exists and
    `git -C "$clone" merge-base --is-ancestor "$remote/$B" "$remote/$branch"`
    fails (`B` holds something the default branch lacks):
-   - Find the commits added to `B` since this skill last wrote it: walk the
-     first-parent chain from its tip, newest first, and stop at the first
-     commit whose subject starts with `Survey checkouts on `.
+   - Find the commits added to `B` since this machine's survey last wrote
+     it: walk the first-parent chain from its tip, newest first, and stop
+     at the first commit whose subject is exactly
+     `Survey checkouts on <machine>, YYYY-MM-DD`, with this machine's
+     `survey.machine`.
 
      ```sh
-     git -C "$clone" log --first-parent --format='%h %s' "$remote/$branch..$remote/$B" \
-       | awk '/^[^ ]+ Survey checkouts on /{exit} {print}'
+     git -C "$clone" log --first-parent --format='%h%x09%s' "$remote/$branch..$remote/$B" \
+       | awk -F '\t' -v p="Survey checkouts on $machine, " \
+           'index($2, p) == 1 && substr($2, length(p) + 1) ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ {exit} {print}'
      ```
 
-     Only these count as commits this skill did not make. Older commits
-     reachable through the second parent of a superseding commit were
-     already dealt with by the run that superseded them, and must not
-     block later runs. If there are any, push nothing and report them,
-     unless `index.pullRequests = gh` and step 1 found no open PR. With an
+     The match is literal and exact, so another machine's survey, an
+     owner commit that reuses the subject's wording, and a merge such as
+     GitHub's "Update branch" all count as commits this run did not make.
+     Older commits reachable through the second parent of a superseding
+     commit were already dealt with by the run that superseded them, and
+     must not block later runs. If there are any, push nothing and report
+     them, unless `index.pullRequests = gh` and step 1 found no open PR. With an
      open PR the owner is editing it; with no PR configuration the review
      branch is the only place those commits are proposed, and building on
      the default branch would drop them from its tip. With `gh` and no open
      PR, the branch belongs to a PR that was merged or closed: note the
      commits for the report, since their changes are not carried forward,
      though they stay in the branch's history.
+   - When this stops the run, the report lists each commit with its
+     subject, says that the run stopped so as not to drop it, and says how
+     to unblock the next run: merge or close the PR (without PRs, merge or
+     delete `B`), after which the next run starts fresh from the default
+     branch. If one of the commits is another machine's survey, say that
+     the machines share `B` and should each set their own
+     `index.reviewBranch`. If one is a merge of the default branch into
+     `B`, such as GitHub's "Update branch", say that it is not needed,
+     since every run builds from the default branch anyway.
    - `git -C "$tmp" merge --no-ff --no-commit -s ours "$remote/$B"`. This
      records `B` as a parent and keeps the default branch's file unchanged.
 4. Run [Steps](#steps), steps 2 to 7, against the file in the worktree.

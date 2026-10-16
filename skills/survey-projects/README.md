@@ -101,8 +101,20 @@ it back into a draft before adding to it. Merge the review branch with a
 squash merge: it carries merge commits that a rebase merge is likely to
 reject. On a host without PRs, delete the branch after squash-merging it if
 you added commits of your own to it, since the next run stops rather than
-drop them. New checkouts get entries in unattended runs only if
+drop them. Don't use GitHub's "Update branch" on a survey PR: every run
+already builds from the default branch, and a run that finds a commit it
+did not make on the branch, that merge included, stops until you merge or
+close the PR. New checkouts get entries in unattended runs only if
 `survey.unattendedSection` names a section to put them in.
+
+With more than one machine, give each machine its own `survey.machine` and,
+if more than one runs unattended, its own `index.reviewBranch` (for example
+`seshat-survey-laptop` and `seshat-survey-desktop`). Each then keeps one
+review branch or draft PR of its own. A run recognises only its own
+machine's commits, so if two machines share a branch, a run that finds the
+other machine's unmerged survey on it stops rather than replace it, and
+says so. Interactive runs push the default branch directly, so they need
+no per-machine setting beyond `survey.machine`.
 
 Until the Seshat CLI exists, the skill collects signals with the git commands
 in SKILL.md and checks the file itself, and your review of the diff stands
