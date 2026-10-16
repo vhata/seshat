@@ -494,6 +494,13 @@ work only keeps it possible.
   repository that becomes public later is not published without the owner.
   A repository that becomes private or internal, is transferred or is deleted
   loses its consent; making it public again does not republish it.
+- **Withheld unless confirmed public in the last 24 hours.** GitHub does not
+  redeliver a lost `privatized` delivery and nothing sweeps while no owner
+  overview is visible, so a published repository is shown only if a GitHub
+  read reported it public within the last 24 hours. A missed change to
+  private therefore leaves earlier PRs public for at most a day, without a
+  timer or reads started by visitors; a quiet repository drops off the page
+  after a day with no owner visit or activity, and returns on the next read.
 - **A fixed field list, not per-field settings.** A published repository
   shows its open PRs with the facts GitHub shows anyone on the PR's page:
   number and link, title, author, draft state, opened and last active, and
@@ -514,23 +521,34 @@ work only keeps it possible.
   nothing to storage and never makes the object sweep, which settles the
   reader rule the [change detection
   decision](#2026-10-15--change-detection) left open. Responses carry
-  `X-Robots-Tag: noindex`.
+  `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer` and
+  `Cache-Control: private, max-age=60`. The page says only that what it
+  shows was checked within the last day, since an exact sync time would say
+  when the owner last had Seshat open. It is served from a custom domain
+  with the `workers.dev` route off where the owner has one, because a
+  `workers.dev` link discloses the account subdomain and with it the likely
+  addresses of the owner's other Workers.
 - **Withdrawal takes effect on the next request.** Public responses go into
-  no Cloudflare cache, since a global purge would need a Cloudflare API token
-  the instance does not hold; browsers may reuse a copy for a minute. The
-  settings say that copies others made cannot be recalled, and that the page
-  draws on the account's shared free quotas.
+  no Cloudflare cache, so nothing needs purging; browsers may reuse a copy
+  for a minute. The Cache API purges one data center at a time, and Workers
+  Cache, though it can purge globally from the Worker, still bills every hit
+  as a Worker request, works under the Free purge limits and documents no
+  propagation time. The settings say that copies others made cannot be
+  recalled, and that the page draws on the account's shared free quotas.
 
 Constraints on current work, added to their queue entries: `owner-sign-in`
 requires the owner's session on every route except one explicit, tested list;
-`build-pr-overview` stores each repository's visibility with every read and
-delivery and treats anything but public as private; `show-project-index`
-serves nothing from the index on an unauthenticated route. None adds a GitHub
-permission, storage product or credential.
+`build-pr-overview` stores each repository's visibility, and when a read
+last reported it, with every read and delivery, and treats anything but
+public as private; `show-project-index` serves nothing from the index on an
+unauthenticated route. None adds a GitHub permission, storage product or
+credential.
 
 Rejected: publishing every public repository automatically; field-level
 consent; redacted rows or counts for private repositories; publishing buckets
 and review state; live updates for visitors; letting a public page start
-sweeps; a separate GitHub read with a narrowed installation token; hosting
-the page elsewhere, which needs a write credential; edge caching with purge;
-and consent recorded in the index file.
+sweeps; a timer that confirms published repositories' visibility, which
+would run while nobody is looking; a separate GitHub read with a narrowed
+installation token; hosting the page elsewhere, which needs a write
+credential; edge caching with purge; and consent recorded in the index
+file.

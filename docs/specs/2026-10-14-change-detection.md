@@ -368,7 +368,7 @@ data, and the catch-up sweep corrects the rest.
 The rule is that the object sweeps while something is reading the data.
 Today the only reader is a visible overview. Later features that read the
 model when no owner page is visible, such as notifications, a public view
-(`define-public-view`) or an API or command-line client, would each count as a
+(`build-public-view`) or an API or command-line client, would each count as a
 reader by a rule of their own, and would make the object active by the same
 mechanism. The [public view decision](../DECISIONS.md#2026-10-15--public-view)
 chose that a public page never makes the object active.
