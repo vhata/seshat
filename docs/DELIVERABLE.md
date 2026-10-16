@@ -1,11 +1,14 @@
 # First deliverable: PR overview
 
-Decided with the owner on 2026-10-11 and amended twice on 2026-10-12 (see
-[DECISIONS.md](DECISIONS.md)). This
-defines what the first implementation must do and how it will be judged. It does
-not choose a stack or a change-detection mechanism. The stack is decided in
-[DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack); change detection
-remains open in [TODO.md](../TODO.md); both must meet the requirements here.
+Decided with the owner on 2026-10-11, amended twice on 2026-10-12 (see
+[DECISIONS.md](DECISIONS.md)) and amended on 2026-10-15 to say when Seshat
+checks GitHub ([DECISIONS.md](DECISIONS.md#2026-10-15--change-detection)).
+This defines what the first implementation must do and how it will be judged.
+It does not choose a stack or a change-detection mechanism. The stack is
+decided in [DECISIONS.md](DECISIONS.md#2026-10-13--cloudflare-stack) and
+change detection in
+[DECISIONS.md](DECISIONS.md#2026-10-15--change-detection); both must meet the
+requirements here.
 GitHub access uses a GitHub App, as decided in
 [DECISIONS.md](DECISIONS.md#2026-10-12--github-integration) and specified in
 [specs/2026-10-12-github-integration.md](specs/2026-10-12-github-integration.md).
@@ -167,13 +170,25 @@ why a PR is where it is.
   reporting it, without a reload. The changes that count are a PR opened,
   closed, merged, converted to or from draft, or pushed to; a review submitted;
   and a CI result on the head commit.
+- Some changes are never reported to Seshat's GitHub App: top-level comments,
+  a change in a reviewer's repository permission, and conflicts caused by a
+  push to a PR's base branch. Seshat finds them by checking GitHub itself, so
+  they arrive within the catch-up bound below, not within 60 seconds.
+- Seshat checks GitHub on its own only while an overview is visible, as the
+  browser reports it (the foreground tab of a window that is not minimized).
+  While none is, it still updates from the changes GitHub reports,
+  but anything GitHub did not report waits until an overview is next visible.
 - The overview always shows when data last synced successfully from GitHub.
 - When a sync is overdue or has failed, the overview says so prominently.
-  Stale data must never look current. The overdue threshold is set by the
-  change-detection decision (`choose-change-detection`).
-- Changes that GitHub fails to report, or reports late, are still picked up:
-  the overview converges on GitHub's state without owner action, within a
-  catch-up bound the change-detection decision also sets.
+  Stale data must never look current. A sync is overdue when the last
+  successful one started more than 5 minutes ago and the overview has been
+  visible for at least a minute. In that first minute, an overview that has
+  just become visible says that it is checking with GitHub instead, until a
+  sync succeeds or fails. A sync has failed when it and one retry have both
+  failed.
+- Changes that GitHub fails to report, or reports late, are still picked up
+  without owner action: within 5 minutes while an overview is visible, and
+  within 3 minutes of an overview becoming visible when none was.
 
 ## Evidence boundary
 
@@ -214,10 +229,16 @@ names.
 5. Each kind of change listed under [Freshness](#freshness) reaches an open
    overview within 60 seconds, with no reload.
 6. A change made while Seshat receives no notification of it (simulated by
-   dropping the notification) still appears without owner action, within the
-   catch-up bound under [Freshness](#freshness).
+   dropping the notification) still appears without owner action: within 5
+   minutes while an overview is visible, and within 3 minutes of an overview
+   becoming visible when none was visible at the time of the change. While
+   no overview is visible, Seshat makes no scheduled reads of GitHub, only
+   reads that follow a notification.
 7. The last successful sync time is always visible, and an overdue or failed
-   sync is flagged.
+   sync is flagged. An overview that has just become visible, with its last
+   successful sync more than 5 minutes old, says it is checking until a
+   sync succeeds or fails or a minute passes, rather than showing an overdue
+   or failed flag left from before it became visible.
 8. A PR with no activity for 7 days carries the stale flag.
 9. The basic overview needs no paid Cloudflare service and no LLM key.
 10. A recorded manual review confirms that the overview is readable on a phone
