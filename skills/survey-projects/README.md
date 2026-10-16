@@ -79,11 +79,16 @@ tools the skill uses up front. With Claude Code, for example:
 ```sh
 claude -p 'Run the survey-projects skill in unattended mode.' \
   --allowedTools 'Bash(git *)' 'Bash(gh pr *)' 'Bash(find *)' 'Bash(ls *)' \
-  'Bash(date *)' 'Bash(mktemp *)' 'Bash(hostname *)' 'Read' 'Edit'
+  'Bash(cd *)' 'Bash(pwd *)' 'Bash(grep *)' 'Bash(sed *)' 'Bash(awk *)' \
+  'Bash(sort *)' 'Bash(head *)' 'Bash(wc *)' 'Bash(tr *)' 'Bash(paste *)' \
+  'Bash(printf *)' 'Bash(date *)' 'Bash(mktemp *)' 'Bash(hostname *)' \
+  'Read' 'Edit' 'Write'
 ```
 
-The exact list depends on the harness and its version; run the same command
-once by hand and check that it finishes without asking for anything. A job
+This covers the tools [SKILL.md](SKILL.md#rules-for-every-run) names, but
+treat it as a starting point: how pipelines and compound commands are
+matched depends on the harness and its version. Run the same command once
+by hand and check that it finishes without asking for anything. A job
 started by cron or launchd does not inherit your login session, so fetching
 and pushing the index over SSH needs `SSH_AUTH_SOCK` set in the job, or an
 HTTPS remote with a credential helper; `gh` must be logged in for the same

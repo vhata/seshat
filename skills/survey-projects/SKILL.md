@@ -76,7 +76,10 @@ interactive mode and cannot get an answer from the owner, push nothing.
    defined in [Errors](../../docs/INDEX_FORMAT.md#errors).
 9. **Count named branches only.** Any commit count, written or shown in the
    session, counts commits reachable from `refs/heads/` (`--branches`), never
-   `--all`, which includes hidden refs that tools create.
+   `--all`, which includes hidden refs that tools create. The one exception
+   is the count of commits on a detached `HEAD` under
+   [Unpushed](#unpushed): `HEAD` is the checked-out commit, not one of those
+   hidden refs, and the count excludes everything a branch already holds.
 
 ## Configuration
 
@@ -195,16 +198,21 @@ links). For each directory `d`:
 
    It is a checkout only if `top` is not empty and equals `real`. A
    directory inside some other repository is not a checkout.
-4. For a checkout, list every remote URL:
+4. For a checkout, list every fetch and push URL of every remote:
 
    ```sh
-   git -C "$d" config --get-regexp '^remote\..*\.url$'
+   for r in $(git -C "$d" remote); do
+     git -C "$d" remote get-url --all "$r"
+     git -C "$d" remote get-url --push --all "$r"
+   done
    ```
 
-   Each line is `remote.<name>.url <url>`; exit status 1 means no remotes.
-   If any URL matches a `survey.excludeRemote` pattern, the checkout is
-   excluded, so a work repository is caught even when its work remote is
-   not `origin`. Run nothing else in an excluded directory.
+   `get-url` applies `url.<base>.insteadOf` rewriting, so a shorthand such
+   as `work:thing` is matched as the URL it stands for; reading
+   `remote.*.url` from the config would give the shorthand. No output means
+   no remotes. If any URL matches a `survey.excludeRemote` pattern, the
+   checkout is excluded, so a work repository is caught even when its work
+   remote is not `origin`. Run nothing else in an excluded directory.
 
 Then add every entry `Path` that is not a direct child of the root, if
 `"$root/$path"` exists, and apply the same exclusion and checkout tests to it.
@@ -353,10 +361,19 @@ whatever the owner did with the earlier branch.
 3. If `refs/remotes/$remote/$B` exists and
    `git -C "$clone" merge-base --is-ancestor "$remote/$B" "$remote/$branch"`
    fails (`B` holds something the default branch lacks):
-   - List the commits on `B` that this skill did not make:
-     `git -C "$clone" log --format='%h %s' "$remote/$branch..$remote/$B"`,
-     keeping those whose subject does not start with
-     `Survey checkouts on `. If there are any, push nothing and report them,
+   - Find the commits added to `B` since this skill last wrote it: walk the
+     first-parent chain from its tip, newest first, and stop at the first
+     commit whose subject starts with `Survey checkouts on `.
+
+     ```sh
+     git -C "$clone" log --first-parent --format='%h %s' "$remote/$branch..$remote/$B" \
+       | awk '/^[^ ]+ Survey checkouts on /{exit} {print}'
+     ```
+
+     Only these count as commits this skill did not make. Older commits
+     reachable through the second parent of a superseding commit were
+     already dealt with by the run that superseded them, and must not
+     block later runs. If there are any, push nothing and report them,
      unless `index.pullRequests = gh` and step 1 found no open PR. With an
      open PR the owner is editing it; with no PR configuration the review
      branch is the only place those commits are proposed, and building on
