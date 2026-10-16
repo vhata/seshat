@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  SESSION_SECONDS,
   decodeSignInState,
   encodeSignInState,
   isOwner,
@@ -89,6 +90,12 @@ describe("the owner check", () => {
   it("compares account IDs, never logins", () => {
     expect(isOwner({ id: 1001, login: "anyone" }, 1001)).toBe(true);
     expect(isOwner({ id: 1002, login: "the-owner" }, 1001)).toBe(false);
+  });
+});
+
+describe("session lifetime", () => {
+  it("is seven days", () => {
+    expect(SESSION_SECONDS).toBe(604800);
   });
 });
 

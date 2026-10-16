@@ -2,6 +2,9 @@ import { env, exports } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_SECONDS, pkceChallenge, sessionKey } from "../shared/auth";
+
+/** Seven days, written out so a change to the constant fails these tests. */
+const SEVEN_DAYS_SECONDS = 604800;
 import { instanceStub } from "./instance-stub";
 import {
   BASE,
@@ -261,7 +264,7 @@ describe("the owner signing in", () => {
     expect(cookie?.attributes).toMatch(/HttpOnly/);
     expect(cookie?.attributes).toMatch(/Secure/);
     expect(cookie?.attributes).toMatch(/SameSite=Lax/);
-    expect(cookie?.attributes).toMatch(new RegExp(`Max-Age=${SESSION_SECONDS}`));
+    expect(cookie?.attributes).toMatch(/(?:^|; )Max-Age=604800(?:;|$)/);
 
     const session = await exports.default.fetch(`${BASE}/api/session`, {
       headers: { cookie: sessionCookieFrom(response) ?? "" },
@@ -280,7 +283,7 @@ describe("the owner signing in", () => {
     expect(rows.sessions).toHaveLength(1);
     const [session] = rows.sessions as { key: string; created_at: number; expires_at: number }[];
     expect(session?.key).toBe(await sessionKey(token));
-    expect(session?.expires_at).toBe((session?.created_at ?? 0) + SESSION_SECONDS * 1000);
+    expect(session?.expires_at).toBe((session?.created_at ?? 0) + SEVEN_DAYS_SECONDS * 1000);
     const dump = JSON.stringify(rows);
     for (const leaked of [token, USER_TOKEN, REFRESH_TOKEN, OWNER_LOGIN]) {
       expect(dump).not.toContain(leaked);
