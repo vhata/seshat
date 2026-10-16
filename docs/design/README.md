@@ -108,7 +108,8 @@ light theme and a "Retry now" action on the sync banner.
 - Serve fonts from the instance itself. Loading them from Google Fonts sends
   every visit to a third party.
 - The banner copy assumes a 30-second sync interval and a GitHub token. The
-  interval is not decided; take it from `choose-change-detection`. GitHub
+  interval is 2 minutes while a page is visible, with sweeps only while one
+  is ([decision](../DECISIONS.md#2026-10-15--change-detection)). GitHub
   access uses a GitHub App with no stored user token
   ([decision](../DECISIONS.md#2026-10-12--github-integration)), so copy that
   refers to the owner's GitHub token should refer to the app instead.

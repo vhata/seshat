@@ -1,12 +1,14 @@
 # Change detection and reconciliation
 
-Status: **proposed on 2026-10-14 and revised on 2026-10-15** after the owner
-directed that Seshat check GitHub on its own only while someone is looking (see
-[When the object sweeps](#when-the-object-sweeps)); the rest is for the owner
-to accept, under [Questions for the owner](#questions-for-the-owner). The
-owner also asked for [DELIVERABLE.md](../DELIVERABLE.md#freshness) to say
-plainly what that means for freshness, which it now does. This answers the
-queue entry `choose-change-detection` and is judged against
+Status: **accepted on 2026-10-15** and recorded in
+[DECISIONS.md](../DECISIONS.md#2026-10-15--change-detection). Proposed on
+2026-10-14, then revised after the owner directed that Seshat check GitHub on
+its own only while someone is looking (see [When the object
+sweeps](#when-the-object-sweeps)); the owner answered the remaining
+[questions](#questions-for-the-owner) as recommended. The owner also asked for
+[DELIVERABLE.md](../DELIVERABLE.md#freshness) to say plainly what that means
+for freshness, which it now does. This answers the queue entry
+`choose-change-detection` and is judged against
 [DELIVERABLE.md](../DELIVERABLE.md#freshness), within the GitHub App chosen in
 [DECISIONS.md](../DECISIONS.md#2026-10-12--github-integration) and the stack
 chosen in [DECISIONS.md](../DECISIONS.md#2026-10-13--cloudflare-stack). Facts
@@ -80,7 +82,7 @@ From [DELIVERABLE.md](../DELIVERABLE.md#freshness):
 Before this decision DELIVERABLE.md left the overdue threshold and the
 catch-up bound to it, and did not say whether Seshat had to keep checking
 GitHub while nobody looked. The owner decided on 2026-10-15 that it does not
-([DECISIONS.md](../DECISIONS.md#2026-10-15--check-github-only-while-someone-is-looking)),
+([DECISIONS.md](../DECISIONS.md#2026-10-15--change-detection)),
 and DELIVERABLE.md now says so, with the bounds set here (see [Changes to
 DELIVERABLE.md](#changes-to-deliverablemd)).
 
@@ -566,9 +568,8 @@ seconds later agreed with GraphQL's value; neither value had changed, and
 ## Changes to DELIVERABLE.md
 
 Made at the owner's direction on 2026-10-15, in
-[Freshness](../DELIVERABLE.md#freshness) and the acceptance checks. The
-figures in items 2 and 3 are this proposal's and await the owner's answer to
-question 2 below; DELIVERABLE.md says so:
+[Freshness](../DELIVERABLE.md#freshness) and the acceptance checks, with the
+figures in items 2 and 3 accepted with question 2 below:
 
 1. Seshat checks GitHub on its own only while an overview is visible. While
    none is, it still updates from GitHub's notifications, and changes that
@@ -647,29 +648,30 @@ itself is unchanged.
 
 ## Questions for the owner
 
-Decided by the owner on 2026-10-15, and recorded in
-[DECISIONS.md](../DECISIONS.md#2026-10-15--check-github-only-while-someone-is-looking):
-the object sweeps only while an overview is visible, judged by visibility
-reports rather than sessions, sockets or pings; there is no tail of sweeps
-after the last page goes; a page that becomes visible gets a catch-up sweep
-when the last sweep is more than 2 minutes old, and shows a checking state
-rather than an overdue banner while it runs; the sweep runs every 2 minutes
-while active; and DELIVERABLE.md says so. That also settles the earlier
-question about a Cron Trigger watchdog, which is no longer needed.
+The owner first directed, on 2026-10-15, that the object sweeps only while
+an overview is visible, judged by visibility reports rather than sessions,
+sockets or pings; there is no tail of sweeps after the last page goes; a page
+that becomes visible gets a catch-up sweep when the last sweep is more than 2
+minutes old, and shows a checking state rather than an overdue banner while
+it runs; the sweep runs every 2 minutes while active; and DELIVERABLE.md
+says so. That also settled the earlier question about a Cron Trigger
+watchdog, which is no longer needed.
 
-Still open:
+The owner then answered the three remaining questions as recommended, the
+same day; all of it is recorded in
+[DECISIONS.md](../DECISIONS.md#2026-10-15--change-detection).
 
 1. **Mechanism.** Accept webhooks as marks for re-reading, plus a sweep that
    counts open PRs and then reads the repositories that have them, with no
-   delivery-log redelivery? *Recommended.*
+   delivery-log redelivery? *Recommended.* *Decided:* as recommended.
 2. **Bounds.** A catch-up bound of 5 minutes while an overview is visible
    and 3 minutes after one becomes visible, and an overdue threshold of 5
    minutes. Each bound is the time to the next sweep plus a minute for its
    reads and follow-ups, with the 5-minute one allowing for one late or
-   failed sweep. *Recommended.*
+   failed sweep. *Recommended.* *Decided:* as recommended.
 3. **No new permissions.** Leave Contents and Issues out, so top-level
    comments and base-branch conflicts arrive by sweep rather than by webhook?
-   *Recommended.*
+   *Recommended.* *Decided:* as recommended.
 
 ## Sources
 

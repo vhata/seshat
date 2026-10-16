@@ -52,6 +52,9 @@ The personal inventory is deliberately not copied into this public repository.
   [DECISIONS.md](DECISIONS.md#2026-10-12--github-integration).
 - Choose webhook installation or another change-detection mechanism, including
   reconciliation after missed events and visibility of stale data.
+  Decided: GitHub App webhooks mark PRs for re-reading, and a sweep
+  reconciles only while an overview is visible; see
+  [DECISIONS.md](DECISIONS.md#2026-10-15--change-detection).
 - Define the PR overview: draft state, review needs, CI results, mergeability
   and which signals mean that work is needed.
 - Define classifications, manual overrides, evidence and freshness. Decide

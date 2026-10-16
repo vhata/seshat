@@ -10,8 +10,8 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 - [PRODUCT] `build-pr-overview` — **Build the rest of the PR overview: monitored repositories, GitHub reads, change detection, live updates, sync status and the overview page.** With sign-in and bucketing split off, this is what remains of the first deliverable.
   - Source: TODO.md triage, 2026-10-14
-  - Depends on: `choose-change-detection`, `bucket-prs`, `owner-sign-in`
-  - Starting point: [docs/DELIVERABLE.md](docs/DELIVERABLE.md), within the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack) and the [GitHub integration decision](docs/DECISIONS.md#2026-10-12--github-integration). Visual references are in [docs/design/README.md](docs/design/README.md). Covers acceptance checks 2, 4 to 7, 9 and 10; the end-to-end halves of check 3 (every open PR on a monitored repository appears exactly once) and check 8 (the stale flag shown on a row from GitHub's activity data); and the manual half of check 1 if a second GitHub account is available by then, which is otherwise the owner's call to waive.
+  - Depends on: `bucket-prs`, `owner-sign-in`
+  - Starting point: [docs/DELIVERABLE.md](docs/DELIVERABLE.md), within the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack), the [GitHub integration decision](docs/DECISIONS.md#2026-10-12--github-integration) and the [change detection decision](docs/DECISIONS.md#2026-10-15--change-detection), whose design is in [docs/specs/2026-10-14-change-detection.md](docs/specs/2026-10-14-change-detection.md). Visual references are in [docs/design/README.md](docs/design/README.md). Covers acceptance checks 2, 4 to 7, 9 and 10; the end-to-end halves of check 3 (every open PR on a monitored repository appears exactly once) and check 8 (the stale flag shown on a row from GitHub's activity data); and the manual half of check 1 if a second GitHub account is available by then, which is otherwise the owner's call to waive.
   - Split further before parallel work starts, for example repository selection, sync and live updates, and the page.
 
 - [PRODUCT] `bucket-prs` — **Implement PR bucketing, the CI and review-state derivations, ordering within buckets and the stale flag as pure functions with exhaustive tests.** These rules are most of the first deliverable's logic and need no GitHub access or change-detection choice.
@@ -19,7 +19,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Split from: `build-pr-overview`
   - Depends on: `scaffold-worker-app`
   - Starting point: [Terms](docs/DELIVERABLE.md#terms), [Buckets](docs/DELIVERABLE.md#buckets), [Order within a bucket](docs/DELIVERABLE.md#order-within-a-bucket) and [Stale flag](docs/DELIVERABLE.md#stale-flag). Acceptance check 3's logic half (fixed sample data, one case per rule, precedence cases, every combination lands in a bucket, each derivation mapping) and check 8's logic half, the flag computed from last activity.
-  - Takes a plain input type for a PR and its reviews, checks and reviewer permissions, so whichever GitHub reads `choose-change-detection` settles on only have to fill it in.
+  - Takes a plain input type for a PR and its reviews, checks and reviewer permissions, so the GitHub reads in the [change detection design](docs/specs/2026-10-14-change-detection.md#re-reads) only have to fill it in.
 
 - [GITHUB] `owner-sign-in` — **Implement owner-only sign-in through the GitHub App, refusing every other account.** Every other route sits behind it, and it needs no change-detection choice.
   - Source: split of `build-pr-overview`, 2026-10-15
@@ -33,7 +33,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 - [PRODUCT] `show-project-index` — **Ingest the project index and show it beside GitHub evidence.** The index decision defines what the dashboard shows; this is the deliverable that builds it, after the PR overview.
   - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Depends on: `choose-change-detection`, `build-pr-overview`
+  - Depends on: `build-pr-overview`
   - Related: `design-project-classifications`
   - Needs Contents read added to the GitHub App chosen for the integration ([decision](docs/DECISIONS.md#2026-10-12--github-integration)): for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
   - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. The index stays on GitHub for now ([decision](docs/DECISIONS.md#2026-10-13--project-index-stays-on-github)).
@@ -101,13 +101,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Choose and record the package manager and test runner. Ship at least one real test of the Worker and the object, since an empty suite is a failed gate, and update [docs/QUALITY.md](docs/QUALITY.md) and the README to describe the new gates.
   - Includes local development (`wrangler dev` or equivalent) but no deploy; deploying needs the owner's word each time ([AGENTS.md](AGENTS.md#docket)). Adding the toolchain to `.github/workflows/ci.yml` and the hooks is a CI and hooks change, which the [contract](docket/CONTRACT.md) says needs the owner's word in the turn it is made; ask then.
   - Update the expected tracked content and the deferred-checks paragraph in [docs/QUALITY.md](docs/QUALITY.md) for the new files and gates.
-
-- [GITHUB] `choose-change-detection` — **Choose change detection and missed-event reconciliation.** Evaluate webhooks versus polling and make sync freshness visible.
-  - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
-  - A repository created after installation is delivered within seconds and listed by `GET /installation/repositories`, so finding new repositories needs no owner action; reconciliation still has to cover a missed delivery ([results](docs/specs/2026-10-13-cloudflare-stack.md#github-app-checks)).
-  - Works within the stack in the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack): webhooks verified by the Worker and handled in one Durable Object, reconciliation from an alarm or a Cron Trigger in batches of at most 50 GitHub requests per invocation. Measurements and Free-plan quotas are in [docs/specs/2026-10-13-cloudflare-stack.md](docs/specs/2026-10-13-cloudflare-stack.md).
-  - Must meet the freshness requirements in [docs/DELIVERABLE.md](docs/DELIVERABLE.md#freshness): changes visible within 60 seconds, convergence after missed or late notifications, and the overdue-sync threshold and catch-up bound this decision sets.
-  - GitHub access is a GitHub App with read-only Metadata, Pull requests, Checks and Commit statuses ([decision](docs/DECISIONS.md#2026-10-12--github-integration)). The events it can receive and the constraints that bear on this choice (no automatic redelivery, fork CI events matched by head SHA, no event for mergeability, no push or top-level PR comment events without more permissions, rate and subrequest limits) are under [Webhook events](docs/specs/2026-10-12-github-integration.md#webhook-events) and [Rate limits](docs/specs/2026-10-12-github-integration.md#rate-limits) in the spec.
 
 ### P2 Normal
 

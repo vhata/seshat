@@ -351,36 +351,67 @@ as a reason not to start.
 - Changing CI or hooks still needs the owner's word in the turn it is made,
   as Docket requires; the scaffold is the first PR that will ask.
 
-## 2026-10-15 — Check GitHub only while someone is looking
+## 2026-10-15 — Change detection
 
-The change-detection proposal in
+The owner accepted the proposal in
 [specs/2026-10-14-change-detection.md](specs/2026-10-14-change-detection.md)
-first had the instance sweep GitHub every 2 minutes around the clock. The
-owner objected that this checks GitHub when nobody is looking, and directed
-that it check only while someone is. After discussing the details, the owner
-decided:
+after reshaping it, and answered its remaining questions as recommended. The
+first version swept GitHub every 2 minutes around the clock; the owner
+objected that this checks GitHub when nobody is looking, and directed that
+Seshat check it only while someone is.
 
-- Seshat reads GitHub on its own only while an overview is visible, as the
-  browser reports it. Pages report their visibility to the instance; a
-  session, an open socket in a background tab and a periodic ping that wakes
-  the instance were each rejected as the signal.
-- While none is visible, GitHub's webhooks and the reads they trigger carry
-  on, so the stored data stays close to current, but changes GitHub did not
-  report wait until an overview is next visible.
-- A page that becomes visible gets a catch-up check at once when the last one
-  is more than 2 minutes old, and says it is checking rather than opening on
-  an overdue banner. The owner's first suggestion of 10 more minutes of checks
-  after the last page closes was dropped: nothing reads the data in that time,
-  and the next page needs a catch-up check anyway.
-- While an overview is visible, the instance checks every 2 minutes. The
-  catch-up bounds and overdue threshold that DELIVERABLE.md now states are
-  the proposal's figures and await the owner's acceptance with the rest of
-  it.
+- **Webhooks mark PRs for re-reading.** The Durable Object re-reads marked
+  PRs from GitHub's GraphQL API about 2 seconds after the first mark, checks
+  each read against the facts the deliveries reported, and reads again 5, 15
+  and 30 seconds after the first read while any are missing. Payloads are
+  never written into the model, so delivery order and duplicates do not
+  matter. This replaces three points of the [stack
+  decision](#2026-10-13--cloudflare-stack): the object stores marks rather
+  than deliveries, and keeps no delivery-ID de-duplication or delivery log.
+  The stack is otherwise unchanged.
+- **A sweep reconciles.** For each accepted installation it lists the
+  repositories, counts open PRs per repository in one query, and reads only
+  the repositories that have some, which cost about 8 GraphQL points for the
+  owner's 48 monitored repositories. It catches lost deliveries and the
+  changes the app is never told about: top-level comments, reviewer
+  permission changes and conflicts caused by a push to a base branch. Failed
+  deliveries are not replayed from GitHub's delivery log.
+- **Sweeps run only while an overview is visible**, as the browser reports
+  it. Pages report their visibility to the instance; a session, an open
+  socket in a background tab and a periodic ping that wakes the instance were
+  each rejected as the signal. While none is visible, webhooks and the reads
+  they trigger carry on, so stored data stays close to current, but changes
+  GitHub did not report wait until an overview is next visible.
+- **While an overview is visible** the sweep runs every 2 minutes. A page
+  that becomes visible gets a catch-up sweep at once when the last one is
+  more than 2 minutes old, and says it is checking rather than opening on an
+  overdue banner. The owner's first suggestion of 10 more minutes of sweeps
+  after the last page closes was dropped: nothing reads the data in that
+  time, and the next page needs a catch-up sweep anyway.
+- **Bounds.** Missed changes appear within 5 minutes while an overview is
+  visible and within 3 minutes of one becoming visible. A sync is overdue
+  when the last successful sweep started more than 5 minutes ago and the page
+  has been visible for a minute, and failed when a sweep and one retry fail.
+  The page judges this on its own clock.
+- **Mergeability** still being computed is re-read through the REST
+  endpoint, which GitHub documents as starting the computation.
+- **No new GitHub permissions.** Contents and Issues stay out; the sweep
+  meets the catch-up bound without them, which settles the condition the
+  [GitHub integration decision](#2026-10-12--github-integration) left for
+  revisiting them.
+- **No Cron Trigger.** One alarm schedules re-reads, mergeability checks and
+  sweeps, and every request into the object re-arms it; nothing needs to run
+  on a timer while no page is visible.
 - [DELIVERABLE.md](DELIVERABLE.md#freshness) says all of this plainly,
   including which changes GitHub never reports to the app.
 
-Rejected: checking around the clock. At the measured cost it was about 3% of
-the installation's GitHub budget and under 1% of Cloudflare's daily requests,
-but all of it was spent whether or not anyone looked, and it grows with the
-number of repositories with open PRs. The rest of the change-detection
-proposal awaits the owner's acceptance.
+Rejected: applying webhook payloads to the model directly (fragments, out of
+order, with no reviewer permission or mergeability); polling without
+webhooks (slower and dearer); replaying GitHub's delivery log (it misses
+changes GitHub never reports, so a sweep is needed anyway); sweeps that read
+every repository (GraphQL charges for the page sizes requested, 96 points
+for the owner's repositories), use search (not documented as current) or use
+REST (about 220 subrequests a sweep); and sweeping around the clock, which
+at the measured cost was about 3% of the installation's GitHub budget and
+under 1% of Cloudflare's daily requests, all of it spent whether or not
+anyone looked.
