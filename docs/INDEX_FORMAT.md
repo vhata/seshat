@@ -5,8 +5,9 @@ with the [owner decisions](#owner-decisions) answered as recorded below and in
 [DECISIONS.md](DECISIONS.md#2026-10-15--project-index-format).
 
 This is the one definition of the project index file. Seshat's ingestion, the
-Seshat CLI (`ship-projects-cli`) and the laptop agent (`write-survey-prompt`)
-all read and check the file by these rules, and any tool that writes it
+Seshat CLI (`ship-projects-cli`) and the laptop agent
+([survey-projects](../skills/survey-projects/SKILL.md)) all read and check
+the file by these rules, and any tool that writes it
 follows [Writing the file](#writing-the-file). Why the index is a Markdown
 file, who writes which fields and how Seshat shows them are decided in
 [specs/2026-10-12-projects-index.md](specs/2026-10-12-projects-index.md); this

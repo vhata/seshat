@@ -126,7 +126,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 - [PRODUCT] `build-hosted-refresh` — **Build optional hosted LLM refresh of the project index to the recorded design, if the owner finds owner fields still go stale between laptop surveys.** Refresh was deferred because the laptop agent covers the same owner-field proposals with no new permissions, and nothing yet shows whether a gap remains.
   - Source: evaluate-optional-llm-refresh decision, branch todo/evaluate-optional-llm-refresh, 2026-10-15
   - Starting point: [Design if adopted](docs/specs/2026-10-15-llm-refresh.md#design-if-adopted) and the [decision](docs/DECISIONS.md#2026-10-15--hosted-llm-refresh-waits): owner-requested or visible-overview-gated weekly runs, a Seshat-gathered bundle, structured proposals applied by the [writing rules](docs/INDEX_FORMAT.md#writing-the-file), one PR from one branch.
-  - Depends on: `show-project-index`, `write-survey-prompt`
+  - Depends on: `show-project-index`
   - Blocked by: the owner's judgment, after using both, that owner fields (summaries, next actions, sections) still go stale between laptop surveys, for example through work on other machines or on GitHub alone ([revisit conditions](docs/specs/2026-10-15-llm-refresh.md#what-would-make-it-worthwhile)).
   - Needs a second GitHub App installed only on the index repository with Contents and Pull requests write, registered by the owner, which needs the owner's word at the time. The richer bundle needs Contents read on the main App, which `show-project-index` may already have added; adding it prompts every installation and covers every repository in it.
   - The provider key is an owner-set Worker secret; without one nothing changes. Calling a provider is a billable owner cost, so tests stub the provider.
@@ -174,23 +174,15 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### P2 Normal
 
-- [PRODUCT] `write-survey-prompt` — **Write the optional laptop-agent prompt or skill that surveys local checkouts and proposes index updates.** Local-only evidence reaches the index only through this survey.
-  - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Related: `ship-projects-cli`
-  - Uses only git, with no GitHub assumption; the index repository's remote is configuration. The one exception is an unattended run's draft PR, opened only where the host supports PRs; where the host has no PRs, an unattended run pushes to a review branch, never to the default branch, and leaves review to the owner.
-  - Pushes directly after the owner approves the diff in the session; when unattended, opens or updates a single draft PR (or updates its review branch where the host has no PRs); never force-pushes; never deletes an entry for a checkout it did not find without confirmation. Excludes work checkouts, secrets and observations about non-project files. Should read the CLI's `survey` output once it exists rather than running ad-hoc git commands.
-  - Reads and writes the file by [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), including its [writing rules](docs/INDEX_FORMAT.md#writing-the-file); until the shared check exists, the owner's review of the diff stands in for it. Can carry out the [migration](docs/INDEX_FORMAT.md#migrating-the-current-file) of the owner's current file.
-  - When proposing to move an entry to another section, cite the [classification rules](docs/specs/2026-10-15-project-classifications.md#rules) and the evidence behind them; the owner decides.
-
 ### P3 Low
 
 
 - [PRODUCT] `ship-projects-cli` — **Ship a Seshat command-line tool for working with the project index locally.** Power users want to list projects by classification, run commands across them and check the index against disk without the hosted app.
   - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Related: `write-survey-prompt`
   - Commands from the decision: list by classification (paths or JSON), run a command across projects in given classifications, check the file against the format and the directories on disk, and `survey`, which prints the local-only signals (checked-out branch, uncommitted and untracked files, unpushed commits, local-only branches and repositories) in a stable table and JSON form. See the Seshat CLI section of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md).
   - Its PR chooses the language and distribution; the hosted app's stack ([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)) does not settle the CLI's. A TypeScript CLI can share the app's [toolchain](docs/DECISIONS.md#2026-10-15--toolchain) and the [shared parser module](docs/INDEX_FORMAT.md#implementation). Commit counts must count named branches only, not hidden refs that tools create.
   - Uses only git, with no GitHub assumption; the index repository's remote is configuration.
+  - The laptop survey skill, [skills/survey-projects/SKILL.md](skills/survey-projects/SKILL.md), switches to `seshat survey --json` and `seshat check` once they exist. Its signal commands and its settings file (survey root, exclusions) are the starting point for both, so the CLI should read the same settings rather than define new ones.
   - `check` runs the shared format check and the disk check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building the shared module and its conformance fixtures if `show-project-index` has not.
   - Low because the owner's existing local tool already parses the index until this replaces it ([spec](docs/specs/2026-10-12-projects-index.md#follow-up-work)).
 

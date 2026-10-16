@@ -701,7 +701,8 @@ Queue entries in [TODO.md](../../TODO.md):
   where the repository field is labelled `Remote`
   ([decision](../DECISIONS.md#2026-10-15--project-index-format)).
 - `ship-projects-cli`: the [Seshat CLI](#seshat-cli), including `survey`.
-- `write-survey-prompt`: the laptop-agent prompt or skill.
+- `write-survey-prompt`: the laptop-agent prompt or skill. Resolved on
+  2026-10-16: the [survey-projects skill](../../skills/survey-projects/SKILL.md).
 - `design-project-classifications`: the classifications design the brief
   lists. Resolved on 2026-10-15
   ([decision](../DECISIONS.md#2026-10-15--project-classifications)).
