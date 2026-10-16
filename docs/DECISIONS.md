@@ -690,18 +690,35 @@ the session's format and lifetime to implementation.
   are pruned at the next sign-in. Cookies use the `__Host-` prefix with
   Secure, HttpOnly and SameSite=Lax over HTTPS, and unsafe requests must
   carry the instance's own Origin, except the signed webhook.
+- **Worker pages send no referrer, except pages with a form.** The callback
+  URL holds an authorization code and the registration page the App's
+  credentials, so pages default to `no-referrer`. Under that policy a
+  browser sends `Origin: null` with a form post, which the Origin check
+  refuses, so the setup form is served with `same-origin` (the real Origin
+  to the instance, nothing elsewhere) and the page that posts the manifest
+  to GitHub with `strict-origin` (the origin only, never a path). Accepting
+  `Origin: null` with `Sec-Fetch-Site: same-origin` was rejected as a
+  second, weaker path through the check.
 - **One explicit list of public routes** in `src/worker/routes.ts`: health,
   sign-in, its callback, sign-out, the two registration routes and the
   webhook. Every other path, unknown ones included, needs the owner's
   session.
-- **Setup is open only while the App's credentials are unset, and only with
-  `SETUP_SECRET`.** It shows the credentials once and stores none of them,
-  as the integration decision chose. The App's JWT uses the client ID as
+- **Setup is open only while none of the App's credentials is set, and only
+  with `SETUP_SECRET`.** A partly stored registration closes it until the
+  owner finishes or removes it, so it is never replaced by a new App
+  unnoticed. Setup shows the credentials once and stores none of them, as
+  the integration decision chose. The App's JWT uses the client ID as
   issuer, as GitHub recommends, so no App ID is configured.
 - **The installation guard runs from the setup URL**, for the signed-in
   owner, against `GET /app/installations` rather than the redirect's
   `installation_id`. Installations are kept by account ID; logins are read
-  from GitHub each time and not stored.
+  from GitHub each time and not stored. A list that fills every page it
+  reads may be incomplete, so the guard then changes nothing. The route is
+  a GET with side effects, which a cross-site link can trigger for a
+  signed-in owner because the session cookie is SameSite=Lax. That is
+  accepted: GitHub's redirect to the setup URL is a GET, and the guard is
+  idempotent and acts only on GitHub's own list, doing nothing the owner's
+  next visit would not.
 
 Rejected: keeping sign-in state in the object (a write for every attempt,
 which a stranger could repeat against the daily quota); sessions extended on

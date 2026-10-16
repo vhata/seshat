@@ -76,7 +76,7 @@ To try sign-in locally:
    `/setup/installed`, which checks the installation after you sign in.
 4. Sign in at `/`. Signing out is on the same page.
 
-Setup closes once the App's credentials are set, and without
+Setup closes as soon as any of the App's credentials is set, and without
 `SETUP_SECRET` it never opens. A deployed instance follows the same steps
 at its own address, with its own App, storing the JSON the setup page shows
 with `npx wrangler secret bulk`.
