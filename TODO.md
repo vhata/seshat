@@ -106,6 +106,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Store each repository's visibility, and the time a GitHub read last reported it, with every read that stores its PRs and with each repository listing; update it from every delivery's `repository` object and from `privatized`, `publicized`, `transferred` and `deleted`; and treat anything other than `public` as private. The public view's 24-hour confirmation bound rests on that time. The owner snapshot and API stay reachable only through the owner's session ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
 
   - The bucketing rules are pure functions in `src/shared/overview/`: the GitHub reads fill in `PrInput` ([types](src/shared/overview/types.ts), which notes the GitHub field behind each input), and the page renders what `buildOverview` returns.
+  - The re-read and sweep queries in the [change detection design](docs/specs/2026-10-14-change-detection.md#re-reads) do not yet read everything `PrActivity` needs for the stale flag and ordering: `timelineItems` of types `HEAD_REF_FORCE_PUSHED_EVENT`, `REOPENED_EVENT`, `CONVERT_TO_DRAFT_EVENT` and `READY_FOR_REVIEW_EVENT` (Pull requests read), and the head commit's `committedDate`. GitHub reports no push time (`Commit.pushedDate` was removed), so a plain push is known only from the client-set committer date. Estimate the queries' GraphQL cost with these fields included.
 
 ### P2 Normal
 
