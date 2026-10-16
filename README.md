@@ -8,8 +8,9 @@ goddess of writing and record keeping.
 
 Seshat is starting to build its first deliverable, the PR overview defined in
 [DELIVERABLE.md](docs/DELIVERABLE.md), on the stack chosen in
-[DECISIONS.md](docs/DECISIONS.md#2026-10-13--cloudflare-stack). There is no
-application or deployment yet.
+[DECISIONS.md](docs/DECISIONS.md#2026-10-13--cloudflare-stack). So far there
+is a scaffold: a Cloudflare Worker serving a placeholder React page and a
+health route backed by the instance's Durable Object. Nothing is deployed.
 
 The intended dashboard connects to GitHub, lets the instance owner monitor
 selected repositories, groups projects by their state, and shows open pull
@@ -23,10 +24,26 @@ open. See the [project brief](docs/BRIEF.md) for requirements and design questio
 ## Development workflow
 
 Read [AGENTS.md](AGENTS.md) and the [Docket contract](docket/CONTRACT.md).
-Run `bash scripts/setup.sh` to configure hooks and `bash scripts/check.sh` to
-validate the scaffold. Git and Bash are external prerequisites; no application
-dependencies are installed. Follow-ups live in [TODO.md](TODO.md), decisions in
-[docs/DECISIONS.md](docs/DECISIONS.md), and validation in
+Git, Bash and Node.js (the major version in `.node-version` or later, with its
+bundled npm) are prerequisites.
+
+```sh
+bash scripts/setup.sh   # configure hooks, install dependencies, generate types
+bash scripts/check.sh   # docs and queue checks, type check, tests, build
+npm run dev             # serve the app locally at the printed URL
+```
+
+`npm run dev` runs the Worker, the Durable Object and the page in the local
+Workers runtime; try `/` and `/api/health`. Local state lives in `.wrangler/`.
+There is no deploy script, and deploying needs the owner's word each time.
+
+The code lives under `src/`: `worker/` for the Worker's routes, `object/`
+for the Durable Object and its schema, `shared/` for pure logic with tests
+that run in Node, and `frontend/` for the React page. Worker and object tests
+run in the Workers runtime.
+
+Follow-ups live in [TODO.md](TODO.md), decisions in
+[docs/DECISIONS.md](docs/DECISIONS.md), and gates and validation in
 [docs/QUALITY.md](docs/QUALITY.md).
 
 ## License
