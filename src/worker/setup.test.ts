@@ -32,6 +32,59 @@ function postSetup(form: Record<string, string>, headers: Record<string, string>
   });
 }
 
+/**
+ * The Origin header a browser sends with a form POST from a page served
+ * with `policy`, per the Fetch standard's "serialize a request origin":
+ * `no-referrer` always sends `null`, `same-origin` sends `null` to other
+ * origins, and the `strict-*` policies send `null` only on a downgrade from
+ * HTTPS.
+ */
+function browserOrigin(policy: string | null, pageOrigin: string, target: string): string {
+  const targetUrl = new URL(target);
+  const sameOrigin = targetUrl.origin === pageOrigin;
+  switch (policy) {
+    case "no-referrer":
+      return "null";
+    case "same-origin":
+      return sameOrigin ? pageOrigin : "null";
+    case "strict-origin":
+    case "strict-origin-when-cross-origin":
+    case null:
+      return pageOrigin.startsWith("https:") && targetUrl.protocol === "http:" ? "null" : pageOrigin;
+    default:
+      return pageOrigin;
+  }
+}
+
+describe("registration in a browser", () => {
+  it("serves the form with a referrer policy under which its post keeps the Origin", async () => {
+    const form = await fetchWithConfig(UNCONFIGURED, PATHS.setup);
+    const policy = form.headers.get("referrer-policy");
+    expect(policy).toBe("same-origin");
+    const origin = browserOrigin(policy, BASE, `${BASE}${PATHS.setup}`);
+    expect(origin).toBe(BASE);
+    const response = await postSetup({ secret: "test-setup-secret", name: "Seshat test" }, { origin });
+    expect(response.status).toBe(200);
+  });
+
+  it("re-serves the form after a wrong secret with the same policy", async () => {
+    const response = await postSetup({ secret: "guess", name: "Seshat test" });
+    expect(response.headers.get("referrer-policy")).toBe("same-origin");
+  });
+
+  it("refuses a post with Origin: null, which is what no-referrer would make a browser send", async () => {
+    const response = await postSetup({ secret: "test-setup-secret", name: "Seshat test" }, { origin: "null" });
+    expect(response.status).toBe(403);
+  });
+
+  it("lets the post to GitHub carry the instance's origin", async () => {
+    const response = await postSetup({ secret: "test-setup-secret", name: "Seshat test" });
+    const policy = response.headers.get("referrer-policy");
+    expect(policy).toBe("strict-origin");
+    expect(browserOrigin(policy, BASE, "https://github.com/settings/apps/new")).toBe(BASE);
+  });
+});
+
 describe("registration", () => {
   it("is closed once the App is configured", async () => {
     stubGitHub({});
@@ -133,6 +186,7 @@ describe("registration", () => {
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(setCookie(response, SETUP_COOKIE)?.attributes).toMatch(/Max-Age=0/);
     expect(github.called("POST", CONVERSION)).toHaveLength(1);
     const page = unescapeHtml(await response.text());

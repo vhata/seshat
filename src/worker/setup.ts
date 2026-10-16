@@ -62,7 +62,8 @@ ${error ? html`<p class="warning">${error}</p>` : html``}
 <input id="name" name="name" maxlength="${APP_NAME_MAX}" placeholder="Seshat for your-login" required>
 <p><button type="submit">Continue</button></p>
 </form>`,
-    { status, wide: true },
+    // The form posts back here, so the browser must send the real Origin.
+    { status, wide: true, referrerPolicy: "same-origin" },
   );
 }
 
@@ -102,6 +103,8 @@ ${
 </form>`,
     {
       wide: true,
+      // The form posts to GitHub; send it the instance's origin only.
+      referrerPolicy: "strict-origin",
       headers: {
         "set-cookie": serializeCookie(SETUP_COOKIE, state, { secure, maxAge: SETUP_COOKIE_SECONDS }),
       },

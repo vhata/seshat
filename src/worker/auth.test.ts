@@ -150,6 +150,8 @@ describe("a refused account (acceptance check 1)", () => {
     const response = await callback(cookieHeader, `code=abc&state=${state}`);
 
     expect(response.status).toBe(403);
+    // The callback URL holds the code; the refusal page sends no referrer.
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(await response.text()).toContain(`@${OWNER_LOGIN}`);
     expect(sessionCookieFrom(response)).toBeNull();
     // The authorization, and with it every token, is deleted on GitHub,

@@ -28,6 +28,14 @@ label { display: block; text-align: left; margin: 1rem 0 0.3rem; }
 .warning { color: #f5c26b; }
 `;
 
+/**
+ * Referrer policies a page may use. `same-origin` suits a form that posts
+ * back to the instance: the browser sends the real Origin to the instance
+ * and nothing to other sites. `strict-origin` suits a form that posts to
+ * GitHub: GitHub gets the instance's origin, never a path.
+ */
+export type ReferrerPolicyValue = "no-referrer" | "same-origin" | "strict-origin";
+
 /** Security headers for every Worker-rendered page. */
 export const PAGE_HEADERS: Readonly<Record<string, string>> = {
   "content-type": "text/html; charset=utf-8",
@@ -36,7 +44,10 @@ export const PAGE_HEADERS: Readonly<Record<string, string>> = {
   // GitHub (the App manifest).
   "content-security-policy":
     "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self' https://github.com; base-uri 'none'; frame-ancestors 'none'",
-  // The callback URL carries an authorization code; never send it onwards.
+  // The callback URL carries an authorization code and the registration
+  // page carries the App's credentials; by default nothing is sent onwards.
+  // Pages with a form override this, because a form post under no-referrer
+  // carries `Origin: null` and would fail the same-origin check.
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -45,7 +56,13 @@ export const PAGE_HEADERS: Readonly<Record<string, string>> = {
 export function page(
   title: string,
   body: SafeHtml,
-  init: { status?: number; headers?: HeadersInit; wide?: boolean } = {},
+  init: {
+    status?: number;
+    headers?: HeadersInit;
+    wide?: boolean;
+    /** See `PAGE_HEADERS`; only pages with a form change it. */
+    referrerPolicy?: ReferrerPolicyValue;
+  } = {},
 ): Response {
   const document = html`<!doctype html>
 <html lang="en">
@@ -59,6 +76,7 @@ export function page(
 <body><main${init.wide ? html` class="wide"` : html``}>${body}</main></body>
 </html>`;
   const headers = new Headers(PAGE_HEADERS);
+  if (init.referrerPolicy) headers.set("referrer-policy", init.referrerPolicy);
   new Headers(init.headers).forEach((value, name) => headers.append(name, value));
   return new Response(document.value, { status: init.status ?? 200, headers });
 }
