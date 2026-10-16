@@ -6,9 +6,14 @@ command -v git >/dev/null || { echo 'setup: Git is required' >&2; exit 1; }
 command -v node >/dev/null || { echo 'setup: Node.js is required (see .node-version)' >&2; exit 1; }
 command -v npm >/dev/null || { echo 'setup: npm is required' >&2; exit 1; }
 required_node="$(tr -d '[:space:]' < .node-version)"
+required_node="${required_node#v}"
+required_major="${required_node%%.*}"
+case "$required_major" in
+  ''|*[!0-9]*) echo "setup: .node-version must start with a major version; found '$required_node'" >&2; exit 1 ;;
+esac
 node_major="$(node -p 'process.versions.node.split(".")[0]')"
-if [ "$node_major" -lt "$required_node" ]; then
-  echo "setup: Node.js $required_node or later is required; found $(node --version)" >&2
+if [ "$node_major" -lt "$required_major" ]; then
+  echo "setup: Node.js $required_major or later is required; found $(node --version)" >&2
   exit 1
 fi
 current_hooks="$(git config --get core.hooksPath || true)"
