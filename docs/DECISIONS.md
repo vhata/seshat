@@ -326,3 +326,27 @@ Migrating the current file mostly adds a `Path` to each entry, since the
 format no longer implies the path from the heading, reduces each `Remote` to
 exactly `owner/name` or `none`, and replaces the file-wide survey date with
 per-entry `Surveyed` lines.
+
+## 2026-10-15 — Application work begins
+
+The owner authorized application code and installing dependencies, lifting
+the deferral recorded in
+[Foundation before application](#2026-10-11--foundation-before-application).
+The first deliverable, the stack, GitHub integration and the project index
+format are settled enough to build against; open questions stay in
+[TODO.md](../TODO.md) and are settled by their own entries rather than held
+as a reason not to start.
+
+- Work starts with `scaffold-worker-app`: the Worker, Durable Object and
+  React frontend, with type checks and tests in `scripts/check.sh`, the hooks
+  and CI. Bucketing (`bucket-prs`) and owner sign-in (`owner-sign-in`) need no
+  change-detection choice and follow it; the rest of the overview
+  (`build-pr-overview`) waits for `choose-change-detection`.
+- Dependencies are chosen in the PR that adds them, within the stack decision.
+  The CLI's language is chosen in its own PR, since the stack does not settle
+  it.
+- Deploying stays a separate step: each deploy needs the owner's word at the
+  time, as Docket requires, and so does creating or changing Cloudflare or
+  GitHub resources such as registering the GitHub App.
+- Changing CI or hooks still needs the owner's word in the turn it is made,
+  as Docket requires; the scaffold is the first PR that will ask.

@@ -77,9 +77,8 @@ The personal inventory is deliberately not copied into this public repository.
 
 ## Next phase
 
-Resolve these questions with the owner, record decisions and establish a
-minimal deliverable with acceptance checks before selecting dependencies or
-writing application code.
+Application work began on 2026-10-15
+([decision](DECISIONS.md#2026-10-15--application-work-begins)).
 
 The first deliverable, a PR overview, is defined in
 [DELIVERABLE.md](DELIVERABLE.md). The remaining questions above stay open
