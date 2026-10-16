@@ -36,6 +36,14 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### Unprioritized
 
+- [TOOLING] `bump-checkout-action` — **Move CI from `actions/checkout@v4` to the current major version.** v4 runs on the Node 20 action runtime, which GitHub has deprecated.
+  - Source: scaffold-worker-app, branch todo/scaffold-worker-app (PR #16), 2026-10-15
+  - Both jobs in `.github/workflows/ci.yml` use it. Changing CI needs the owner's word in the turn it is made ([contract](docket/CONTRACT.md)).
+
+- [TOOLING] `add-lint-format` — **Add a linter and formatter to the gates.** The scaffold's gates type-check, test and build but enforce no lint rules or formatting.
+  - Source: scaffold-worker-app, branch todo/scaffold-worker-app (PR #16), 2026-10-15
+  - Candidates: ESLint with Prettier, or Biome as one tool. Whichever is chosen runs from `scripts/check.sh`, so hooks and CI pick it up; the hook and CI change needs the owner's word in the turn it is made.
+
 ## Needs proof of concept
 
 ### P0 Critical
