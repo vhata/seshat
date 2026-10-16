@@ -28,13 +28,15 @@ export interface Account {
 }
 
 /**
- * A repository permission as GitHub reports it for one account. REST's
- * collaborator permission endpoint returns `admin`, `write`, `read` or `none`
- * in `permission`, with maintain already mapped to write and triage to read,
- * and a custom role reported by its base role. `maintain` and `triage` are
- * accepted for a reader that takes the exact role from `role_name` or
- * GraphQL's `RepositoryPermission` (lower-cased). A 404 from the endpoint maps
- * to `none`.
+ * A repository permission as GitHub reports it for one account. Read it from
+ * `permission` in REST's collaborator permission endpoint, which returns
+ * `admin`, `write`, `read` or `none`, with maintain mapped to write, triage
+ * to read and a custom role to its base role
+ * (docs/specs/2026-10-12-github-integration.md#pr-signals). A 404 maps to
+ * `none`. `role_name` is not a substitute: for a custom role it is the role's
+ * own name, which says nothing about its base. `maintain` and `triage` are
+ * accepted only for a reader that has the exact built-in role, such as a
+ * `role_name` that is one of the five built-in roles.
  */
 export type RepositoryPermission =
   | "admin"
@@ -158,15 +160,21 @@ export interface PrActivity {
   /** REST `created_at`, GraphQL `createdAt`. */
   readonly openedAt: number;
   /**
-   * When the head last changed, as near as the reader can tell: the latest
-   * push or force-push, or else the head commit's committer date.
+   * When the head last changed, as near as GitHub lets the reader tell. GitHub
+   * reports no push time (`Commit.pushedDate` was deprecated and removed), so
+   * this is the later of the latest force-push (GraphQL `timelineItems`,
+   * `HEAD_REF_FORCE_PUSHED_EVENT`, `createdAt`) and the head commit's
+   * `committedDate`. The committer date is set by the client, so it can be
+   * earlier than the push or wrong.
    */
   readonly lastCommitAt: number | null;
   /** The latest issue comment or review comment on the PR. */
   readonly lastCommentAt: number | null;
   /**
-   * The latest state change other than opening: reopened, converted to draft
-   * or marked ready for review (from GraphQL `timelineItems`).
+   * The latest state change other than opening: the latest `createdAt` among
+   * GraphQL `timelineItems` of types `REOPENED_EVENT`,
+   * `CONVERT_TO_DRAFT_EVENT` and `READY_FOR_REVIEW_EVENT` (Pull requests
+   * read).
    */
   readonly lastStateChangeAt: number | null;
 }
@@ -186,12 +194,19 @@ export interface PrInput {
   readonly headSha: string;
   readonly mergeable: Mergeability;
   readonly ci: readonly CiResult[];
-  /** Every review on the PR, in any order. */
+  /**
+   * Every review on the PR, in the order GitHub returns them (oldest first,
+   * from REST and GraphQL alike). Reviews are ordered by `submittedAt`;
+   * reviews submitted at the same millisecond keep this order.
+   */
   readonly reviews: readonly Review[];
   /**
    * The current repository permission of each account that has an approval
    * or a request for changes on the PR, keyed by account ID. An account
-   * missing from the map is not trusted.
+   * missing from the map is not trusted, so a failed or rate-limited lookup
+   * must keep the last known permission rather than leave the account out;
+   * otherwise an approved PR would drop out of Ready to land until the next
+   * successful lookup.
    */
   readonly reviewerPermissions: ReadonlyMap<number, RepositoryPermission>;
   readonly activity: PrActivity;
