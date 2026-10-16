@@ -36,15 +36,21 @@ path). It uses git's config syntax:
 ```ini
 [survey]
 	root = ~/src
+	machine = laptop
 	exclude = .*
 	exclude = work-*
 	excludeRemote = *[:/]my-employer/*
 [index]
 	clone = ~/src/projects-index
+	# For an index repository on GitHub, so that unattended runs open a
+	# draft PR. Leave it out for a host without PRs.
+	pullRequests = gh
 ```
 
-Work checkouts must be excluded here, by directory pattern or by remote
-URL pattern. A run records nothing about an excluded directory. To share
+Set `machine` rather than relying on the default, `hostname -s`, which can
+change with the network on macOS. Work checkouts must be excluded here, by
+directory pattern or by a pattern matched against any of a checkout's remote
+URLs. A run records nothing about an excluded directory. To share
 exclusions between machines, keep them in a file in the index repository and
 add `[include] path = ~/src/projects-index/survey-exclude.conf`. Every key is
 described under
@@ -67,17 +73,30 @@ after you approve the diff.
 
 Unattended, for example from cron or launchd: run the harness
 non-interactively with a prompt that names the skill and says
-`unattended`. With Claude Code, for example:
+`unattended`. Nobody is there to answer a permission prompt, so allow the
+tools the skill uses up front. With Claude Code, for example:
 
 ```sh
-claude -p 'Run the survey-projects skill in unattended mode.'
+claude -p 'Run the survey-projects skill in unattended mode.' \
+  --allowedTools 'Bash(git *)' 'Bash(gh pr *)' 'Bash(find *)' 'Bash(ls *)' \
+  'Bash(date *)' 'Bash(mktemp *)' 'Bash(hostname *)' 'Read' 'Edit'
 ```
 
-The harness must be allowed to run git without prompting. An unattended run
-never pushes the default branch. It pushes a review branch
+The exact list depends on the harness and its version; run the same command
+once by hand and check that it finishes without asking for anything. A job
+started by cron or launchd does not inherit your login session, so fetching
+and pushing the index over SSH needs `SSH_AUTH_SOCK` set in the job, or an
+HTTPS remote with a credential helper; `gh` must be logged in for the same
+user.
+
+An unattended run never pushes the default branch. It pushes a review branch
 (`index.reviewBranch`, default `seshat-survey`) for you to merge or delete,
-or, with `index.pullRequests = gh`, opens or updates one draft PR. New
-checkouts get entries in unattended runs only if
+or, with `index.pullRequests = gh`, opens or updates one draft PR, turning
+it back into a draft before adding to it. Merge the review branch with a
+squash merge: it carries merge commits that a rebase merge is likely to
+reject. On a host without PRs, delete the branch after squash-merging it if
+you added commits of your own to it, since the next run stops rather than
+drop them. New checkouts get entries in unattended runs only if
 `survey.unattendedSection` names a section to put them in.
 
 Until the Seshat CLI exists, the skill collects signals with the git commands

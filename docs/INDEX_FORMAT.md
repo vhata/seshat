@@ -234,7 +234,7 @@ decides.
 | `Last commit` | Most recent commit on any local branch, `YYYY-MM-DD on <branch>` |
 | `Checked out` | The branch checked out, or `detached` |
 | `Branches` | Local branches other than the default, comma-separated or as a nested list |
-| `Unpushed` | Commits not on their upstream, such as `3 on feature-x`, or `none` |
+| `Unpushed` | Commits on a local branch that no remote-tracking branch has, such as `3 on feature-x`, or `none` |
 | `Uncommitted` | Changed and untracked files, such as `2 modified, 1 untracked`, or `none` |
 | `Surveyed` | `YYYY-MM-DD`, the date of the survey that wrote these fields |
 
