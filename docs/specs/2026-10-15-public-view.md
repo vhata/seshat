@@ -6,9 +6,9 @@ The decision entry in
 takes effect when accepted; the owner may accept it or amend it, and the
 choices most worth a look are under [Questions for the
 owner](#questions-for-the-owner). Facts about GitHub and Cloudflare were
-checked against their documentation on 2026-10-15 and 2026-10-16; each claim links to its
-source, and points the documentation does not settle are under [Not
-verified](#not-verified).
+checked against their documentation on 2026-10-15 and 2026-10-16; each
+claim links to its source, and points the documentation does not settle
+are under [Not verified](#not-verified).
 
 The [brief](../BRIEF.md#open-design-questions) asks for public-view consent
 and filtering and says that private repository names, PRs, summaries and
@@ -49,17 +49,19 @@ stays possible.
 - **Served by the same Worker, with no visitor sign-in, as a snapshot.** A
   public route returns a filtered projection of the model, built by one
   allowlist function in the Durable Object. It opens no socket, never makes
-  the object sweep and writes nothing to storage. The page says only that
-  what it shows was checked against GitHub within the last day, not when the
-  owner last had Seshat open. Where the owner has a domain on Cloudflare, it
+  the object sweep and writes nothing to storage. The page says that each
+  repository's visibility was confirmed with GitHub within the last day and
+  that changes GitHub notified since are included, but not when the owner
+  last had Seshat open. Where the owner has a domain on Cloudflare, it
   is served from that rather than `workers.dev`, which would disclose the
   account's subdomain.
 - **Withdrawal takes effect on the next request.** Unpublishing a repository,
   turning the view off, rotating its link or the repository leaving public
   visibility removes the data from the next response. Responses are not put in
   any Cloudflare cache, so there is nothing at the edge to purge, and a
-  visitor's own browser may keep a copy for at most a minute. Copies other people already made
-  cannot be recalled, and the settings say so before anything is published.
+  visitor's own browser may keep a copy for at most a minute. Copies other
+  people already made cannot be recalled, and the settings say so before
+  anything is published.
 
 ## What the brief and earlier decisions require
 
@@ -158,6 +160,19 @@ meaning "visible only to users in the same enterprise"
   public again does not republish it; the owner decides again. Archiving it or
   turning monitoring off removes it from the page and keeps the consent, since
   it is still public.
+- Consent records the repository ID and its owner's account ID. A transfer
+  keeps the repository ID, so a lost `transferred` delivery is caught by the
+  next read that reports a different owner account, which clears the
+  consent, and a transfer to an account outside the installation is caught
+  by the next repository listing that no longer includes it, which clears
+  it too. Until then the [confirmation bound](#confirmation-bound) applies.
+- One gap is left: if both the `privatized` and the `publicized` deliveries
+  are lost and the repository is public again by the next read, Seshat
+  cannot tell it was ever private, since a repository object reports its
+  current visibility and no history of it. The consent then survives,
+  against the rule that making a repository public again does not
+  republish it. Everything shown was public at both reads; the cost is only
+  that the owner is not asked again. Accepted rather than adding reads.
 
 ### Confirmation bound
 
@@ -168,7 +183,17 @@ sweeps only while an owner overview is visible. Without a bound, a lost
 public page for as long as the owner stayed away.
 
 So the public projection includes a published repository only if a GitHub
-read reported it public within the last 24 hours. Otherwise it is withheld,
+read reported it public within the last 24 hours. Any read counts: a re-read
+of one PR after a delivery, the sweep's count query, which can select
+`visibility` for every monitored repository at no extra request, or the
+repository listing. A conditional listing answered `304 Not Modified` counts
+as well, since GitHub returns 304 only when the stored representation,
+`visibility` included, is still current ([conditional
+requests][gh-conditional]). Requiring a read of the repository's whole PR
+list instead would withhold active repositories more often without
+confirming visibility any better; freshness of the rows is a separate
+claim, which the page words accordingly (see [What a published repository
+shows](#what-a-published-repository-shows)). Otherwise it is withheld,
 without clearing its consent, and returns on the next read that confirms it:
 a re-read after any delivery about it, or the catch-up sweep when the owner
 next opens the overview. This fails closed and needs no timer, so the change
@@ -229,14 +254,18 @@ Checks API, for one, needs the `repo` scope only for private repositories
 grouped by repository; the owner's bucket order is not used, since it encodes
 what the owner should do next.
 
-The page says, in words as plain as the overview's, that each repository
-shown was checked against GitHub within the last day, that changes GitHub
-notified since then are included, and that it is a snapshot that a reload
-refreshes. It gives no exact sync time: sweeps run only while an owner
-overview is visible, so the time of the last one says when the owner last had
-Seshat open. "Within the last day" is true of everything shown by the
-[confirmation bound](#confirmation-bound), so it reveals nothing beyond that.
-Like the overview, the page claims nothing about local checkouts.
+The page says, in words as plain as the overview's, that each repository's
+visibility was confirmed with GitHub within the last day, that changes GitHub
+notified since then are included, that changes GitHub did not report may be
+missing until Seshat next checks the whole repository, and that it is a
+snapshot that a reload refreshes. It does not claim that every row was read
+within the last day: a delivery about one PR re-reads that PR and confirms
+the repository's visibility, but not the repository's other PRs. It gives no
+exact sync time either: sweeps run only while an owner overview is visible,
+so the time of the last one says when the owner last had Seshat open. The
+visibility statement is true of everything shown by the [confirmation
+bound](#confirmation-bound), so it reveals nothing beyond that. Like the
+overview, the page claims nothing about local checkouts.
 
 ## Index entries
 
@@ -337,7 +366,11 @@ Workers on the same account, which can then be probed by name. The
 recommendation is to serve the public view only from a custom domain, which
 needs a zone the owner has on Cloudflare ([custom domains][cf-custom-domains]),
 and to turn the instance's `workers.dev` route off with `workers_dev = false`
-so the account subdomain is not reachable through it. An owner without a
+and its preview URLs off with `preview_urls = false`, so the account
+subdomain is not reachable through either. Preview URLs take the form
+`<version-prefix>-<worker-name>.<subdomain>.workers.dev`, and Wrangler
+leaves an existing setting unchanged when `preview_urls` is omitted, so it
+is set explicitly ([preview URLs][cf-previews]). An owner without a
 domain can still publish on `workers.dev`, accepting that disclosure; the
 settings screen says so ([question 7](#questions-for-the-owner)).
 
@@ -528,6 +561,7 @@ GitHub documentation, read 2026-10-15:
 - [Troubleshooting the REST API][gh-troubleshooting]
 - [REST API endpoints for check runs][gh-checks]
 - [Authenticating as a GitHub App installation][gh-install-token]
+- [Best practices for using the REST API: conditional requests][gh-conditional]
 
 Cloudflare documentation, read 2026-10-15 and 2026-10-16:
 
@@ -541,6 +575,7 @@ Cloudflare documentation, read 2026-10-15 and 2026-10-16:
 - [Purge cache: availability and limits][cf-purge]
 - [workers.dev][cf-workers-dev]
 - [Custom domains][cf-custom-domains]
+- [Preview URLs][cf-previews]
 
 Other:
 
@@ -565,5 +600,7 @@ Other:
 [cf-purge]: https://developers.cloudflare.com/cache/how-to/purge-cache/#availability-and-limits
 [cf-workers-dev]: https://developers.cloudflare.com/workers/configuration/routing/workers-dev/
 [cf-custom-domains]: https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
+[cf-previews]: https://developers.cloudflare.com/workers/configuration/previews/
+[gh-conditional]: https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests
 [google-robots]: https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
 [mdn-referrer]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy

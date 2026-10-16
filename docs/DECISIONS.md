@@ -493,7 +493,11 @@ work only keeps it possible.
   while the repository is monitored and GitHub reports it as public. A
   repository that becomes public later is not published without the owner.
   A repository that becomes private or internal, is transferred or is deleted
-  loses its consent; making it public again does not republish it.
+  loses its consent; making it public again does not republish it. Consent
+  records the owner account ID, so a read reporting a different owner
+  clears it even if the `transferred` delivery was lost. If both visibility
+  deliveries are lost and the repository is public again by the next read,
+  the consent survives, since GitHub reports no visibility history.
 - **Withheld unless confirmed public in the last 24 hours.** GitHub does not
   redeliver a lost `privatized` delivery and nothing sweeps while no owner
   overview is visible, so a published repository is shown only if a GitHub
@@ -522,12 +526,14 @@ work only keeps it possible.
   reader rule the [change detection
   decision](#2026-10-15--change-detection) left open. Responses carry
   `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer` and
-  `Cache-Control: private, max-age=60`. The page says only that what it
-  shows was checked within the last day, since an exact sync time would say
-  when the owner last had Seshat open. It is served from a custom domain
+  `Cache-Control: private, max-age=60`. The page says that each
+  repository's visibility was confirmed within the last day and that
+  notified changes since are included, not that every row was re-read, and
+  gives no exact sync time, which would say when the owner last had Seshat
+  open. It is served from a custom domain
   with the `workers.dev` route off where the owner has one, because a
   `workers.dev` link discloses the account subdomain and with it the likely
-  addresses of the owner's other Workers.
+  addresses of the owner's other Workers; preview URLs are turned off too.
 - **Withdrawal takes effect on the next request.** Public responses go into
   no Cloudflare cache, so nothing needs purging; browsers may reuse a copy
   for a minute. The Cache API purges one data center at a time, and Workers
