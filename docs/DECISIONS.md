@@ -586,19 +586,21 @@ with its owner choices as recommended. This settles what the
   and the laptop `Started`; GitHub's fork and archived flags; and loose
   ends, meaning unpushed or uncommitted work on the laptop or a stale PR of
   the owner's. All are available under the App's current permissions;
-  Contents read would improve them and is not required. PRs are read only for
-  monitored repositories, so for an entry whose repository is not monitored
-  the last push is ignored and PR loose ends are not reported. With no dated
+  Contents read would improve them and is not required. PRs are read only
+  for monitored repositories, so for an entry whose repository is not
+  monitored PR loose ends are not reported, and the last push, which cannot
+  be checked against bot PRs, is used unchecked for a fork, where Dependabot
+  is off unless the owner turns it on, and ignored otherwise. With no dated
   activity, only the archived and fork rules apply.
 - **Thresholds**, as starting values changed by PR: the owner's Active fits
-  under 45 quiet days, Cooling from 14 to 180, Dormant from 90, and
-  Stranded, Thin and Archived from 14; Upstream always fits; when GitHub
-  reports the repository archived, Archived fits whatever the quiet days, and
-  no other section fits. When the section does
-  not fit, the suggestion is the first of Archived (archived on GitHub),
-  Active (under 30 quiet days), Upstream (a fork), Thin (under 14 days of
-  activity), Stranded (loose ends), Cooling (under 120 quiet days) and
-  Dormant. The wider fit bands keep a project near a boundary from flipping.
+  under 45 quiet days, Cooling from 14 to 180, Dormant from 90, and Stranded,
+  Thin and Archived from 14; Upstream always fits; when GitHub reports the
+  repository archived, Archived fits whatever the quiet days, and no other
+  section fits. When the section does not fit, the suggestion is the first of
+  Archived (archived on GitHub), Active (under 30 quiet days), Upstream (a
+  fork), Thin (under 14 days of activity), Stranded (loose ends), Cooling
+  (under 120 quiet days) and Dormant. The wider fit bands keep a project near
+  a boundary from flipping.
 - **No expiry.** An owner classification lasts until the owner changes it;
   quiet time raises a suggestion instead. Seshat keeps no record of rejected
   suggestions, since its storage holds only what it can rebuild.

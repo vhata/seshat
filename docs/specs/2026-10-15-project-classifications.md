@@ -123,24 +123,40 @@ The listing covers every repository in the installation, monitored or not,
 but PRs are read only for monitored repositories, and forks and archived
 repositories are not monitored by default
 ([deliverable](../DELIVERABLE.md#monitored-repositories)). For an index
-entry joined to a repository that is not monitored, Seshat ignores the last
-push, since it cannot check it against bot PRs, so last activity comes from
-the laptop or is unknown; and loose ends from PRs are not reported, which
-the reason says. Archived repositories cannot be pushed to, and the fork and
-archived flags still apply.
+entry joined to a repository that is not monitored, loose ends from PRs are
+not reported, which the reason says, and the last push cannot be checked
+against bot PRs:
+
+- For a fork, Seshat uses the last push unchecked, and the reason says it was
+  not checked against bot PRs. Dependabot version updates are not enabled
+  automatically on forks, even when the fork has a `dependabot.yml`
+  ([configuring version updates][dependabot-forks]), and security updates
+  are disabled automatically when a fork is created
+  ([security updates][dependabot-security-forks]), so a fork's push is
+  usually the owner's own. Ignoring it would leave most forks with no dated
+  activity, and the [no-date rules](#derived-values) would then suggest
+  Upstream for every fork the owner develops as their own project. Syncing a
+  fork with its upstream is a push too, and counts as activity.
+- For any other repository that is not monitored, such as one the owner
+  turned off, Seshat ignores the last push, so last activity comes from the
+  laptop or is unknown. Bots run there as usual, and without its PRs Seshat
+  cannot tell their pushes from the owner's.
+
+Archived repositories cannot be pushed to, and the fork and archived flags
+apply whether or not a repository is monitored.
 
 GitHub's last push covers any branch and any author. A bot that opens PRs,
 such as Dependabot or Renovate, pushes a branch to the repository, which would
 make a paused project look active. Seshat therefore ignores the last push when
 the head commit of a bot's open PR has a committer date within 10 minutes of
-it, a starting value like the thresholds below. GitHub reports only the latest push, so an
-ignored push leaves no earlier push date, and last activity then comes from
-the other signals or is unknown. This misses bot pushes for PRs that have
-since closed and workflows that push straight to a branch, and it can hide an
-owner's push followed by a bot's within those minutes. On one of the owner's
-repositories, checked on 2026-10-16, `pushed_at` matched the head commit of an
-open Dependabot PR to the second. With Contents read, the latest commit by a
-person, on any branch, replaces this guess.
+it, a starting value like the thresholds below. GitHub reports only the latest
+push, so an ignored push leaves no earlier push date, and last activity then
+comes from the other signals or is unknown. This misses bot pushes for PRs
+that have since closed and workflows that push straight to a branch, and it
+can hide an owner's push followed by a bot's within those minutes. On one of
+the owner's repositories, checked on 2026-10-16, `pushed_at` matched the head
+commit of an open Dependabot PR to the second. With Contents read, the latest
+commit by a person, on any branch, replaces this guess.
 
 Laptop fields are free text with suggested forms
 ([INDEX_FORMAT.md](../INDEX_FORMAT.md#laptop-observations)). For suggestions
@@ -443,9 +459,12 @@ and the alternative.
    changing the format.
 8. **Quiet forks.** Suggest Upstream. Alternative: never suggest Upstream,
    and show the fork flag only as evidence.
-9. **Repositories that are not monitored.** Ignore their last push, which
-   cannot be checked against bot PRs. Alternative: use it unchecked, and say
-   so in the reason.
+9. **Repositories that are not monitored.** Use a fork's last push
+   unchecked, and say so in the reason, since Dependabot is off on forks
+   unless the owner turns it on; ignore any other repository's. Alternative:
+   ignore every unchecked push, and skip the no-date fork rule when a push
+   was ignored rather than absent, which keeps bot pushes out entirely but
+   leaves most forks with no recency at all.
 
 ## Follow-up work
 
@@ -464,3 +483,5 @@ Queue entries in [TODO.md](../../TODO.md):
   triage.
 
 [openapi]: https://github.com/github/rest-api-description
+[dependabot-forks]: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-version-updates#enabling-version-updates-on-forks
+[dependabot-security-forks]: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-security-updates#enablement-for-forked-repositories
