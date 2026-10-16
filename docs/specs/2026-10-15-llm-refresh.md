@@ -431,8 +431,9 @@ bound a month of the maximum 3 runs a day at the mid tier to about $40.
    requests write. Recommended: yes. The alternative within the decided
    constraints is an owner-authored draft PR and a stored owner token.
 3. **What is sent by default?** The smaller bundle, needing no read
-   permission beyond the index repository, with the richer one only where Contents read exists and the
-   owner consents to it. Recommended: yes.
+   permission beyond the index repository, with the richer one only
+   where Contents read exists and the owner consents to it.
+   Recommended: yes.
 4. **Keys and costs.** An owner-supplied Anthropic or OpenAI key as a Worker
    secret, the caps above as defaults, and the schedule off by default.
    Recommended: yes.

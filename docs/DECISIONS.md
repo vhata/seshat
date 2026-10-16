@@ -449,9 +449,9 @@ recorded design:
   refresh PR or any webhook.
 - Seshat gathers the bundle; the model gets no tools. By default it receives
   the index entries for monitored repositories, repository metadata, and PR
-  and CI state, which need no read permission beyond the index repository; commit subjects, branches,
-  READMEs and queue files are added only where the App has Contents read and
-  the owner has consented. Local-only entries, laptop observations, code,
+  and CI state, which need no read permission beyond the index
+  repository; commit subjects, branches, READMEs and queue files are added
+  only where the App has Contents read and the owner has consented. Local-only entries, laptop observations, code,
   diffs, comments and titles of other accounts' PRs are never sent.
 - The model returns structured proposals. Seshat discards any that touch
   anything but owner fields and sections, applies the rest by the index
