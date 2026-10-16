@@ -478,3 +478,59 @@ Rejected: building now on the one App, letting the model rewrite the whole
 file, running on a bare timer, a personal access token for the index
 repository, keeping the key in Durable Object storage, and Workers AI's free
 allocation for now.
+
+## 2026-10-15 — Public view
+
+Seshat will offer a public view, later and opt-in, under the design in
+[specs/2026-10-15-public-view.md](specs/2026-10-15-public-view.md). It is not
+part of the first deliverable: `build-public-view` follows the PR overview,
+and `publish-index-entries` follows `show-project-index`. Until then, current
+work only keeps it possible.
+
+- **Nothing is public by default.** The view is off until the owner turns it
+  on, and then publishes nothing until the owner publishes a repository.
+  Consent is per repository, given by the signed-in owner, and holds only
+  while the repository is monitored and GitHub reports it as public. A
+  repository that becomes public later is not published without the owner.
+  A repository that becomes private or internal, is transferred or is deleted
+  loses its consent; making it public again does not republish it.
+- **A fixed field list, not per-field settings.** A published repository
+  shows its open PRs with the facts GitHub shows anyone on the PR's page:
+  number and link, title, author, draft state, opened and last active, and
+  the combined CI result. Buckets, review state, reviewers, branch names,
+  check details, conflict state, instance settings and sync errors are not
+  shown. Private and internal repositories never appear, not even as a
+  count.
+- **Index entries need their own consent.** Only an entry joined to a
+  published repository can be published, and only its name, classification
+  and summary. Consent binds to that text, so a change withholds the entry
+  until the owner confirms it. `Next`, `Note`, `Path`, laptop observations
+  and local-only entries are never public. Consent lives in instance
+  settings, not the index file, which agents write; losing it publishes
+  nothing.
+- **Served as a snapshot by the same Worker.** A rotatable random path
+  returns, without sign-in and whoever asks, a projection built by one
+  allowlist function in the Durable Object. It opens no socket, writes
+  nothing to storage and never makes the object sweep, which settles the
+  reader rule the [change detection
+  decision](#2026-10-15--change-detection) left open. Responses carry
+  `X-Robots-Tag: noindex`.
+- **Withdrawal takes effect on the next request.** Public responses go into
+  no Cloudflare cache, since a global purge would need a Cloudflare API token
+  the instance does not hold; browsers may reuse a copy for a minute. The
+  settings say that copies others made cannot be recalled, and that the page
+  draws on the account's shared free quotas.
+
+Constraints on current work, added to their queue entries: `owner-sign-in`
+requires the owner's session on every route except one explicit, tested list;
+`build-pr-overview` stores each repository's visibility with every read and
+delivery and treats anything but public as private; `show-project-index`
+serves nothing from the index on an unauthenticated route. None adds a GitHub
+permission, storage product or credential.
+
+Rejected: publishing every public repository automatically; field-level
+consent; redacted rows or counts for private repositories; publishing buckets
+and review state; live updates for visitors; letting a public page start
+sweeps; a separate GitHub read with a narrowed installation token; hosting
+the page elsewhere, which needs a write credential; edge caching with purge;
+and consent recorded in the index file.

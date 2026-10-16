@@ -38,7 +38,7 @@ entry:
 - Showing the project index that replaces `PROJECTS.md` (`show-project-index`).
 - PRs the owner opened in repositories they do not own (`track-upstream-prs`).
 - Review requests in other owners' repositories (`show-review-requests`).
-- A public view (`define-public-view`).
+- A public view (`build-public-view`; [decision](DECISIONS.md#2026-10-15--public-view)).
 - LLM features of any kind (`build-hosted-refresh`).
 - A layout designed specifically for mobile. The overview is built for a desktop
   browser and must remain readable on a phone.

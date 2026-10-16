@@ -79,6 +79,10 @@ The personal inventory is deliberately not copied into this public repository.
   [DECISIONS.md](DECISIONS.md#2026-10-15--hosted-llm-refresh-waits).
 - Define public-view consent and filtering. Private repository names, PRs,
   summaries and local context must not become public by accident.
+  Decided: a later, opt-in public view with per-repository consent for
+  public repositories only, a fixed field list and separate consent for
+  index entries; see
+  [DECISIONS.md](DECISIONS.md#2026-10-15--public-view).
 
 ## Next phase
 
