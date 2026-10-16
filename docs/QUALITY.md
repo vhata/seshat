@@ -29,7 +29,8 @@ called from any working directory, and runs in order:
 2. A dependency check that fails, pointing at setup, when `node_modules` is
    missing or older than `package-lock.json`.
 3. `wrangler types`, regenerating `worker-configuration.d.ts`, then the type
-   check (`tsc --build` over the frontend, Worker and configuration projects).
+   check (`tsc --build` over the frontend, Worker, test and configuration
+   projects).
 4. The tests (`vitest run`): the `shared` project runs pure logic under
    `src/shared/` in Node, and the `workers` project runs Worker and Durable
    Object tests in the Workers runtime with the bindings from
