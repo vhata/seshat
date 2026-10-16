@@ -11,6 +11,7 @@
     "worker-configuration.d.ts",
     "src/worker/**/*.test.ts",
     "src/worker/test-helpers.ts",
+    "src/test",
     "src/object/**/*.test.ts",
     "src/shared/**/*.test.ts"
   ]

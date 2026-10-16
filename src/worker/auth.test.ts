@@ -160,7 +160,6 @@ describe("a refused account (acceptance check 1)", () => {
     expect(grant?.headers.get("authorization")).toBe(CLIENT_BASIC);
     expect(JSON.parse(grant?.body ?? "{}")).toEqual({ access_token: USER_TOKEN });
     expect(github.called("DELETE", TOKEN)).toEqual([]);
-    expect(github.unexpected).toEqual([]);
   });
 
   it("is refused when GitHub reports the ID as a string", async () => {

@@ -67,7 +67,6 @@ describe("the installation guard", () => {
     ]);
     expect(result.deleted.map((deleted) => deleted.id)).toEqual([30]);
     expect(github.called("DELETE", "https://api.github.com/app/installations/30")).toHaveLength(1);
-    expect(github.unexpected).toEqual([]);
 
     const rows = await storedRows();
     expect(rows.installations).toEqual([

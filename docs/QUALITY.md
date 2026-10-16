@@ -36,9 +36,11 @@ called from any working directory, and runs in order:
    Object tests in the Workers runtime with the bindings from
    `wrangler.jsonc`. The `workers` project also gets a test configuration
    (a fixed owner ID and a throwaway App key generated on each run, so no
-   private key is committed), and its tests replace `fetch` with a stub of
-   GitHub that fails any unexpected request, so no test reaches GitHub.
-   Vitest fails when it finds no test files.
+   private key is committed). In both projects a setup file,
+   `src/test/fetch-guard.ts`, replaces `fetch` before every test with a
+   guard that refuses the request, and fails the test afterwards if any
+   request was made that the test's own stub of GitHub did not answer, so
+   no test reaches the network. Vitest fails when it finds no test files.
 5. The production build (`vite build`) of the frontend and the Worker.
 
 `bash scripts/check.sh --quick` stops after step 3. Wrangler's usage metrics

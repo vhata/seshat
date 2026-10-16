@@ -8,6 +8,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { vi } from "vitest";
 import { sessionKey } from "../shared/auth";
 import { randomToken } from "../shared/encoding";
+import { refuseRequest } from "../test/fetch-guard";
 import { instanceStub } from "./instance-stub";
 import worker from "./index";
 
@@ -33,12 +34,11 @@ type Reply = (call: GitHubCall) => Response | Promise<Response>;
 
 /**
  * Replaces `fetch` with a fake GitHub. `routes` maps `METHOD URL` (without
- * the query string) to a reply. Any other request fails the test, so
- * nothing can reach the real GitHub or anywhere else.
+ * the query string) to a reply. Any other request is refused and fails the
+ * test through the fetch guard, so nothing reaches GitHub or anywhere else.
  */
 export function stubGitHub(routes: Record<string, Reply>) {
   const calls: GitHubCall[] = [];
-  const unexpected: string[] = [];
   const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
@@ -50,16 +50,12 @@ export function stubGitHub(routes: Record<string, Reply>) {
     };
     calls.push(call);
     const reply = routes[`${request.method} ${url.origin}${url.pathname}`];
-    if (!reply) {
-      unexpected.push(`${request.method} ${url.href}`);
-      return new Response("unexpected request in test", { status: 599 });
-    }
+    if (!reply) return refuseRequest(request.method, url.href);
     return reply(call);
   });
   return {
     spy,
     calls,
-    unexpected,
     called(method: string, url: string): GitHubCall[] {
       return calls.filter((call) => call.method === method && `${call.url.origin}${call.url.pathname}` === url);
     },

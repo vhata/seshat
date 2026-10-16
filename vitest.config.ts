@@ -21,12 +21,14 @@ export default defineConfig({
           name: "shared",
           include: ["src/shared/**/*.test.ts"],
           environment: "node",
+          setupFiles: ["./src/test/fetch-guard.ts"],
         },
       },
       {
         // Worker and Durable Object code, run inside the Workers runtime with
         // the bindings from wrangler.jsonc, plus a configured test instance.
-        // GitHub is never called: tests stub `fetch`.
+        // No test reaches the network: the fetch guard refuses any request
+        // that a test's own stub does not answer.
         plugins: [
           cloudflareTest({
             wrangler: { configPath: "./wrangler.jsonc" },
@@ -47,6 +49,7 @@ export default defineConfig({
         test: {
           name: "workers",
           include: ["src/worker/**/*.test.ts", "src/object/**/*.test.ts"],
+          setupFiles: ["./src/test/fetch-guard.ts"],
         },
       },
     ],
