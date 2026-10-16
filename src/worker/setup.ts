@@ -206,11 +206,13 @@ export async function checkInstallation(context: RouteContext): Promise<Response
   const { config, env, now } = context;
   const result = await instanceStub(env).checkInstallations(now);
   if (!result.ok) {
-    const reason =
-      result.reason === "not-configured"
-        ? "The App's credentials are not fully configured on this instance."
-        : "GitHub did not list the App's installations. Try again shortly.";
-    return page("Installation", html`<h1>Installation not checked</h1><p>${reason}</p>`, {
+    const reasons = {
+      "not-configured": "The App's credentials are not fully configured on this instance.",
+      "github-failed": "GitHub did not list the App's installations. Try again shortly.",
+      "too-many-installations":
+        "The App has more installations than Seshat reads, so it changed nothing. Remove installations you do not use.",
+    } as const;
+    return page("Installation", html`<h1>Installation not checked</h1><p>${reasons[result.reason]}</p>`, {
       status: result.reason === "not-configured" ? 503 : 502,
     });
   }

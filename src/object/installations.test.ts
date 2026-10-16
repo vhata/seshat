@@ -131,6 +131,28 @@ describe("the installation guard", () => {
     ]);
   });
 
+  it("changes nothing when the list fills every page it reads", async () => {
+    const stub = instanceStub(env);
+    stubGitHub({ [`GET ${LIST}`]: () => json([PERSONAL]) });
+    await stub.checkInstallations(NOW);
+    vi.restoreAllMocks();
+    // Every page full of strangers: the list may continue past the last
+    // page, so the guard neither deletes nor forgets anything.
+    const pages: number[] = [];
+    stubGitHub({
+      [`GET ${LIST}`]: (call) => {
+        const page = Number(call.url.searchParams.get("page"));
+        pages.push(page);
+        return json(
+          Array.from({ length: 100 }, (_, index) => installation(100_000 + page * 100 + index, 9_000 + index, "User", "stranger")),
+        );
+      },
+    });
+    expect(await stub.checkInstallations(NOW)).toEqual({ ok: false, reason: "too-many-installations" });
+    expect(pages).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(((await storedRows()).installations as { id: number }[]).map((row) => row.id)).toEqual([10]);
+  });
+
   it("changes nothing when GitHub's list fails", async () => {
     stubGitHub({ [`GET ${LIST}`]: () => json({ message: "Bad credentials" }, 401) });
     const stub = instanceStub(env);

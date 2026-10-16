@@ -150,22 +150,37 @@ export async function convertManifest(code: string): Promise<ManifestCredentials
   };
 }
 
-/** Pages through `GET /app/installations`; null if any page fails. */
-export async function listInstallations(jwt: string): Promise<unknown[] | null> {
+/** Installations per page, GitHub's maximum. */
+export const INSTALLATIONS_PER_PAGE = 100;
+/**
+ * Pages read at most. A thousand installations is far beyond one owner's,
+ * and the cap keeps the loop inside the per-invocation subrequest limit.
+ */
+export const INSTALLATION_PAGES = 10;
+
+export type InstallationList =
+  | { readonly ok: true; readonly installations: readonly unknown[] }
+  | { readonly ok: false; readonly reason: "failed" | "truncated" };
+
+/**
+ * Pages through `GET /app/installations`. A list that fills every page may
+ * go on beyond them, so it is reported as truncated rather than complete:
+ * the guard must not forget installations it did not get to see.
+ */
+export async function listInstallations(jwt: string): Promise<InstallationList> {
   const all: unknown[] = [];
-  // Ten pages of 100 is far beyond one owner's installations, and keeps the
-  // loop inside the per-invocation subrequest limit.
-  for (let page = 1; page <= 10; page++) {
-    const response = await call(`${GITHUB_API}/app/installations?per_page=100&page=${page}`, {
-      headers: { ...API_HEADERS, authorization: `Bearer ${jwt}` },
-    });
-    if (!response?.ok) return null;
+  for (let page = 1; page <= INSTALLATION_PAGES; page++) {
+    const response = await call(
+      `${GITHUB_API}/app/installations?per_page=${INSTALLATIONS_PER_PAGE}&page=${page}`,
+      { headers: { ...API_HEADERS, authorization: `Bearer ${jwt}` } },
+    );
+    if (!response?.ok) return { ok: false, reason: "failed" };
     const body = await json(response);
-    if (!Array.isArray(body)) return null;
+    if (!Array.isArray(body)) return { ok: false, reason: "failed" };
     all.push(...body);
-    if (body.length < 100) return all;
+    if (body.length < INSTALLATIONS_PER_PAGE) return { ok: true, installations: all };
   }
-  return all;
+  return { ok: false, reason: "truncated" };
 }
 
 /** `DELETE /app/installations/{id}`, authenticated as the App. */

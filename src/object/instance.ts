@@ -17,7 +17,10 @@ const VERSION_TABLE = "schema_version";
 
 /** What the installation check reports to the owner's setup page. */
 export type InstallationCheck =
-  | { readonly ok: false; readonly reason: "not-configured" | "github-failed" }
+  | {
+      readonly ok: false;
+      readonly reason: "not-configured" | "github-failed" | "too-many-installations";
+    }
   | {
       readonly ok: true;
       /** Installations kept, with the account login GitHub reported just now. */
@@ -116,8 +119,14 @@ export class InstanceObject extends DurableObject<Env> {
       return { ok: false, reason: "not-configured" };
     }
     const listed = await listInstallations(jwt);
-    if (listed === null) return { ok: false, reason: "github-failed" };
-    const reported = listed
+    if (!listed.ok) {
+      // Nothing is kept, deleted or forgotten from a partial list.
+      return {
+        ok: false,
+        reason: listed.reason === "truncated" ? "too-many-installations" : "github-failed",
+      };
+    }
+    const reported = listed.installations
       .map(parseInstallation)
       .filter((installation): installation is ReportedInstallation => installation !== null);
 
