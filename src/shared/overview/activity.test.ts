@@ -68,6 +68,26 @@ describe("lastActivityAt", () => {
     expect(lastActivityAt(input)).toBe(NOW - 20 * DAY);
   });
 
+  it("skips times that are not finite numbers", () => {
+    const input = pr({
+      activity: activity({
+        openedAt: Number.NaN,
+        lastCommitAt: NOW - 3 * DAY,
+        lastCommentAt: Number.POSITIVE_INFINITY,
+      }),
+      reviews: [review(owner, "commented", HEAD, Number.NaN)],
+    });
+    expect(lastActivityAt(input)).toBe(NOW - 3 * DAY);
+  });
+
+  it("is NaN when no time is usable", () => {
+    const input = pr({
+      activity: activity({ openedAt: Number.NaN }),
+      reviews: [review(owner, "commented", HEAD, null)],
+    });
+    expect(lastActivityAt(input)).toBeNaN();
+  });
+
   it("never goes earlier than the opening time", () => {
     // A commit authored before the PR was opened.
     const input = pr({
@@ -90,9 +110,15 @@ describe("isStale", () => {
     ["exactly 7 days ago", 7 * DAY, true],
     ["1 ms over 7 days ago", 7 * DAY + 1, true],
     ["30 days ago", 30 * DAY, true],
-    ["in the future (clock skew)", -60 * 1000, false],
+    ["a minute in the future (clock skew)", -60 * 1000, false],
+    ["8 days in the future", -8 * DAY, false],
   ])("treats last activity %s as stale: %s", (_label, age, want) => {
     expect(isStale(NOW - age, NOW)).toBe(want);
+  });
+
+  it("never flags an unknown time", () => {
+    expect(isStale(Number.NaN, NOW)).toBe(false);
+    expect(isStale(NOW - 30 * DAY, Number.NaN)).toBe(false);
   });
 
   it("depends only on the times given", () => {

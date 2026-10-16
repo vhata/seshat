@@ -199,6 +199,42 @@ describe("order within a bucket", () => {
     expect(orders.size).toBe(1);
   });
 
+  it("puts rows with no usable activity time last in either group, by tie-break", () => {
+    const unknown = (number: number, isDraft: boolean) =>
+      pr({
+        number,
+        isDraft,
+        activity: {
+          openedAt: Number.NaN,
+          lastCommitAt: null,
+          lastCommentAt: null,
+          lastStateChangeAt: null,
+        },
+      });
+    for (const isDraft of [false, true]) {
+      // Unknown rows get the lower numbers, so the tie-break alone would put
+      // them first.
+      const prs = [
+        unknown(2, isDraft),
+        active(2, { number: 3, isDraft }),
+        unknown(1, isDraft),
+        active(5, { number: 4, isDraft }),
+      ];
+      const known = isDraft
+        ? ["vhata/seshat#3", "vhata/seshat#4"]
+        : ["vhata/seshat#4", "vhata/seshat#3"];
+      const bucket = isDraft ? "draft" : "awaiting-your-review";
+      const orders = new Set(
+        permutations(prs).map((input) =>
+          ids(rowsOf(buildOverview(input, options), bucket)).join(","),
+        ),
+      );
+      expect([...orders]).toEqual([
+        [...known, "vhata/seshat#1", "vhata/seshat#2"].join(","),
+      ]);
+    }
+  });
+
   it("orders by the latest activity of any kind", () => {
     const commented = active(9, {
       number: 1,

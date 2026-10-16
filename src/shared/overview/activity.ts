@@ -12,17 +12,22 @@ export const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
  * opening included. Every submitted review counts, from anyone, since the
  * stale flag is about whether anything is happening rather than whose reviews
  * decide the bucket.
+ *
+ * A time that is not a finite number, such as `Date.parse` of a malformed
+ * timestamp (NaN), is skipped. If no time is usable the result is NaN, which
+ * `isStale` never flags and `compareRows` sorts last.
  */
 export function lastActivityAt(pr: Pick<PrInput, "activity" | "reviews">): number {
   const { openedAt, lastCommitAt, lastCommentAt, lastStateChangeAt } =
     pr.activity;
-  let latest = openedAt;
-  for (const at of [lastCommitAt, lastCommentAt, lastStateChangeAt]) {
-    if (at !== null && at > latest) latest = at;
-  }
+  const times = [openedAt, lastCommitAt, lastCommentAt, lastStateChangeAt];
   for (const review of pr.reviews) {
-    if (review.state === "pending" || review.submittedAt === null) continue;
-    if (review.submittedAt > latest) latest = review.submittedAt;
+    if (review.state !== "pending") times.push(review.submittedAt);
+  }
+  let latest = Number.NaN;
+  for (const at of times) {
+    if (at === null || !Number.isFinite(at)) continue;
+    if (Number.isNaN(latest) || at > latest) latest = at;
   }
   return latest;
 }
@@ -36,5 +41,6 @@ export function lastActivityAt(pr: Pick<PrInput, "activity" | "reviews">): numbe
  * skew between GitHub and the instance, is never stale.
  */
 export function isStale(lastActivity: number, now: number): boolean {
+  // False when either time is NaN, since every comparison with NaN is.
   return now - lastActivity >= STALE_AFTER_MS;
 }

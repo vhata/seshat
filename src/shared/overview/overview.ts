@@ -74,9 +74,24 @@ export function compareRows(
 ): (a: OverviewRow, b: OverviewRow) => number {
   const direction = group === "needs-you" ? 1 : -1;
   return (a, b) =>
-    direction * (a.lastActivityAt - b.lastActivityAt) ||
+    compareActivity(a.lastActivityAt, b.lastActivityAt, direction) ||
     compareRepositoryNames(a.pr.repository.fullName, b.pr.repository.fullName) ||
     a.pr.number - b.pr.number;
+}
+
+/**
+ * Compares activity times in the given direction. A time that is not finite
+ * (NaN when no activity time could be read) sorts after every known time in
+ * either group, and such rows fall back to the tie-break among themselves.
+ * Subtracting NaN would instead give a comparator that is not consistent, and
+ * the order would depend on the sort's input.
+ */
+function compareActivity(a: number, b: number, direction: 1 | -1): number {
+  const aKnown = Number.isFinite(a);
+  const bKnown = Number.isFinite(b);
+  if (aKnown && bKnown) return direction * (a - b);
+  if (aKnown === bKnown) return 0;
+  return aKnown ? -1 : 1;
 }
 
 /**
