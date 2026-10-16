@@ -496,7 +496,9 @@ Three ways hosted updates could reach the index:
 
 If `evaluate-optional-llm-refresh` adopts hosted refresh, these constraints
 come from this decision; approval flow, keys and cost bounds stay with that
-entry.
+entry. On 2026-10-15 that entry deferred hosted refresh and recorded the design
+it would follow, which keeps these constraints
+([decision](../DECISIONS.md#2026-10-15--hosted-llm-refresh-waits)).
 
 - Refresh proposes changes only through PRs, never direct commits.
 - At most one refresh PR is open at a time. A new refresh updates it rather

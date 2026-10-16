@@ -415,3 +415,60 @@ REST (about 220 subrequests a sweep); and sweeping around the clock, which
 at the measured cost was about 3% of the installation's GitHub budget and
 under 1% of Cloudflare's daily requests, all of it spent whether or not
 anyone looked.
+
+## 2026-10-15 — Hosted LLM refresh waits
+
+Seshat does not build hosted LLM refresh of the project index now. The
+evaluation, and the design refresh would follow if it is built later, are in
+[specs/2026-10-15-llm-refresh.md](specs/2026-10-15-llm-refresh.md).
+
+- Refresh could only propose changes to owner judgment (summaries, next
+  actions, sections and entries for repositories without one), since GitHub
+  evidence is shown live and never written to the index. The laptop agent
+  (`write-survey-prompt`) already proposes the same changes with the owner
+  present, sees local evidence refresh cannot, and needs nothing new from
+  Seshat.
+- Refresh would need Contents read across every repository in the
+  installation and Contents and Pull requests write on the index repository.
+  On the instance's one GitHub App that write access would reach every
+  repository the owner owns, and confining it takes a second App.
+- Nothing reads the index yet, so there is no evidence that owner fields go
+  stale between laptop surveys, which is the only problem refresh solves.
+- Seshat therefore still writes nothing to the index, as the [project index
+  decision](#2026-10-12--project-index-source-of-truth) required until this
+  was decided.
+
+Refresh is revisited, as `build-hosted-refresh`, once `show-project-index` is
+built and in use, `write-survey-prompt` is in use, and the owner finds that
+owner fields still go stale between surveys. When built, it follows the
+recorded design:
+
+- Runs start only at the owner's request or when a weekly schedule, off by
+  default, is due and an overview is visible; never from a push, a merged
+  refresh PR or any webhook.
+- Seshat gathers the bundle; the model gets no tools. By default it receives
+  the index entries for monitored repositories, repository metadata, and PR
+  and CI state, which need no new permission; commit subjects, branches,
+  READMEs and queue files are added only where the App has Contents read and
+  the owner has consented. Local-only entries, laptop observations, code,
+  diffs, comments and titles of other accounts' PRs are never sent.
+- The model returns structured proposals. Seshat discards any that touch
+  anything but owner fields and sections, applies the rest by the index
+  format's writing rules, and opens or updates one PR from one branch.
+- Writes go through a second GitHub App installed only on the index
+  repository, with Contents and Pull requests write, so the PR is authored
+  by its bot and lands in Awaiting your review.
+- The owner supplies an Anthropic or OpenAI key as a Worker secret, ideally
+  in a dedicated workspace or project with a provider spend limit. Without a
+  key nothing changes.
+- Consent names the provider and what is sent, previews the bundle, and is
+  asked again when what is sent widens. Refresh does not run while the index
+  repository is public.
+- Default caps are 150,000 input and 16,000 output tokens per run and 3 runs
+  a day. As an estimate from 2026-10-15 prices, a typical run on a mid-priced
+  model costs about 15 cents.
+
+Rejected: building now on the one App, letting the model rewrite the whole
+file, running on a bare timer, a personal access token for the index
+repository, keeping the key in Durable Object storage, and Workers AI's free
+allocation for now.
