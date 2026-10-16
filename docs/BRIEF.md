@@ -61,8 +61,11 @@ The personal inventory is deliberately not copied into this public repository.
   whether deterministic signals, owner input or optional LLM summaries apply.
   Partly decided 2026-10-12: the section an index entry sits under is the
   authoritative classification and computed ones are only suggestions; see
-  [DECISIONS.md](DECISIONS.md#2026-10-12--project-index-source-of-truth). The
-  rest is `design-project-classifications` in [TODO.md](../TODO.md).
+  [DECISIONS.md](DECISIONS.md#2026-10-12--project-index-source-of-truth).
+  Decided 2026-10-15: the brief's seven are the classifications Seshat
+  knows, deterministic signals produce suggestions shown beside the owner's
+  section, and owner classifications do not expire; see
+  [DECISIONS.md](DECISIONS.md#2026-10-15--project-classifications).
 - Decide the source of truth for replacing `PROJECTS.md`: dashboard data,
   Markdown in an owner-selected repository, or a synchronized combination.
   Decided 2026-10-12 and refined 2026-10-13: Markdown in a dedicated private

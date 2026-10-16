@@ -378,8 +378,9 @@ whose repository cannot be resolved, because it was deleted, renamed beyond
 GitHub's redirect, or is not accessible to Seshat, is shown with a visible
 warning. It is not dropped.
 
-The first cut joins one entry to one repository. Projects that span several
-repositories can wait for the classifications design.
+The first cut joins one entry to one repository. The classifications design
+keeps it that way for now
+([several repositories](2026-10-15-project-classifications.md#projects-spanning-several-repositories)).
 
 ### Ingestion
 
@@ -591,7 +592,9 @@ Settled by this decision:
   freshness are shown.
 - The write paths for the owner, the laptop agent and any hosted refresh.
 
-Left for the classifications design (`design-project-classifications`):
+Left for the classifications design (`design-project-classifications`),
+which settled them on 2026-10-15 in
+[2026-10-15-project-classifications.md](2026-10-15-project-classifications.md):
 
 - The set of classifications and the thresholds for any computed ones.
 - Whether Seshat suggests classifications from evidence, how a suggestion is
@@ -700,7 +703,8 @@ Queue entries in [TODO.md](../../TODO.md):
 - `ship-projects-cli`: the [Seshat CLI](#seshat-cli), including `survey`.
 - `write-survey-prompt`: the laptop-agent prompt or skill.
 - `design-project-classifications`: the classifications design the brief
-  lists.
+  lists. Resolved on 2026-10-15
+  ([decision](../DECISIONS.md#2026-10-15--project-classifications)).
 - `show-project-index`: ingest the index and show it beside GitHub evidence,
   after the PR overview.
 - `self-host-index-repo`: a proof of concept for hosting the index repository

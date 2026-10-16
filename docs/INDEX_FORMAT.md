@@ -88,8 +88,10 @@ line is replaced by per-entry `Surveyed:` lines (see
 
 A second-level heading starts a section, and its text is the classification of
 every entry under it. Any non-empty name is accepted and shown as written; the
-set of classifications belongs to `design-project-classifications`, not to
-this format. Names are compared exactly after the heading text rules above.
+set of classifications Seshat knows is settled in
+[specs/2026-10-15-project-classifications.md](specs/2026-10-15-project-classifications.md),
+not by this format. Names are compared exactly after the heading text rules
+above.
 
 Two sections with the same name are one classification, and the check warns.
 A section with no entries is allowed. Content between a section heading and its
