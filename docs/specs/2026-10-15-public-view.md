@@ -165,7 +165,11 @@ meaning "visible only to users in the same enterprise"
   next read that reports a different owner account, which clears the
   consent, and a transfer to an account outside the installation is caught
   by the next repository listing that no longer includes it, which clears
-  it too. Until then the [confirmation bound](#confirmation-bound) applies.
+  it too. The same listing check clears consent when the repository leaves
+  an installation for any other reason, such as the owner deselecting it
+  from an organization installation. Only a complete, successful listing,
+  every page of it, counts; a failed or partial listing clears nothing.
+  Until then the [confirmation bound](#confirmation-bound) applies.
 - One gap is left: if both the `privatized` and the `publicized` deliveries
   are lost and the repository is public again by the next read, Seshat
   cannot tell it was ever private, since a repository object reports its
@@ -410,7 +414,8 @@ request.
 | Owner turns the public view off | 404 |
 | Owner rotates the link | 404 on the old link |
 | Repository becomes private or internal, is transferred or deleted | Gone, and its consent is cleared |
-| Repository archived or monitoring turned off | Gone; consent kept |
+| Repository leaves the installation's repository list (transferred out, or deselected from an installation), seen in a complete listing | Gone, and its consent is cleared |
+| Repository archived or monitoring turned off in Seshat | Gone; consent kept |
 | No read has confirmed the repository public for 24 hours | Withheld until a read does; consent kept |
 | An index entry's published text changes | Its index fields are withheld until confirmed |
 | Consent records lost | Nothing published |

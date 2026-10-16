@@ -495,7 +495,9 @@ work only keeps it possible.
   A repository that becomes private or internal, is transferred or is deleted
   loses its consent; making it public again does not republish it. Consent
   records the owner account ID, so a read reporting a different owner
-  clears it even if the `transferred` delivery was lost. If both visibility
+  clears it even if the `transferred` delivery was lost, and so does a
+  complete repository listing that no longer includes it, which also
+  covers a repository deselected from an installation. If both visibility
   deliveries are lost and the repository is public again by the next read,
   the consent survives, since GitHub reports no visibility history.
 - **Withheld unless confirmed public in the last 24 hours.** GitHub does not
@@ -530,10 +532,10 @@ work only keeps it possible.
   repository's visibility was confirmed within the last day and that
   notified changes since are included, not that every row was re-read, and
   gives no exact sync time, which would say when the owner last had Seshat
-  open. It is served from a custom domain
-  with the `workers.dev` route off where the owner has one, because a
-  `workers.dev` link discloses the account subdomain and with it the likely
-  addresses of the owner's other Workers; preview URLs are turned off too.
+  open. It is served from a custom domain with the `workers.dev` route off
+  where the owner has one, because a `workers.dev` link discloses the
+  account subdomain and with it the likely addresses of the owner's other
+  Workers; preview URLs are turned off too.
 - **Withdrawal takes effect on the next request.** Public responses go into
   no Cloudflare cache, so nothing needs purging; browsers may reuse a copy
   for a minute. The Cache API purges one data center at a time, and Workers
