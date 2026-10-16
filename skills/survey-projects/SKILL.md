@@ -36,9 +36,10 @@ interactive mode and cannot get an answer from the owner, push nothing.
 
 ## Rules for every run
 
-1. **Git only.** Use git and ordinary shell utilities (`ls`, `find`, `grep`,
-   `sed`, `awk`, `sort`, `wc`, `date`, `hostname`). Assume nothing about where
-   any repository is hosted. The exceptions are `gh`, only in an unattended run
+1. **Git only.** Use git and ordinary shell utilities (`cd`, `pwd`, `ls`,
+   `find`, `grep`, `sed`, `awk`, `sort`, `head`, `wc`, `tr`, `paste`,
+   `printf`, `date`, `mktemp`, `hostname`). Assume nothing about where any
+   repository is hosted. The exceptions are `gh`, only in an unattended run
    with `index.pullRequests = gh`, and the `seshat` CLI once it exists (see
    [Signals](#signals)).
 2. **Surveyed checkouts are read-only.** Run only the commands given in
@@ -82,11 +83,14 @@ interactive mode and cannot get an answer from the owner, push nothing.
 Settings live on the laptop, in git-config syntax, at `$SESHAT_SURVEY_CONFIG`
 if that is set and otherwise at
 `${XDG_CONFIG_HOME:-$HOME/.config}/seshat/survey.conf`. Read each key with
-git, which also expands `~` in paths and follows `[include]` files:
+git, which follows `[include]` files. Read the two path keys, `survey.root`
+and `index.clone`, with `--type=path`, which expands a leading `~`; without
+it the `~` stays literal:
 
 ```sh
 conf="${SESHAT_SURVEY_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/seshat/survey.conf}"
 git config -f "$conf" --includes --type=path --get survey.root
+git config -f "$conf" --includes --type=path --get index.clone
 git config -f "$conf" --includes --get-all survey.exclude
 ```
 
@@ -97,9 +101,9 @@ unattended runs stop.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `survey.root` | required | Directory whose children are surveyed. `Path` values are relative to it. |
-| `survey.machine` | output of `hostname -s` | Name used for this machine in commit messages and PR titles. |
+| `survey.machine` | output of `hostname -s` | Name used for this machine in commit messages and PR titles. Set it, since host names can change with the network. |
 | `survey.exclude` | none | Repeatable. A pattern matched against a directory's path relative to the root. |
-| `survey.excludeRemote` | none | Repeatable. A pattern matched against a checkout's `origin` URL. |
+| `survey.excludeRemote` | none | Repeatable. A pattern matched against every remote URL of a checkout. |
 | `survey.githubHost` | none | Repeatable. Extra host names, such as SSH aliases, whose remotes are recorded as `owner/name`. `github.com` is always recognised. |
 | `survey.unattendedSection` | none | Section that unattended runs add new entries to. Unset means unattended runs add no entries. |
 | `index.clone` | required | Local clone of the index repository. |
@@ -107,7 +111,7 @@ unattended runs stop.
 | `index.branch` | the remote's `HEAD`, else `main` | The branch Seshat reads. |
 | `index.file` | `PROJECTS.md` | Path of the index file in the repository. |
 | `index.reviewBranch` | `seshat-survey` | The branch unattended runs push to, and the head of their PR. |
-| `index.pullRequests` | `none` | `gh` to open draft PRs with the GitHub CLI in unattended runs; `none` to push the review branch only. |
+| `index.pullRequests` | `none` | `gh` to open draft PRs with the GitHub CLI in unattended runs; `none` to push the review branch only. The default is `none` because `gh` is a host-specific tool and git alone cannot tell whether the host has PRs; an index on GitHub should set `gh`. |
 
 Patterns use shell `case` matching, in which `*` also matches `/`. Shared
 exclusions can live in a file in the index repository, pulled in with
@@ -124,8 +128,11 @@ default branch, if not configured, with
 (strip the `$remote/` prefix), falling back to `main`.
 
 ```sh
-git -C "$clone" fetch "$remote"
+git -C "$clone" fetch --prune "$remote"
 ```
+
+`--prune` drops remote-tracking branches deleted on the remote, so a review
+branch the owner deleted is not mistaken for one that still exists.
 
 Interactive and migrate runs edit the clone itself:
 
@@ -140,8 +147,11 @@ Interactive and migrate runs edit the clone itself:
 
 Unattended runs leave the owner's clone as it is and work in a temporary
 worktree; see [Unattended: publish](#unattended-publish) for the commit it
-starts from. Remove the worktree with `git -C "$clone" worktree remove` when
-done, including after a failure.
+starts from. Remove it when done, including after a failure, with
+`git -C "$clone" worktree remove --force "$tmp"`. `--force` is needed
+because a failed run can leave the worktree dirty, and is allowed only for
+this scratch worktree, which the run created and nothing else uses; never
+use it on any other worktree.
 
 ### 2. Read the index
 
@@ -160,12 +170,18 @@ defined fields it has and where each field's item starts and ends.
 
 ### 3. Find checkouts
 
+Strip any trailing `/` from `root`, then list its children:
+
 ```sh
-find "$root" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | sort
+root="${root%/}"
+find "$root/" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | sort
 ```
 
-Keep the entries that are directories (`[ -d "$d" ]` follows links). For each
-directory `d`, with `rel` its path relative to the root:
+The trailing `/` in the `find` argument makes it descend when `root` is
+itself a symbolic link, which on macOS it otherwise does not. Each result
+is `"$root/<name>"`; `rel` is the part after `"$root/"`, with no leading or
+trailing `/`. Keep the results that are directories (`[ -d "$d" ]` follows
+links). For each directory `d`:
 
 1. If `rel` is a parent of some entry's `Path` (that `Path` starts with
    `rel/`), it holds checkouts surveyed through those entries. Skip it.
@@ -179,9 +195,16 @@ directory `d`, with `rel` its path relative to the root:
 
    It is a checkout only if `top` is not empty and equals `real`. A
    directory inside some other repository is not a checkout.
-4. For a checkout, read `git -C "$d" remote get-url origin` (exit 2 means no
-   `origin`). If the URL matches a `survey.excludeRemote` pattern, it is
-   excluded. Run nothing else in an excluded directory.
+4. For a checkout, list every remote URL:
+
+   ```sh
+   git -C "$d" config --get-regexp '^remote\..*\.url$'
+   ```
+
+   Each line is `remote.<name>.url <url>`; exit status 1 means no remotes.
+   If any URL matches a `survey.excludeRemote` pattern, the checkout is
+   excluded, so a work repository is caught even when its work remote is
+   not `origin`. Run nothing else in an excluded directory.
 
 Then add every entry `Path` that is not a direct child of the root, if
 `"$root/$path"` exists, and apply the same exclusion and checkout tests to it.
@@ -255,8 +278,11 @@ Collect these as proposals, not edits:
   has no remotes.
 - Changes to owner judgment: a different section, a `Next` that the commits
   since the last survey seem to have done, a summary that no longer fits.
-  Use the commit subjects from [Signals](#signals) as evidence and quote the
-  evidence briefly.
+  Use the commit subjects from [Signals](#signals) as evidence. In an
+  interactive session, quote them briefly. In an unattended run, describe
+  the evidence without quoting subjects (for example "12 commits on
+  `feature-x` since the last survey"), since the PR body or commit message
+  leaves the laptop and subjects were never reviewed for that.
 
 Interactive runs apply the proposals the owner accepts. Unattended runs never
 apply them: they go in the PR body, or in the commit message body where there
@@ -267,11 +293,12 @@ is no PR.
 Before committing, run `seshat check "$file"` if it is available and require
 exit status 0. Until it exists, check the result yourself:
 
-- Read `git diff --unified=0 -- "$file"`. Every removed or changed line must
-  be part of a laptop observation or `Surveyed` item of a refreshed entry, or
-  part of a change the owner accepted. Every added line must be an item you
-  were allowed to add, a new entry, or an accepted change. Undo anything
-  else.
+- Read `git -C "$work" diff --unified=0 -- "$file"`, where `work` is the
+  clone, or the scratch worktree in an unattended run. Every removed or
+  changed line must be part of a laptop observation or `Surveyed` item of a
+  refreshed entry, or part of a change the owner accepted. Every added line
+  must be an item you were allowed to add, a new entry, or an accepted
+  change. Undo anything else.
 - Every `Remote`, `Path` and `Surveyed` you wrote is valid as defined under
   [Join keys](../../docs/INDEX_FORMAT.md#join-keys) and
   [Laptop observations](../../docs/INDEX_FORMAT.md#laptop-observations).
@@ -287,7 +314,7 @@ diff together stand in for it. Say so in your report.
    proposals, then the [report](#report). If the only changes are `Surveyed`
    dates, say so and ask whether to commit them anyway.
 2. Apply the proposals the owner accepts and any corrections they ask for,
-   run step 7 again, and show the diff again.
+   run [Steps, step 7](#7-check) again, and show the diff again.
 3. On approval, commit with the subject
    `Survey checkouts on <machine>, YYYY-MM-DD` and a body that says how many
    entries were refreshed, added and left unchanged. Use the clone's own git
@@ -297,7 +324,8 @@ diff together stand in for it. Say so in your report.
    `git -C "$clone" pull --rebase "$remote" "$branch"`. If the rebase stops on
    a conflict, run `git -C "$clone" rebase --abort`, then
    `git -C "$clone" reset --hard "$remote/$branch"` only after the owner
-   agrees, and redo the run from step 2. Otherwise show the new diff
+   agrees, and redo the run from Steps, step 2. Otherwise run Steps, step 7
+   again on the rebased file, show the new diff
    (`git -C "$clone" diff "$remote/$branch" HEAD`) and ask again before
    pushing.
 
@@ -318,47 +346,64 @@ whatever the owner did with the earlier branch.
    gh pr list --repo "$slug" --head "$B" --state open --json number,isDraft,url
    ```
 
-2. `git -C "$clone" worktree add --detach "$tmp" "$remote/$branch"`, with
-   `tmp` a new temporary directory.
+   If this fails, push nothing and report: without it you cannot tell
+   whether pushing would add unread content to a PR marked ready.
+2. `tmp=$(mktemp -d)`, then
+   `git -C "$clone" worktree add --detach "$tmp" "$remote/$branch"`.
 3. If `refs/remotes/$remote/$B` exists and
    `git -C "$clone" merge-base --is-ancestor "$remote/$B" "$remote/$branch"`
    fails (`B` holds something the default branch lacks):
    - List the commits on `B` that this skill did not make:
      `git -C "$clone" log --format='%h %s' "$remote/$branch..$remote/$B"`,
      keeping those whose subject does not start with
-     `Survey checkouts on `. If there are any and step 1 found an open PR,
-     the owner is editing that PR: push nothing and report. Otherwise note
-     them for the report; their changes are not carried forward, though they
-     stay in the branch's history.
+     `Survey checkouts on `. If there are any, push nothing and report them,
+     unless `index.pullRequests = gh` and step 1 found no open PR. With an
+     open PR the owner is editing it; with no PR configuration the review
+     branch is the only place those commits are proposed, and building on
+     the default branch would drop them from its tip. With `gh` and no open
+     PR, the branch belongs to a PR that was merged or closed: note the
+     commits for the report, since their changes are not carried forward,
+     though they stay in the branch's history.
    - `git -C "$tmp" merge --no-ff --no-commit -s ours "$remote/$B"`. This
      records `B` as a parent and keeps the default branch's file unchanged.
-4. Run steps 2 to 7 against the file in the worktree. If nothing but
-   `Surveyed` dates would change, push nothing and report that.
+4. Run [Steps](#steps), steps 2 to 7, against the file in the worktree.
+   If nothing but `Surveyed` dates would change, push nothing and report
+   that.
 5. Commit with the subject `Survey checkouts on <machine>, YYYY-MM-DD`. Where
    there is no PR, the commit body carries what a PR body would (see below).
-6. `git -C "$tmp" push "$remote" "HEAD:refs/heads/$B"`. If it is rejected,
-   remove the worktree, fetch and start again from step 1, once. If it is
-   rejected again, stop and report.
-7. With `gh`: if step 1 found a PR, rewrite its title and body to describe
+6. With `gh`, if step 1 found a PR whose `isDraft` is false, convert it to a
+   draft before pushing anything to it:
+   `gh pr ready <number> --repo "$slug" --undo`. If that fails, including
+   when the host or plan does not offer drafts, push nothing and report, so
+   that unread content never reaches a PR marked ready.
+7. `git -C "$tmp" push "$remote" "HEAD:refs/heads/$B"`. If it is rejected,
+   remove the worktree, fetch and start again from step 1 of this list,
+   once. If it is rejected again, stop and report.
+8. With `gh`: if step 1 found a PR, rewrite its title and body to describe
    the branch as it now stands against the default branch
-   (`gh pr edit <number> --repo "$slug" --title ... --body-file ...`), and if
-   `isDraft` was false run `gh pr ready <number> --repo "$slug" --undo`, so
-   that unreviewed content is a draft again. Otherwise run
+   (`gh pr edit <number> --repo "$slug" --title ... --body-file ...`).
+   Otherwise run
    `gh pr create --repo "$slug" --draft --base "$branch" --head "$B" --title "Survey checkouts on <machine>, YYYY-MM-DD" --body-file <file>`.
-   If `gh` fails, including when the host refuses a draft PR, never open a PR
-   that is not a draft: leave the pushed branch as a review branch and
-   report the error.
-8. Remove the worktree.
+   If `gh pr create` fails, including when the host refuses a draft PR,
+   never open a PR that is not a draft: leave the pushed branch as a review
+   branch and report the error.
+9. Remove the worktree with `git -C "$clone" worktree remove --force "$tmp"`
+   (see [Steps, step 1](#1-prepare-the-index-clone)).
 
 Where the host has no PRs, the owner accepts `B` by merging it into the
-default branch in any way, or ignores or deletes it; the next run replaces
-its content either way.
+default branch, or rejects it by deleting it; otherwise the next run
+replaces its content. A squash merge leaves `B` not an ancestor of the
+default branch, so after squash-merging a branch that holds the owner's own
+commits, delete `B`, or every later run will stop at step 3 of this list.
+In either mode, prefer squash merges: the `-s ours` merges on `B` do not
+rebase cleanly.
 
 The PR body (or commit body) lists the refreshed and added entries by name,
-the proposals from step 6, the problems found in step 2, any commits from
-step 3 that were not carried forward, and how many new checkouts and
-directories were skipped. It names no excluded directory. It says that the
-owner's review stands in for the shared format check until that exists.
+the proposals from Steps, step 6, the problems found in Steps, step 2, any
+commits from step 3 of this list that were not carried forward, and how many
+new checkouts and directories were skipped. It names no excluded directory.
+It says that the owner's review stands in for the shared format check until
+that exists.
 
 ## Signals
 
@@ -366,7 +411,8 @@ When the Seshat CLI is installed (`command -v seshat` succeeds and
 `seshat survey --help` exits 0), run `seshat survey --json` with the survey
 root and take every signal from its output, which its documentation defines.
 Use the commands below only when it is not installed, and do not mix the two
-in one run. Likewise use `seshat check` for step 7 when it exists.
+in one run. Likewise use `seshat check` for [Steps, step 7](#7-check) when
+it exists.
 
 In the commands, `d` is the checkout directory.
 
@@ -442,12 +488,21 @@ Do not count against the configured upstream alone. A branch created from
 name every commit on it is still "ahead of upstream" although none is
 unpushed.
 
-Write the non-zero counts as `N on <branch>`, comma-separated, or `none` if
-all are zero. Add `(upstream gone)` to a branch whose track is `[gone]`, and
-`(no upstream)` to one whose upstream does not start with `refs/remotes/`.
-Counts are as of the checkout's last fetch, which you do not run. A branch
-whose upstream is gone is often one that was squash-merged and deleted on the
-remote; say that in the report rather than in the file.
+Also count commits reachable only from a detached `HEAD`, which no branch
+holds:
+
+```sh
+git -C "$d" rev-list --count HEAD --not --branches --remotes
+```
+
+Write the non-zero counts as `N on <branch>`, plus `N on detached HEAD` for
+a non-zero detached count, comma-separated, or `none` if all are zero. The
+annotations apply only to branches that appear with a non-zero count: add
+`(upstream gone)` when its track is `[gone]`, and `(no upstream)` when its
+upstream is empty or does not start with `refs/remotes/`. Counts are as of
+the checkout's last fetch, which you do not run. A branch whose upstream is
+gone is often one that was squash-merged and deleted on the remote; say that
+in the report rather than in the file.
 
 ### Uncommitted
 
@@ -459,9 +514,11 @@ git -C "$d" worktree list --porcelain
 
 In the status output, lines starting `??` are untracked files and every other
 line is a modified file (staged, unstaged, renamed or deleted). Write
-`N modified, M untracked`, then `, K stashed` if there are stashes. The first
-`worktree` in the worktree list is the checkout itself; for each other one
-whose directory exists, run the same status there and, if any have changes,
+`N modified, M untracked`, then `, K stashed` if there are stashes. The
+worktree list names the main working tree first, whichever worktree `d` is,
+and gives physical paths: the checkout itself is the `worktree` line equal
+to `$(cd "$d" && pwd -P)`. For each other worktree whose directory exists,
+run the same status there and, if any have changes,
 add `; changes in J of T other worktrees`. Write `none` when everything is
 zero. Record counts only, never file names.
 
@@ -517,16 +574,21 @@ It is always interactive, and every step is reviewed as a diff.
    repository holds nothing else) or to start a new repository with one
    import commit. Write `index.clone` and `index.remote` into the
    configuration if they are missing. While the remote is still empty,
-   `$remote/$branch` does not exist: skip the parts of step 1 that use it,
-   and the first push in step 8 creates the branch.
+   `$remote/$branch` does not exist: skip the parts of
+   [Steps, step 1](#1-prepare-the-index-clone) that use it, and the first
+   push in [Steps, step 8](#8-interactive-review-and-push) creates the
+   branch.
 2. **Import commit.** If starting new, copy the file unchanged to
    `index.file` and commit it as `Import the project index`, so that the
    migration diff shows only the migration.
 3. **Migration edits**, in one commit, `Migrate the index to format 1`:
    - Add `Path` to every entry whose heading, with inline markup removed,
      names a directory under the survey root, projects and directories that
-     are not projects alike. List the entries that name no directory and ask
-     the owner about each.
+     are not projects alike, except directories that match an exclusion
+     (apply both `survey.exclude` and `survey.excludeRemote` as in
+     [Steps, step 3](#3-find-checkouts)). List the entries that name no
+     directory, and those whose directory is excluded, and ask the owner
+     about each.
    - Reduce each `Remote` to exactly `owner/name` or `none`. Move any
      commentary into `Note`, or into `Next` if it is about what to do, and
      show each move.
@@ -543,10 +605,12 @@ It is always interactive, and every step is reviewed as a diff.
    - Add `- Format: 1` as the preamble's first bullet list only if the owner
      wants it. Propose updated wording for any preamble text describing the
      old rules; keep a legend as it is.
-4. **Check** as in step 7 until no errors remain, and show the diff.
-5. **Optionally survey**: run steps 3 to 7 as a third commit, so the owner
-   can review migration and survey separately.
-6. **Push** after the owner approves, as in step 8. Remind the owner that
+4. **Check** as in [Steps, step 7](#7-check) until no errors remain, and
+   show the diff.
+5. **Optionally survey**: run Steps, steps 3 to 7, as a third commit, so the
+   owner can review migration and survey separately.
+6. **Push** after the owner approves, as in
+   [Steps, step 8](#8-interactive-review-and-push). Remind the owner that
    their local script needs the same `Path` change.
 
 ## Report
