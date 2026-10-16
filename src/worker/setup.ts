@@ -35,6 +35,14 @@ function setupClosed(context: RouteContext): Response {
       { status: 404 },
     );
   }
+  if (context.config.appIncomplete) {
+    return page(
+      "Setup incomplete",
+      html`<h1>The App's credentials are only partly set</h1>
+<p>Set the rest of them to finish setup, or remove them all to register a new App.</p>`,
+      { status: 503 },
+    );
+  }
   return page(
     "Setup locked",
     html`<h1>Setup is locked</h1>

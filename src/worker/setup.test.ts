@@ -94,6 +94,20 @@ describe("registration", () => {
     }
   });
 
+  it("stays closed while the App's credentials are only partly set", async () => {
+    stubGitHub({});
+    const partial = { ...UNCONFIGURED, GITHUB_CLIENT_ID: "Iv23partial" };
+    const form = await fetchWithConfig(partial, PATHS.setup);
+    expect(form.status).toBe(503);
+    expect(await form.text()).not.toContain("<form");
+    const post = await fetchWithConfig(partial, PATHS.setup, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: BASE },
+      body: new URLSearchParams({ secret: "test-setup-secret", name: "Seshat test" }).toString(),
+    });
+    expect(post.status).toBe(503);
+  });
+
   it("stays locked without a setup secret", async () => {
     const response = await fetchWithConfig({ OWNER_ID: String(OWNER_ID) }, PATHS.setup);
     expect(response.status).toBe(503);

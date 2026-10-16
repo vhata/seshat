@@ -33,6 +33,8 @@ export interface InstanceConfig {
   readonly setupSecret: string | null;
   /** Null until every app credential is set. */
   readonly app: AppConfig | null;
+  /** Some App credentials are set but not all, so neither setup nor sign-in runs. */
+  readonly appIncomplete: boolean;
 }
 
 /**
@@ -65,10 +67,14 @@ export function readConfig(source: Readonly<Record<string, unknown>>): InstanceC
     slug && clientId && clientSecret && privateKey && webhookSecret
       ? { slug, clientId, clientSecret, privateKey, webhookSecret }
       : null;
+  const anySet = [slug, clientId, clientSecret, privateKey, webhookSecret].some(
+    (value) => value !== null,
+  );
   return {
     ownerId: parseAccountId(source[CONFIG_NAMES.ownerId]),
     setupSecret: text(source, CONFIG_NAMES.setupSecret),
     app,
+    appIncomplete: app === null && anySet,
   };
 }
 
@@ -80,11 +86,13 @@ export function signInReady(
 }
 
 /**
- * Whether the registration page is open: only before the app's credentials
- * are set, and only when a setup secret exists to guard it.
+ * Whether the registration page is open: only while none of the App's
+ * credentials is set, and only when a setup secret exists to guard it.
+ * Setting any one of them closes it, so a partly stored registration is
+ * finished or removed rather than silently replaced.
  */
 export function setupOpen(
   config: InstanceConfig,
 ): config is InstanceConfig & { setupSecret: string } {
-  return config.app === null && config.setupSecret !== null;
+  return config.app === null && !config.appIncomplete && config.setupSecret !== null;
 }

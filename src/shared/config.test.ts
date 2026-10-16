@@ -39,8 +39,18 @@ describe("readConfig", () => {
       partial[missing] = "  ";
       const config = readConfig(partial);
       expect(config.app).toBeNull();
+      expect(config.appIncomplete).toBe(true);
       expect(signInReady(config)).toBe(false);
-      expect(setupOpen(config)).toBe(true);
+    }
+  });
+
+  it("opens setup only while none of the App's credentials is set", () => {
+    const none = readConfig({ OWNER_ID: "1001", SETUP_SECRET: "s" });
+    expect(none.appIncomplete).toBe(false);
+    expect(setupOpen(none)).toBe(true);
+    for (const [name, value] of Object.entries(APP)) {
+      const one = readConfig({ OWNER_ID: "1001", SETUP_SECRET: "s", [name]: value });
+      expect(setupOpen(one)).toBe(false);
     }
   });
 
