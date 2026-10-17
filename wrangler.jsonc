@@ -1,0 +1,25 @@
+// Worker configuration. Local development and tests read this file; nothing
+// here is deployed until the owner runs a deploy.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "seshat",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-10-12",
+  "assets": {
+    // The Vite plugin supplies the built frontend as the asset directory.
+    "not_found_handling": "single-page-application",
+    // API paths reach the Worker even when no asset matches, instead of
+    // falling back to index.html. "/api/*" does not match "/api" itself.
+    "run_worker_first": ["/api", "/api/*"]
+  },
+  "vars": {
+    // Region the instance's Durable Object is created in. A hint only counts
+    // on the object's first request, which may be a GitHub webhook rather
+    // than the owner's browser, so every request passes it.
+    "INSTANCE_LOCATION_HINT": "wnam"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "INSTANCE", "class_name": "InstanceObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["InstanceObject"] }]
+}

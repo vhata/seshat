@@ -11,8 +11,8 @@ This project is run with docket. Read [docket/CONTRACT.md](docket/CONTRACT.md) b
 - Queue areas: `[PRODUCT]`, `[GITHUB]`, `[HOSTING]`, `[TOOLING]`, `[DOCS]`.
 - Concurrency cap: Two heavy builds or validation runs at once.
 - Merging and releases: The user merges; no standing delegation. Releases, deployment and publishing require explicit authorization.
-- Optional pieces in force: Staged TODO queue, independent review, review ledger scaffolding, hooks and PR/main CI are in force. Codebase review snapshots await a requested review. Roadmap queue, stacked PRs and scheduled extended validation are deferred until needed.
-- Environment: Bash 3.2-compatible workflow scripts. Standalone Python uses `/Users/jonathan.hitchcock/.venv/3.12/`; a future Python project must use its own Python 3.12 virtualenv. The application stack is TypeScript on Cloudflare Workers with a React and Vite frontend ([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)); no application dependencies are installed yet.
+- Optional pieces in force: Staged TODO queue, independent review, review ledger scaffolding, hooks, PR/main CI and stacked PRs (turned on by the owner on 2026-10-15) are in force. Codebase review snapshots await a requested review. Roadmap queue and scheduled extended validation are deferred until needed.
+- Environment: Bash 3.2-compatible workflow scripts. Standalone Python uses `/Users/jonathan.hitchcock/.venv/3.12/`; a future Python project must use its own Python 3.12 virtualenv. The application stack is TypeScript on Cloudflare Workers with a React and Vite frontend ([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)); dependencies are npm packages locked in `package-lock.json` and installed by `scripts/setup.sh` on Node.js at the major version in `.node-version` or later ([toolchain](docs/DECISIONS.md#2026-10-15--toolchain)).
 
 <!-- docket:end -->
 
