@@ -28,7 +28,7 @@ export function validAppName(name: string): boolean {
 export interface AppManifest {
   readonly name: string;
   readonly url: string;
-  readonly hook_attributes: { readonly url: string; readonly active: boolean };
+  readonly hook_attributes?: { readonly url: string; readonly active: boolean };
   readonly redirect_url: string;
   readonly callback_urls: readonly string[];
   readonly setup_url: string;
@@ -36,23 +36,25 @@ export interface AppManifest {
   readonly public: boolean;
   readonly request_oauth_on_install: boolean;
   readonly default_permissions: Readonly<Record<string, "read">>;
-  readonly default_events: readonly string[];
+  readonly default_events?: readonly string[];
 }
 
 /** Whether an origin is this machine, which GitHub cannot deliver webhooks to. */
 export function isLoopback(origin: URL): boolean {
   const host = origin.hostname;
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host === "[::1]"
+  );
 }
 
 export function buildManifest(origin: URL, name: string): AppManifest {
   const base = origin.origin;
-  return {
+  const manifest: AppManifest = {
     name: name.trim(),
     url: base,
-    // GitHub cannot reach a local development server, so its webhook starts
-    // off there; a deployed instance gets deliveries from the start.
-    hook_attributes: { url: `${base}${PATHS.webhook}`, active: !isLoopback(origin) },
     redirect_url: `${base}${PATHS.registered}`,
     callback_urls: [`${base}${PATHS.callback}`],
     setup_url: `${base}${PATHS.installed}`,
@@ -65,6 +67,14 @@ export function buildManifest(origin: URL, name: string): AppManifest {
       checks: "read",
       statuses: "read",
     },
+  };
+  // GitHub refuses a manifest whose hook URL it cannot reach, even with the
+  // hook inactive, so an App registered from a local development server has
+  // no webhook and no event subscriptions. Sign-in needs neither.
+  if (isLoopback(origin)) return manifest;
+  return {
+    ...manifest,
+    hook_attributes: { url: `${base}${PATHS.webhook}`, active: true },
     // Installation and authorization events are always delivered and need
     // no subscription.
     default_events: [

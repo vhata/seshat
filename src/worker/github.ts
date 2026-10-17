@@ -115,7 +115,7 @@ export interface ManifestCredentials {
   readonly slug: string;
   readonly clientId: string;
   readonly clientSecret: string;
-  /** Null when the App was registered with its webhook inactive. */
+  /** Null when GitHub returns no webhook secret, as it may for an App registered without a webhook. */
   readonly webhookSecret: string | null;
   readonly pem: string;
   readonly ownerLogin: string | null;

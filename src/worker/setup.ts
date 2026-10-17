@@ -102,7 +102,7 @@ export async function startRegistration(context: RouteContext): Promise<Response
 <p>GitHub will ask you to confirm the App <code>${manifest.name}</code>, then send you back here with its credentials.</p>
 ${
   isLoopback(url)
-    ? html`<p class="warning">This instance runs on this machine, which GitHub cannot reach, so the App's webhook starts inactive. Sign-in works without it.</p>`
+    ? html`<p class="warning">This instance runs on this machine, which GitHub cannot reach, so the App is registered without a webhook or event subscriptions. Sign-in works without them.</p>`
     : html``
 }
 <form method="post" action="${action}">
@@ -182,7 +182,7 @@ export async function finishRegistration(context: RouteContext): Promise<Respons
   }
   if (credentials.webhookSecret === null) {
     notes.push(
-      html`<p class="warning">GitHub created the App without a webhook secret, so Seshat generated one. When you activate the App's webhook, set this same secret in the App's settings on GitHub.</p>`,
+      html`<p class="warning">GitHub created the App without a webhook secret, so Seshat generated one. If you later give the App a webhook, use this same secret and subscribe it to the overview's events.</p>`,
     );
   }
 

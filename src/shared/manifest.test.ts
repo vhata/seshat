@@ -10,9 +10,33 @@ describe("buildManifest", () => {
     expect(manifest.public).toBe(false);
   });
 
-  it("starts the webhook inactive on a local development server", () => {
-    for (const origin of ["http://localhost:5173", "http://127.0.0.1:8787", "http://[::1]:5173"]) {
-      expect(buildManifest(new URL(origin), "Seshat").hook_attributes.active).toBe(false);
+  it("subscribes a deployed instance's webhook to the overview's events", () => {
+    for (const origin of [
+      "https://seshat.example.workers.dev",
+      "https://localhost.example.com",
+      "https://127.0.0.1.example.com",
+    ]) {
+      const manifest = buildManifest(new URL(origin), "Seshat");
+      expect(manifest.hook_attributes?.active).toBe(true);
+      expect(manifest.default_events).toContain("pull_request");
+    }
+  });
+
+  it("leaves out the webhook and events on a local development server", () => {
+    // GitHub refuses a manifest whose hook URL it cannot reach, even an
+    // inactive one: "Hook url is not supported because it isn't reachable
+    // over the public Internet (localhost)".
+    for (const origin of [
+      "http://localhost:5173",
+      "http://seshat.localhost:5173",
+      "http://127.0.0.1:8787",
+      "http://127.0.0.2:8787",
+      "http://[::1]:5173",
+    ]) {
+      const manifest = buildManifest(new URL(origin), "Seshat");
+      expect(manifest).not.toHaveProperty("hook_attributes");
+      expect(manifest).not.toHaveProperty("default_events");
+      expect(JSON.stringify(manifest)).not.toContain("/api/github/webhook");
     }
   });
 });

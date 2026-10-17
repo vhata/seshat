@@ -65,11 +65,14 @@ deployed instance. Each secret write deploys a new version.
 
 To try sign-in locally:
 
-1. Put `OWNER_ID` and `SETUP_SECRET` in `.dev.vars` and run `npm run dev`.
+1. Put `OWNER_ID` and `SETUP_SECRET` in `.dev.vars` and run
+   `npm run dev -- --port 5173 --strictPort`. The App's callback URLs name
+   this address, so keep the port the same on later runs.
 2. Open `/setup`, enter the setup secret and a name for the App, and confirm
    on GitHub. This registers a real, private GitHub App on your account,
-   pointed at the local server; GitHub cannot deliver its webhook there, so
-   it starts inactive.
+   pointed at the local server. GitHub refuses a webhook it cannot reach,
+   so this App has no webhook or event subscriptions; sign-in does not need
+   them.
 3. Copy the `.dev.vars` lines the page shows (it shows them only once),
    restart `npm run dev`, and follow its link to install the App on your
    personal account with All repositories. GitHub then returns you to
