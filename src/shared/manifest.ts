@@ -42,7 +42,12 @@ export interface AppManifest {
 /** Whether an origin is this machine, which GitHub cannot deliver webhooks to. */
 export function isLoopback(origin: URL): boolean {
   const host = origin.hostname;
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host === "[::1]"
+  );
 }
 
 export function buildManifest(origin: URL, name: string): AppManifest {

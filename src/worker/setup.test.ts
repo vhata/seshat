@@ -241,6 +241,33 @@ describe("registration", () => {
     expect(await response.text()).toContain("Only account 1001 will be able to sign in");
   });
 
+  it("generates a webhook secret when GitHub returns none, as for a local App", async () => {
+    stubGitHub({
+      [`POST ${CONVERSION}`]: () =>
+        json(
+          {
+            id: 77,
+            slug: "seshat-local",
+            client_id: "Iv23local",
+            client_secret: "local-client-secret",
+            webhook_secret: null,
+            pem: PEM,
+            owner: { id: OWNER_ID, login: "the-owner" },
+          },
+          201,
+        ),
+    });
+    const started = await postSetup({ secret: "test-setup-secret", name: "Seshat local" });
+    const state = setCookie(started, SETUP_COOKIE)?.value ?? "";
+    const response = await fetchWithConfig(UNCONFIGURED, `${PATHS.registered}?code=manifest-code&state=${state}`, {
+      headers: { cookie: `${SETUP_COOKIE}=${state}` },
+    });
+    expect(response.status).toBe(200);
+    const page = unescapeHtml(await response.text());
+    expect(page).toMatch(/GITHUB_WEBHOOK_SECRET="[A-Za-z0-9_-]{43}"/);
+    expect(page).toContain("GitHub created the App without a webhook secret");
+  });
+
   it("explains when GitHub will not convert the code", async () => {
     stubGitHub({ [`POST ${CONVERSION}`]: () => json({ message: "Not Found" }, 404) });
     const started = await postSetup({ secret: "test-setup-secret", name: "Seshat test" });

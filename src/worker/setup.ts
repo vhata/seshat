@@ -182,7 +182,7 @@ export async function finishRegistration(context: RouteContext): Promise<Respons
   }
   if (credentials.webhookSecret === null) {
     notes.push(
-      html`<p class="warning">GitHub created the App without a webhook secret, so Seshat generated one. When you activate the App's webhook, set this same secret in the App's settings on GitHub.</p>`,
+      html`<p class="warning">GitHub created the App without a webhook secret, so Seshat generated one. If you later give the App a webhook, use this same secret and subscribe it to the overview's events.</p>`,
     );
   }
 
