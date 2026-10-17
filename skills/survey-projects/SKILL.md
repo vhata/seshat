@@ -291,6 +291,10 @@ Collect these as proposals, not edits:
   the evidence without quoting subjects (for example "12 commits on
   `feature-x` since the last survey"), since the PR body or commit message
   leaves the laptop and subjects were never reviewed for that.
+  When proposing a different section, cite the
+  [classification rules](../../docs/specs/2026-10-15-project-classifications.md#rules)
+  that point to it and the evidence behind them; the section stays the
+  owner's call.
 
 Interactive runs apply the proposals the owner accepts. Unattended runs never
 apply them: they go in the PR body, or in the commit message body where there
