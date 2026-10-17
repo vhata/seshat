@@ -39,7 +39,7 @@ entry:
 - PRs the owner opened in repositories they do not own (`track-upstream-prs`).
 - Review requests in other owners' repositories (`show-review-requests`).
 - A public view (`define-public-view`).
-- LLM features of any kind (`evaluate-optional-llm-refresh`).
+- LLM features of any kind (`build-hosted-refresh`).
 - A layout designed specifically for mobile. The overview is built for a desktop
   browser and must remain readable on a phone.
 

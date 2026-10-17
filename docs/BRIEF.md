@@ -75,6 +75,8 @@ The personal inventory is deliberately not copied into this public repository.
 - Evaluate hosted refresh using GitHub context, the existing Markdown and a
   supplied prompt, optionally with an owner-supplied Anthropic or OpenAI key.
   Decide approval, secret handling, cost bounds and self-PR behavior before use.
+  Decided 2026-10-15: not now, with the design it would follow recorded; see
+  [DECISIONS.md](DECISIONS.md#2026-10-15--hosted-llm-refresh-waits).
 - Define public-view consent and filtering. Private repository names, PRs,
   summaries and local context must not become public by accident.
 

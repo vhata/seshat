@@ -132,6 +132,14 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### Unprioritized
 
+- [PRODUCT] `build-hosted-refresh` — **Build optional hosted LLM refresh of the project index to the recorded design, if the owner finds owner fields still go stale between laptop surveys.** Refresh was deferred because the laptop agent covers the same owner-field proposals with no new permissions, and nothing yet shows whether a gap remains.
+  - Source: evaluate-optional-llm-refresh decision, branch todo/evaluate-optional-llm-refresh, 2026-10-15
+  - Starting point: [Design if adopted](docs/specs/2026-10-15-llm-refresh.md#design-if-adopted) and the [decision](docs/DECISIONS.md#2026-10-15--hosted-llm-refresh-waits): owner-requested or visible-overview-gated weekly runs, a Seshat-gathered bundle, structured proposals applied by the [writing rules](docs/INDEX_FORMAT.md#writing-the-file), one PR from one branch.
+  - Depends on: `show-project-index`, `write-survey-prompt`
+  - Blocked by: the owner's judgment, after using both, that owner fields (summaries, next actions, sections) still go stale between laptop surveys, for example through work on other machines or on GitHub alone ([revisit conditions](docs/specs/2026-10-15-llm-refresh.md#what-would-make-it-worthwhile)).
+  - Needs a second GitHub App installed only on the index repository with Contents and Pull requests write, registered by the owner, which needs the owner's word at the time. The richer bundle needs Contents read on the main App, which `show-project-index` may already have added; adding it prompts every installation and covers every repository in it.
+  - The provider key is an owner-set Worker secret; without one nothing changes. Calling a provider is a billable owner cost, so tests stub the provider.
+
 ## Ready for separate work
 
 ### P0 Critical
@@ -157,11 +165,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### P3 Low
 
-- [PRODUCT] `evaluate-optional-llm-refresh` — **Decide whether optional LLM refresh is useful.** Define context, provider keys, approval and cost bounds without making paid AI required.
-  - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
-  - Starting point: the constraints the project index decision sets for refresh in [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md) (PR-only writes, one open refresh PR, never triggered by an index push, a non-owner author or else a draft, consent for what is sent to the provider). Most survey signals are available from the GitHub API, so a refresh could gather one context bundle (commits, branches, PRs, CI, README and queue files). Commits, branches, READMEs and other files all need Contents read ([permissions required for GitHub Apps](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps)), so the bundle needs Contents read across monitored repositories; adding Contents to the App applies to every repository in the installation and prompts every installation to approve. Writing refresh PRs to the index repository also needs Contents write and Pull requests write. The bundle sends private repository content to the provider.
-  - Related: `show-project-index`
-
 - [PRODUCT] `define-public-view` — **Decide whether and how to offer a public view.** Define explicit publication consent and private metadata filtering.
   - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
   - The brief treats this as optional and later; earlier auth and data decisions should avoid precluding it, not design for it.
@@ -169,7 +172,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 - [PRODUCT] `design-project-classifications` — **Design project classifications, suggestions and evidence freshness.** The brief lists this as an open question; the index decision settled only that the section an entry sits under is the authoritative classification.
   - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Related: `show-project-index`, `evaluate-optional-llm-refresh`
+  - Related: `show-project-index`, `build-hosted-refresh`
   - Covers the set of classifications, thresholds for computed suggestions, how a suggestion that disagrees with the owner is shown, whether an owner classification expires, when laptop evidence is too old to show without a warning, and projects spanning several repositories.
 
 ### Unprioritized
