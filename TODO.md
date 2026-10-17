@@ -100,12 +100,14 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Starting point: [Sign-in](docs/DELIVERABLE.md#sign-in) and acceptance check 1, and the sign-in and credential sections of [docs/specs/2026-10-12-github-integration.md](docs/specs/2026-10-12-github-integration.md). The owner is configured by account ID; the stubbed `GET /user` test with a matching username and a different ID is required.
   - This entry's gate is check 1's automated half: the stubbed `GET /user` test and tests that a refused account sees no instance data and leaves no stored credential. The manual second-account scenario moves to `build-pr-overview`, since the owner could not create a second account on 2026-10-14 ([results](docs/specs/2026-10-13-cloudflare-stack.md#github-app-checks)).
   - Includes the App's [registration and installation](docs/specs/2026-10-12-github-integration.md#registration-and-installation) setup routes, since sign-in cannot be tried by hand without them. Registering a real App creates a GitHub resource and needs the owner's word at the time.
+  - Every route requires the owner's session unless it is on one explicit, tested list of unauthenticated routes (setup, sign-in and its callback, the webhook, static assets), so a later public route is an addition to that list ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
 
 - [PRODUCT] `build-pr-overview` — **Build the rest of the PR overview: monitored repositories, GitHub reads, change detection, live updates, sync status and the overview page.** With sign-in and bucketing split off, this is what remains of the first deliverable.
   - Source: TODO.md triage, 2026-10-14
   - Depends on: `bucket-prs`, `owner-sign-in`
   - Starting point: [docs/DELIVERABLE.md](docs/DELIVERABLE.md), within the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack), the [GitHub integration decision](docs/DECISIONS.md#2026-10-12--github-integration) and the [change detection decision](docs/DECISIONS.md#2026-10-15--change-detection), whose design is in [docs/specs/2026-10-14-change-detection.md](docs/specs/2026-10-14-change-detection.md). Visual references are in [docs/design/README.md](docs/design/README.md). Covers acceptance checks 2, 4 to 7, 9 and 10; the end-to-end halves of check 3 (every open PR on a monitored repository appears exactly once) and check 8 (the stale flag shown on a row from GitHub's activity data); and the manual half of check 1 if a second GitHub account is available by then, which is otherwise the owner's call to waive.
   - Split further before parallel work starts, for example repository selection, sync and live updates, and the page.
+  - Store each repository's visibility, and the time a GitHub read last reported it, with every read that stores its PRs and with each repository listing; update it from every delivery's `repository` object and from `privatized`, `publicized`, `transferred` and `deleted`; and treat anything other than `public` as private. The public view's 24-hour confirmation bound rests on that time. The owner snapshot and API stay reachable only through the owner's session ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
 
 ### P2 Normal
 
@@ -117,6 +119,7 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. The index stays on GitHub for now ([decision](docs/DECISIONS.md#2026-10-13--project-index-stays-on-github)).
   - Requirements are in the model and evidence-boundary sections of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md): per-field provenance and survey dates, "not reported" rather than "none", rename-safe joins, last good parse kept on errors, and a warning when the index repository is public.
   - Parses the index with the shared parser and check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building that module and its conformance fixtures if `ship-projects-cli` has not ([implementation](docs/INDEX_FORMAT.md#implementation)).
+  - Serves nothing from the index on an unauthenticated route; publishing entries is `publish-index-entries` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
 
 ### P3 Low
 
@@ -139,6 +142,20 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Blocked by: the owner's judgment, after using both, that owner fields (summaries, next actions, sections) still go stale between laptop surveys, for example through work on other machines or on GitHub alone ([revisit conditions](docs/specs/2026-10-15-llm-refresh.md#what-would-make-it-worthwhile)).
   - Needs a second GitHub App installed only on the index repository with Contents and Pull requests write, registered by the owner, which needs the owner's word at the time. The richer bundle needs Contents read on the main App, which `show-project-index` may already have added; adding it prompts every installation and covers every repository in it.
   - The provider key is an owner-set Worker secret; without one nothing changes. Calling a provider is a billable owner cost, so tests stub the provider.
+
+- [PRODUCT] `build-public-view` — **Build the opt-in public view of published repositories' open PRs, served without sign-in.** The public view decision allows one under explicit per-repository consent and a fixed field list; nothing is built for it in the first deliverable.
+  - Source: define-public-view decision, branch todo/define-public-view, 2026-10-15
+  - Depends on: `build-pr-overview`
+  - Related: `publish-index-entries`
+  - Starting point: [docs/specs/2026-10-15-public-view.md](docs/specs/2026-10-15-public-view.md) and the [decision](docs/DECISIONS.md#2026-10-15--public-view): the off switch, per-repository consent kept with the repository ID and owner account ID and cleared when the repository stops being public, changes owner or leaves the installation's listing, the 24-hour [confirmation bound](docs/specs/2026-10-15-public-view.md#confirmation-bound), the rotatable random path served from a custom domain where the owner has one, with `workers_dev = false` and `preview_urls = false`, the allowlist projection in the Durable Object, freshness worded as visibility confirmed within the last day plus notified changes, with no exact sync time, `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer`, `Cache-Control: private, max-age=60`, no Cloudflare cache, no socket, no storage writes and no sweeps from public requests.
+  - Tests must show that a fixture with private and internal repositories, unpublished public repositories and owner settings yields a public response containing none of their names or IDs, and that each withdrawal event in the spec's table, including a repository not confirmed public for 24 hours, takes effect on the next response.
+  - Check before relying on them: whether the Workers Rate Limiting binding is available on Free, and whether GitHub shows conflict state to visitors without write access ([not verified](docs/specs/2026-10-15-public-view.md#not-verified)).
+
+- [PRODUCT] `publish-index-entries` — **Let the owner publish chosen project index entries on the public view, bound to the text they approved.** The index decision keeps index content private unless consent names it, and the public view decision says what consent may cover.
+  - Source: define-public-view decision, branch todo/define-public-view, 2026-10-15
+  - Depends on: `build-public-view`, `show-project-index`
+  - Related: `design-project-classifications`
+  - Starting point: [Index entries](docs/specs/2026-10-15-public-view.md#index-entries). Only entries whose `Remote` joins to a published repository; only the name, classification and summary; consent records those values and a change withholds them until the owner confirms. `Next`, `Note`, `Path`, laptop observations, unknown fields and local-only entries are never public.
 
 ## Ready for separate work
 
@@ -165,10 +182,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 ### P3 Low
 
-- [PRODUCT] `define-public-view` — **Decide whether and how to offer a public view.** Define explicit publication consent and private metadata filtering.
-  - Source: owner project brief, [docs/BRIEF.md](docs/BRIEF.md), 2026-10-11
-  - The brief treats this as optional and later; earlier auth and data decisions should avoid precluding it, not design for it.
-  - Data is read with GitHub App installation tokens, so a public page needs no visitor sign-in, but GitHub's permissions do no filtering for it ([spec](docs/specs/2026-10-12-github-integration.md#public-view)).
 
 - [PRODUCT] `design-project-classifications` — **Design project classifications, suggestions and evidence freshness.** The brief lists this as an open question; the index decision settled only that the section an entry sits under is the authoritative classification.
   - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
