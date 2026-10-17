@@ -560,3 +560,68 @@ would run while nobody is looking; a separate GitHub read with a narrowed
 installation token; hosting the page elsewhere, which needs a write
 credential; edge caching with purge; and consent recorded in the index
 file.
+
+## 2026-10-15 — Project classifications
+
+Project classifications and the suggestions Seshat computes for them follow
+[specs/2026-10-15-project-classifications.md](specs/2026-10-15-project-classifications.md),
+with its owner choices as recommended. This settles what the
+[project index decision](#2026-10-12--project-index-source-of-truth) left for
+`design-project-classifications`. The index format is unchanged.
+
+- **Classifications.** Seshat knows the brief's seven (Active, Cooling,
+  Stranded, Dormant, Thin, Upstream, Archived) by exact section name. Other
+  sections, including one for directories that are not projects, are shown
+  as written and get no suggestions. Sections appear in the file's order.
+- **The owner's section stands.** Seshat never moves, hides or re-sorts an
+  entry. When the evidence does not fit the owner's section it shows one
+  suggested classification as a secondary marker on the row, with the rule
+  and each dated fact and its source, a count and filter in the index view,
+  and how to accept it by moving the entry in the file. Suggestions stay out
+  of the PR overview and notifications. A monitored repository with no entry
+  shows its suggestion as a hint for where to add one.
+- **Signals.** Last activity, from GitHub's last push (ignored when it
+  matches a bot PR's head commit), the head commits of the owner's open PRs
+  and the laptop `Last commit`; first activity, from GitHub's creation date
+  and the laptop `Started`; GitHub's fork and archived flags; and loose
+  ends, meaning unpushed or uncommitted work on the laptop or a stale PR of
+  the owner's. All are available under the App's current permissions;
+  Contents read would improve them and is not required. PRs are read only
+  for monitored repositories, so for an entry whose repository is not
+  monitored PR loose ends are not reported, and the last push, which cannot
+  be checked against bot PRs, is used unchecked for a fork, where Dependabot
+  is off unless the owner turns it on, and ignored otherwise. With no dated
+  activity, only the archived and fork rules apply.
+- **Thresholds**, as starting values changed by PR: the owner's Active fits
+  under 45 quiet days, Cooling from 14 to 180, Dormant from 90, and Stranded,
+  Thin and Archived from 14; Upstream always fits; when GitHub reports the
+  repository archived, Archived fits whatever the quiet days, and no other
+  section fits. When the section does not fit, the suggestion is the first of
+  Archived (archived on GitHub), Active (under 30 quiet days), Upstream (a
+  fork), Thin (under 14 days of activity), Stranded (loose ends), Cooling
+  (under 120 quiet days) and Dormant. The wider fit bands keep a project near
+  a boundary from flipping.
+- **No expiry.** An owner classification lasts until the owner changes it;
+  quiet time raises a suggestion instead. Seshat keeps no record of rejected
+  suggestions, since its storage holds only what it can rebuild.
+- **Laptop evidence age.** Observations that change day to day carry a
+  warning when their survey is more than 30 days old, and are then not used
+  for suggestions, so a local-only entry with an older survey gets none. A
+  survey date after today is flagged and not used.
+- **Several repositories.** One entry per repository for now, each
+  classified on its own; grouping waits for `group-multi-repo-projects`. An
+  Upstream entry whose repository is outside the installation is described
+  as not visible to the GitHub App.
+- **No dashboard editing yet; `edit-index-from-dashboard` decides it.**
+  Seshat still writes nothing to the index. If editing is built, its writes
+  go through the second App, installed only on the index repository, that
+  the [refresh decision](#2026-10-15--hosted-llm-refresh-waits) records, and
+  a dashboard accept opens a PR unless the owner amends the index decision's
+  rule that hosted code moves entries between sections only through a PR
+  the owner merges.
+
+Rejected: moving entries to their suggested section; storing dismissed
+suggestions; a single set of thresholds, which flips near boundaries;
+suggesting from local branches; suggesting Archived from long quiet; and a
+mapping of section names to classifications. Implementation is
+`suggest-classifications`, after `show-project-index`.

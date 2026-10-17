@@ -68,6 +68,18 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Source: scaffold-worker-app, branch todo/scaffold-worker-app (PR #16), 2026-10-15
   - Candidates: ESLint with Prettier, or Biome as one tool. Whichever is chosen runs from `scripts/check.sh`, so hooks and CI pick it up; the hook and CI change needs the owner's word in the turn it is made.
 
+- [PRODUCT] `edit-index-from-dashboard` — **Let the owner edit index fields from the dashboard, starting with accepting a classification suggestion.** Accepting a suggestion today means editing the file by hand.
+  - Source: design-project-classifications decision, branch todo/design-project-classifications, 2026-10-15
+  - Depends on: `show-project-index`
+  - Related: `build-hosted-refresh`, `suggest-classifications`
+  - Seshat still writes nothing to the index ([refresh decision](docs/DECISIONS.md#2026-10-15--hosted-llm-refresh-waits)); this entry decides whether owner edits lift that. Index writes go through the second App, installed only on the index repository, that the [refresh design](docs/specs/2026-10-15-llm-refresh.md#github-permissions) records, since Contents write on the main App would reach every repository the owner owns; registering it needs the owner's word at the time.
+  - Conflict to settle: the index decision says hosted code never moves an entry between sections except through a PR the owner merges ([spec](docs/specs/2026-10-12-projects-index.md#relationship-to-the-first-deliverable-and-classifications)), while its [hosted writes](docs/specs/2026-10-12-projects-index.md#hosted-writes-and-self-pr-behaviour) section says an owner's own dashboard edit could commit directly. A dashboard accept opens a PR unless the owner amends the first rule ([classifications design](docs/specs/2026-10-15-project-classifications.md#editing-from-the-dashboard)).
+
+- [PRODUCT] `group-multi-repo-projects` — **Group a project that spans several repositories under one index entry.** Format 1 joins one entry to one repository, so a quiet part of an active project is classified and suggested on its own.
+  - Source: design-project-classifications decision, branch todo/design-project-classifications, 2026-10-15
+  - Related: `suggest-classifications`
+  - Take up when the owner has a project that needs it. Likely shape: a field listing further repositories, joined like `Remote`, with last activity taken across all of them; this changes [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md) ([projects spanning several repositories](docs/specs/2026-10-15-project-classifications.md#projects-spanning-several-repositories)).
+
 ## Needs proof of concept
 
 ### P0 Critical
@@ -114,12 +126,14 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 - [PRODUCT] `show-project-index` — **Ingest the project index and show it beside GitHub evidence.** The index decision defines what the dashboard shows; this is the deliverable that builds it, after the PR overview.
   - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
   - Depends on: `build-pr-overview`
-  - Related: `design-project-classifications`
+  - Related: `suggest-classifications`
   - Needs Contents read added to the GitHub App chosen for the integration ([decision](docs/DECISIONS.md#2026-10-12--github-integration)): for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
   - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. The index stays on GitHub for now ([decision](docs/DECISIONS.md#2026-10-13--project-index-stays-on-github)).
   - Requirements are in the model and evidence-boundary sections of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md): per-field provenance and survey dates, "not reported" rather than "none", rename-safe joins, last good parse kept on errors, and a warning when the index repository is public.
   - Parses the index with the shared parser and check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building that module and its conformance fixtures if `ship-projects-cli` has not ([implementation](docs/INDEX_FORMAT.md#implementation)).
   - Serves nothing from the index on an unauthenticated route; publishing entries is `publish-index-entries` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
+
+  - From the [classifications decision](docs/DECISIONS.md#2026-10-15--project-classifications): sections are shown in the file's order with unknown names as written; laptop observations that change day to day (`Last commit`, `Checked out`, `Branches`, `Unpushed`, `Uncommitted`) carry a warning when their survey is more than 30 days old, and a survey date after today is flagged ([laptop evidence age](docs/specs/2026-10-15-project-classifications.md#laptop-evidence-age)); an Upstream entry whose repository is outside the installation is described as not visible to the GitHub App. Suggestions themselves are `suggest-classifications`.
 
 ### P3 Low
 
@@ -154,8 +168,15 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 - [PRODUCT] `publish-index-entries` — **Let the owner publish chosen project index entries on the public view, bound to the text they approved.** The index decision keeps index content private unless consent names it, and the public view decision says what consent may cover.
   - Source: define-public-view decision, branch todo/define-public-view, 2026-10-15
   - Depends on: `build-public-view`, `show-project-index`
-  - Related: `design-project-classifications`
+  - Related: `suggest-classifications`
   - Starting point: [Index entries](docs/specs/2026-10-15-public-view.md#index-entries). Only entries whose `Remote` joins to a published repository; only the name, classification and summary; consent records those values and a change withholds them until the owner confirms. `Next`, `Note`, `Path`, laptop observations, unknown fields and local-only entries are never public.
+
+- [PRODUCT] `suggest-classifications` — **Compute classification suggestions from evidence and show them beside the owner's classification in the index view.** The owner's section is authoritative, so Seshat's only way to flag an entry whose classification looks out of date is a suggestion.
+  - Source: design-project-classifications decision, branch todo/design-project-classifications, 2026-10-15
+  - Depends on: `show-project-index`
+  - Starting point: [Rules](docs/specs/2026-10-15-project-classifications.md#rules) and [How a suggestion is shown](docs/specs/2026-10-15-project-classifications.md#how-a-suggestion-is-shown). The rules are pure functions of a parse, GitHub evidence and a date, in the shared module beside the index parser so the CLI can use them; tests cover every row of the fit and suggestion tables and the examples.
+  - Needs the head commit date of open PRs added to the PR reads, to tell a bot's push from the owner's; confirm the fields listed under [Not verified](docs/specs/2026-10-15-project-classifications.md#not-verified).
+  - Includes the row marker with its reason, the count and filter in the index header, the link to the entry's line in the file, and suggestions for monitored repositories with no entry.
 
 ## Ready for separate work
 
@@ -179,13 +200,9 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
   - Uses only git, with no GitHub assumption; the index repository's remote is configuration. The one exception is an unattended run's draft PR, opened only where the host supports PRs; where the host has no PRs, an unattended run pushes to a review branch, never to the default branch, and leaves review to the owner.
   - Pushes directly after the owner approves the diff in the session; when unattended, opens or updates a single draft PR (or updates its review branch where the host has no PRs); never force-pushes; never deletes an entry for a checkout it did not find without confirmation. Excludes work checkouts, secrets and observations about non-project files. Should read the CLI's `survey` output once it exists rather than running ad-hoc git commands.
   - Reads and writes the file by [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), including its [writing rules](docs/INDEX_FORMAT.md#writing-the-file); until the shared check exists, the owner's review of the diff stands in for it. Can carry out the [migration](docs/INDEX_FORMAT.md#migrating-the-current-file) of the owner's current file.
+  - When proposing to move an entry to another section, cite the [classification rules](docs/specs/2026-10-15-project-classifications.md#rules) and the evidence behind them; the owner decides.
 
 ### P3 Low
 
-
-- [PRODUCT] `design-project-classifications` — **Design project classifications, suggestions and evidence freshness.** The brief lists this as an open question; the index decision settled only that the section an entry sits under is the authoritative classification.
-  - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Related: `show-project-index`, `build-hosted-refresh`
-  - Covers the set of classifications, thresholds for computed suggestions, how a suggestion that disagrees with the owner is shown, whether an owner classification expires, when laptop evidence is too old to show without a warning, and projects spanning several repositories.
 
 ### Unprioritized

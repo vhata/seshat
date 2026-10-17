@@ -71,8 +71,9 @@ What is left for it is prose and judgment:
 
 These are useful only if they go stale faster than the owner or the laptop
 agent updates them. Deterministic suggestions, such as a classification
-computed from activity dates, belong to `design-project-classifications` and
-need no LLM.
+computed from activity dates, belong to the
+[classifications design](2026-10-15-project-classifications.md) and need no
+LLM.
 
 ### Against the laptop agent
 
