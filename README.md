@@ -10,7 +10,10 @@ Seshat is starting to build its first deliverable, the PR overview defined in
 [DELIVERABLE.md](docs/DELIVERABLE.md), on the stack chosen in
 [DECISIONS.md](docs/DECISIONS.md#2026-10-13--cloudflare-stack). So far there
 is a scaffold: a Cloudflare Worker serving a placeholder React page and a
-health route backed by the instance's Durable Object. Nothing is deployed.
+health route backed by the instance's Durable Object. The rules that sort
+open PRs into the overview's buckets are written and tested in
+`src/shared/overview/`, but nothing feeds them from GitHub yet. Nothing is
+deployed.
 
 The intended dashboard connects to GitHub, lets the instance owner monitor
 selected repositories, groups projects by their state, and shows open pull

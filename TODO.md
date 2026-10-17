@@ -100,10 +100,12 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 
 - [PRODUCT] `build-pr-overview` — **Build the rest of the PR overview: monitored repositories, GitHub reads, change detection, live updates, sync status and the overview page.** With sign-in and bucketing split off, this is what remains of the first deliverable.
   - Source: TODO.md triage, 2026-10-14
-  - Depends on: `bucket-prs`, `owner-sign-in`
+  - Depends on: `owner-sign-in`
   - Starting point: [docs/DELIVERABLE.md](docs/DELIVERABLE.md), within the [Cloudflare stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack), the [GitHub integration decision](docs/DECISIONS.md#2026-10-12--github-integration) and the [change detection decision](docs/DECISIONS.md#2026-10-15--change-detection), whose design is in [docs/specs/2026-10-14-change-detection.md](docs/specs/2026-10-14-change-detection.md). Visual references are in [docs/design/README.md](docs/design/README.md). Covers acceptance checks 2, 4 to 7, 9 and 10; the end-to-end halves of check 3 (every open PR on a monitored repository appears exactly once) and check 8 (the stale flag shown on a row from GitHub's activity data); and the manual half of check 1 if a second GitHub account is available by then, which is otherwise the owner's call to waive.
   - Split further before parallel work starts, for example repository selection, sync and live updates, and the page.
   - Store each repository's visibility, and the time a GitHub read last reported it, with every read that stores its PRs and with each repository listing; update it from every delivery's `repository` object and from `privatized`, `publicized`, `transferred` and `deleted`; and treat anything other than `public` as private. The public view's 24-hour confirmation bound rests on that time. The owner snapshot and API stay reachable only through the owner's session ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
+  - The bucketing rules are pure functions in `src/shared/overview/`: the GitHub reads fill in `PrInput` ([types](src/shared/overview/types.ts), which notes the GitHub field behind each input), and the page renders what `buildOverview` returns.
+  - The re-read and sweep queries in the [change detection design](docs/specs/2026-10-14-change-detection.md#re-reads) do not yet read everything `PrActivity` needs for the stale flag and ordering: `timelineItems` of types `HEAD_REF_FORCE_PUSHED_EVENT`, `REOPENED_EVENT`, `CONVERT_TO_DRAFT_EVENT` and `READY_FOR_REVIEW_EVENT` (Pull requests read), and the head commit's `committedDate`. GitHub reports no push time (`Commit.pushedDate` was removed), so a plain push is known only from the client-set committer date. Estimate the queries' GraphQL cost with these fields included.
 
 ### P2 Normal
 
@@ -157,12 +159,6 @@ Ordinary follow-ups and bugs found during other work live here. Whole-codebase r
 ### P0 Critical
 
 ### P1 High
-
-- [PRODUCT] `bucket-prs` — **Implement PR bucketing, the CI and review-state derivations, ordering within buckets and the stale flag as pure functions with exhaustive tests.** These rules are most of the first deliverable's logic and need no GitHub access or change-detection choice.
-  - Source: split of `build-pr-overview`, 2026-10-15
-  - Split from: `build-pr-overview`
-  - Starting point: [Terms](docs/DELIVERABLE.md#terms), [Buckets](docs/DELIVERABLE.md#buckets), [Order within a bucket](docs/DELIVERABLE.md#order-within-a-bucket) and [Stale flag](docs/DELIVERABLE.md#stale-flag). Acceptance check 3's logic half (fixed sample data, one case per rule, precedence cases, every combination lands in a bucket, each derivation mapping) and check 8's logic half, the flag computed from last activity.
-  - Takes a plain input type for a PR and its reviews, checks and reviewer permissions, so the GitHub reads in the [change detection design](docs/specs/2026-10-14-change-detection.md#re-reads) only have to fill it in.
 
 - [GITHUB] `owner-sign-in` — **Implement owner-only sign-in through the GitHub App, refusing every other account.** Every other route sits behind it, and it needs no change-detection choice.
   - Source: split of `build-pr-overview`, 2026-10-15
