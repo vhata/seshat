@@ -18,8 +18,12 @@ requests that need attention. Only the owner may sign in; a public view is an
 optional future capability.
 
 The project also aims to replace a manually maintained `PROJECTS.md` index.
-How to collect local context, classify projects and update that index remains
-open. See the [project brief](docs/BRIEF.md) for requirements and design questions.
+Its [format](docs/INDEX_FORMAT.md) and
+[classifications](docs/specs/2026-10-15-project-classifications.md) are
+defined, and an optional agent skill,
+[survey-projects](skills/survey-projects/README.md), surveys local checkouts
+and updates it. See the [project brief](docs/BRIEF.md) for requirements and
+design questions.
 
 ## Development workflow
 

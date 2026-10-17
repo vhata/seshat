@@ -75,9 +75,9 @@ resources; deploying needs the owner's word each time
 - Exercise hooks in a disposable repository with valid content, a broken link
   and a malformed queue entry; verify rejection without changing production Git history.
 - Inspect runtime documentation against actual scripts, hook configuration and CI.
-- Review source paths: `src scripts .githooks .github docs` and the root
-  configuration files; include `AGENTS.md`, `TODO.md`, `README.md` and the
-  review index in documentation review.
+- Review source paths: `src scripts .githooks .github docs skills` and the
+  root configuration files; include `AGENTS.md`, `TODO.md`, `README.md` and
+  the review index in documentation review.
 - Expected tracked content: Markdown, LICENSE, .gitignore, shell scripts,
   executable hooks, YAML workflows, the verbatim vendored docket directory,
   logo artwork, and design references under `docs/design/` (exported prototype

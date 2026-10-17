@@ -5,8 +5,9 @@ with the [owner decisions](#owner-decisions) answered as recorded below and in
 [DECISIONS.md](DECISIONS.md#2026-10-15--project-index-format).
 
 This is the one definition of the project index file. Seshat's ingestion, the
-Seshat CLI (`ship-projects-cli`) and the laptop agent (`write-survey-prompt`)
-all read and check the file by these rules, and any tool that writes it
+Seshat CLI (`ship-projects-cli`) and the laptop agent
+([survey-projects](../skills/survey-projects/SKILL.md)) all read and check
+the file by these rules, and any tool that writes it
 follows [Writing the file](#writing-the-file). Why the index is a Markdown
 file, who writes which fields and how Seshat shows them are decided in
 [specs/2026-10-12-projects-index.md](specs/2026-10-12-projects-index.md); this
@@ -233,7 +234,7 @@ decides.
 | `Last commit` | Most recent commit on any local branch, `YYYY-MM-DD on <branch>` |
 | `Checked out` | The branch checked out, or `detached` |
 | `Branches` | Local branches other than the default, comma-separated or as a nested list |
-| `Unpushed` | Commits not on their upstream, such as `3 on feature-x`, or `none` |
+| `Unpushed` | Commits on a local branch that no remote-tracking branch has, such as `3 on feature-x`, or `none` |
 | `Uncommitted` | Changed and untracked files, such as `2 modified, 1 untracked`, or `none` |
 | `Surveyed` | `YYYY-MM-DD`, the date of the survey that wrote these fields |
 
