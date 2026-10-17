@@ -1,6 +1,6 @@
 {
-  // Tests of the Worker, the Durable Object and shared logic. Only these see
-  // the test-only `cloudflare:test` module.
+  // Tests of the Worker, the Durable Object and shared logic, and the Worker
+  // tests' helpers. Only these see the test-only `cloudflare:test` module.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
@@ -10,6 +10,8 @@
   "include": [
     "worker-configuration.d.ts",
     "src/worker/**/*.test.ts",
+    "src/worker/test-helpers.ts",
+    "src/test",
     "src/object/**/*.test.ts",
     "src/shared/**/*.test.ts"
   ]

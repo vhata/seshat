@@ -34,7 +34,13 @@ called from any working directory, and runs in order:
 4. The tests (`vitest run`): the `shared` project runs pure logic under
    `src/shared/` in Node, and the `workers` project runs Worker and Durable
    Object tests in the Workers runtime with the bindings from
-   `wrangler.jsonc`. Vitest fails when it finds no test files.
+   `wrangler.jsonc`. The `workers` project also gets a test configuration
+   (a fixed owner ID and a throwaway App key generated on each run, so no
+   private key is committed). In both projects a setup file,
+   `src/test/fetch-guard.ts`, replaces `fetch` before every test with a
+   guard that refuses the request, and fails the test afterwards if any
+   request was made that the test's own stub of GitHub did not answer, so
+   no test reaches the network. Vitest fails when it finds no test files.
 5. The production build (`vite build`) of the frontend and the Worker.
 
 `bash scripts/check.sh --quick` stops after step 3. Wrangler's usage metrics
@@ -57,7 +63,8 @@ permissions.
 
 Run the app locally with `npm run dev`, which serves the page, the Worker and
 the Durable Object from the local Workers runtime, keeping local object state
-under `.wrangler/`. Nothing in the gates deploys or creates Cloudflare
+under `.wrangler/` and reading secrets from `.dev.vars`; trying sign-in needs
+the configuration in the [README](../README.md#configuration-and-sign-in). Nothing in the gates deploys or creates Cloudflare
 resources; deploying needs the owner's word each time
 ([AGENTS.md](../AGENTS.md#docket)).
 
@@ -66,7 +73,10 @@ resources; deploying needs the owner's word each time
 - Focus: brief fidelity, secret exclusions, complete queue sources, Docket drift,
   worktree-safe hooks, Bash portability and CI/PR validation behavior; for
   application code, the stack's implementation constraints, writes kept out of
-  object constructors, and tests that would fail if the behaviour broke.
+  object constructors, and tests that would fail if the behaviour broke; for
+  the owner boundary, that every route outside the public list in
+  `src/worker/routes.ts` needs the owner's session, that nothing is stored
+  for a refused account and that no GitHub token is stored at all.
 - Baseline: `bash scripts/check.sh`, `bash docket/scripts/ci.sh`,
   `bash docket/scripts/review-due.sh`, and the skill installer's `--check` when
   that skill checkout is available. Run the installed PR marker validator

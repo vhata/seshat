@@ -8,9 +8,10 @@
   "assets": {
     // The Vite plugin supplies the built frontend as the asset directory.
     "not_found_handling": "single-page-application",
-    // API paths reach the Worker even when no asset matches, instead of
-    // falling back to index.html. "/api/*" does not match "/api" itself.
-    "run_worker_first": ["/api", "/api/*"]
+    // These paths reach the Worker instead of falling back to index.html:
+    // the API, sign-in and setup. Everything else is a static asset.
+    // "/api/*" does not match "/api" itself.
+    "run_worker_first": ["/api", "/api/*", "/auth/*", "/setup", "/setup/*"]
   },
   "vars": {
     // Region the instance's Durable Object is created in. A hint only counts

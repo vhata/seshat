@@ -666,3 +666,61 @@ this size); `@cloudflare/workers-types` instead of generated types (the
 generated file matches the compatibility date and bindings); running every
 test in the Workers runtime (pure logic tests would then depend on it for no
 gain).
+
+## 2026-10-16 — Owner sign-in
+
+Chosen in `owner-sign-in`, within the
+[GitHub integration decision](#2026-10-12--github-integration), which left
+the session's format and lifetime to implementation.
+
+- **Nothing is written before the visitor is known to be the owner.** The
+  OAuth state, the PKCE verifier and the return path travel in a ten-minute
+  HttpOnly cookie, not in the Durable Object, so a stranger's sign-in,
+  refused or abandoned, costs no rows written and leaves nothing behind.
+- **The owner check is the numeric account ID only.** `GET /user` must
+  return an integer `id` equal to `OWNER_ID`; a matching login counts for
+  nothing, and a malformed response is refused with its authorization
+  deleted.
+- **If the owner's user token cannot be revoked, the owner is not signed
+  in**, and the authorization is deleted instead, so no live token is left
+  behind on GitHub.
+- **Sessions last seven days from sign-in and are not extended.** The cookie
+  holds 32 random bytes and the object stores only their SHA-256, so a copy
+  of the database opens nothing. Checking a session only reads; expired rows
+  are pruned at the next sign-in. Cookies use the `__Host-` prefix with
+  Secure, HttpOnly and SameSite=Lax over HTTPS, and unsafe requests must
+  carry the instance's own Origin, except the signed webhook.
+- **Worker pages send no referrer, except pages with a form.** The callback
+  URL holds an authorization code and the registration page the App's
+  credentials, so pages default to `no-referrer`. Under that policy a
+  browser sends `Origin: null` with a form post, which the Origin check
+  refuses, so the setup form is served with `same-origin` (the real Origin
+  to the instance, nothing elsewhere) and the page that posts the manifest
+  to GitHub with `strict-origin` (the origin only, never a path). Accepting
+  `Origin: null` with `Sec-Fetch-Site: same-origin` was rejected as a
+  second, weaker path through the check.
+- **One explicit list of public routes** in `src/worker/routes.ts`: health,
+  sign-in, its callback, sign-out, the two registration routes and the
+  webhook. Every other path, unknown ones included, needs the owner's
+  session.
+- **Setup is open only while none of the App's credentials is set, and only
+  with `SETUP_SECRET`.** A partly stored registration closes it until the
+  owner finishes or removes it, so it is never replaced by a new App
+  unnoticed. Setup shows the credentials once and stores none of them, as
+  the integration decision chose. The App's JWT uses the client ID as
+  issuer, as GitHub recommends, so no App ID is configured.
+- **The installation guard runs from the setup URL**, for the signed-in
+  owner, against `GET /app/installations` rather than the redirect's
+  `installation_id`. Installations are kept by account ID; logins are read
+  from GitHub each time and not stored. A list that fills every page it
+  reads may be incomplete, so the guard then changes nothing. The route is
+  a GET with side effects, which a cross-site link can trigger for a
+  signed-in owner because the session cookie is SameSite=Lax. That is
+  accepted: GitHub's redirect to the setup URL is a GET, and the guard is
+  idempotent and acts only on GitHub's own list, doing nothing the owner's
+  next visit would not.
+
+Rejected: keeping sign-in state in the object (a write for every attempt,
+which a stranger could repeat against the daily quota); sessions extended on
+use (a write on every request); deleting the owner's authorization at every
+sign-in (a consent screen each time, which the integration decision avoided).

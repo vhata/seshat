@@ -14,5 +14,5 @@
     "src/object",
     "src/shared"
   ],
-  "exclude": ["**/*.test.ts"]
+  "exclude": ["**/*.test.ts", "src/worker/test-helpers.ts"]
 }
