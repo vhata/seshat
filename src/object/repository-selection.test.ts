@@ -53,6 +53,20 @@ describe("repository selection in the instance", () => {
     expect(await stub.setMonitoringOverride(1, null, NOW)).toMatchObject({ ok: true, repository: { monitored: true, monitorOverride: null } });
     expect(await stub.setMonitoringOverride(2, null, NOW)).toMatchObject({ ok: true, repository: { monitored: false } });
   });
+  it("keeps an explicit off choice when a repository leaves and later returns to the listing", async () => {
+    let listed = [repository(1)];
+    stubGitHub(githubRoutes(() => listed));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    await stub.setMonitoringOverride(1, false, NOW);
+    listed = []; await stub.refreshInstallation(10, NOW + 1);
+    expect((await stub.repositorySettings()).repositories).toEqual([]);
+    listed = [repository(1)]; await stub.refreshInstallation(10, NOW + 2);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 1, monitored: false, monitorOverride: false }]);
+    await stub.setMonitoringOverride(1, null, NOW + 3);
+    listed = []; await stub.refreshInstallation(10, NOW + 4);
+    listed = [repository(1)]; await stub.refreshInstallation(10, NOW + 5);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 1, monitored: true, monitorOverride: null }]);
+  });
   it("turning monitoring off deletes stored PRs and publishes a new snapshot", async () => {
     stubGitHub(githubRoutes(() => [repository(12)]));
     const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
@@ -142,6 +156,63 @@ describe("repository selection in the instance", () => {
     expect((await stub.repositorySettings()).installations).toEqual([]);
     expect(github.called("DELETE", "https://api.github.com/app/installations/20")).toHaveLength(2);
   });
+  it("preserves organization acceptance during a guard's pending stranger uninstall", async () => {
+    const stub = instanceStub(env);
+    let decide!: (accept: boolean) => Promise<{ ok: boolean }>;
+    await stub.health();
+    await runInDurableObject(stub, (instance) => { decide = (accept) => instance.decideOrganization(20, accept, NOW); });
+    let installations = [ORG];
+    const stranger = { id: 30, account: { id: 4004, login: "stranger", type: "User" }, repository_selection: "all" };
+    stubGitHub({ ...githubRoutes(() => [], () => installations), "DELETE https://api.github.com/app/installations/30": async () => {
+      expect(await decide(true)).toEqual({ ok: true });
+      return new Response(null, { status: 204 });
+    } });
+    await stub.checkInstallations(NOW);
+    installations = [{ ...ORG, repository_selection: "selected" }, stranger];
+    expect(await stub.checkInstallations(NOW + 1)).toMatchObject({ ok: true, kept: [{ id: 20, status: "accepted", repositorySelection: "selected" }] });
+    expect((await stub.repositorySettings()).installations).toMatchObject([{ id: 20, status: "accepted", repositorySelection: "selected" }]);
+  });
+  it("does not resurrect a refused organization from an in-flight guard response", async () => {
+    const stub = instanceStub(env);
+    let decide!: (accept: boolean) => Promise<{ ok: boolean }>;
+    await stub.health();
+    await runInDurableObject(stub, (instance) => { decide = (accept) => instance.decideOrganization(20, accept, NOW); });
+    let installations = [ORG];
+    const stranger = { id: 30, account: { id: 4004, login: "stranger", type: "User" }, repository_selection: "all" };
+    stubGitHub({ ...githubRoutes(() => [], () => installations),
+      "DELETE https://api.github.com/app/installations/20": () => new Response(null, { status: 204 }),
+      "DELETE https://api.github.com/app/installations/30": async () => {
+        expect(await decide(false)).toEqual({ ok: true });
+        return new Response(null, { status: 204 });
+      },
+    });
+    await stub.checkInstallations(NOW);
+    installations = [{ ...ORG, repository_selection: "selected" }, stranger];
+    expect(await stub.checkInstallations(NOW + 1)).toMatchObject({ ok: true, kept: [] });
+    expect((await stub.repositorySettings()).installations).toEqual([]);
+    // A later stale GitHub listing must not reverse the same decision either.
+    installations = [ORG]; await stub.checkInstallations(NOW + 2);
+    expect((await stub.repositorySettings()).installations).toEqual([]);
+  });
+  it("removes durable discovery data after eviction when the guard removes an installation", async () => {
+    let installations = [PERSONAL];
+    stubGitHub(githubRoutes(() => [repository(1)], () => installations));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    expect(JSON.stringify((await storedRows()).settings)).toContain("repository-discovery:10");
+    await evictDurableObject(stub);
+    installations = []; await stub.checkInstallations(NOW + 1);
+    expect(JSON.stringify((await storedRows()).settings)).not.toContain("repository-discovery:10");
+  }, 15_000);
+  it("cleans stale discovery data when refusing a pending organization after eviction", async () => {
+    stubGitHub({ ...githubRoutes(() => [], () => [ORG]), "DELETE https://api.github.com/app/installations/20": () => new Response(null, { status: 204 }) });
+    const stub = instanceStub(env); await stub.checkInstallations(NOW);
+    await runInDurableObject(stub, (_instance, state) => {
+      state.storage.sql.exec("INSERT INTO settings (key, value) VALUES ('repository-discovery:20', '{}')");
+    });
+    await evictDurableObject(stub);
+    expect(await stub.decideOrganization(20, false, NOW)).toEqual({ ok: true });
+    expect(JSON.stringify((await storedRows()).settings)).not.toContain("repository-discovery:20");
+  }, 15_000);
   it("does not accept an organization while its refusal is in flight", async () => {
     stubGitHub({ ...githubRoutes(() => [], () => [ORG]), "DELETE https://api.github.com/app/installations/20": () => new Response(null, { status: 204 }) });
     const stub = instanceStub(env); await stub.checkInstallations(NOW);

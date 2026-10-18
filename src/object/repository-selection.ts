@@ -27,7 +27,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
 
   refreshInstallation(installationId: number, now: number, requestBudget = 25): Promise<InstallationRefreshResult> {
     const pending = this.refreshing.get(installationId);
-    if (pending) return pending;
+    if (pending) return pending.then((result) => ({ ...result, requestsUsed: 0 }));
     const refreshing = this.refreshCompleteInstallation(installationId, now, requestBudget)
       .finally(() => this.refreshing.delete(installationId));
     this.refreshing.set(installationId, refreshing);
@@ -119,7 +119,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
       .map((listed): RepositoryRecord => {
         const repository = {
           ...listed, installationId, ownerPermission: permissions.get(listed.id)!,
-          monitorOverride: before.get(listed.id)?.monitorOverride ?? null, listedAt: now,
+          monitorOverride: this.context.discovery.monitoringOverride(listed.id) ?? before.get(listed.id)?.monitorOverride ?? null, listedAt: now,
         };
         return { ...repository, monitored: monitoredRepository(repository, this.context.ownerId, installation.accountType === "Organization") };
       });
@@ -154,6 +154,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
       return { ok: false, reason: "not-allowed" };
     }
     const result = { ...updated, monitored: monitoredRepository(updated, this.context.ownerId, organization) };
+    this.context.discovery.saveMonitoringOverride(repositoryId, override);
     if (this.context.store.putRepository(result)) await this.context.publish(now);
     return { ok: true, repository: result };
   }

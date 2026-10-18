@@ -145,9 +145,10 @@ export class InstanceObject extends DurableObject<Env> {
       .filter((installation): installation is ReportedInstallation => installation !== null);
 
     const stored = this.storedInstallations();
-    const actions = guardInstallations(reported, stored, config.ownerId);
+    const refused = this.refusedInstallations();
+    const actions = guardInstallations(reported.filter((installation) => !refused.has(installation.id)), stored, config.ownerId);
     const logins = new Map(reported.map((installation) => [installation.id, installation.accountLogin]));
-    const kept: (StoredInstallation & { accountLogin: string })[] = [];
+    let kept: (StoredInstallation & { accountLogin: string })[] = [];
     const deleted: ReportedInstallation[] = [];
     const undeleted: ReportedInstallation[] = [];
     for (const action of actions) {
@@ -160,14 +161,23 @@ export class InstanceObject extends DurableObject<Env> {
       }
     }
 
-    const previous = new Map(stored.map((installation) => [installation.id, installation]));
+    // A decision can finish while a stranger's uninstall request is in
+    // flight. Preserve current acceptance and never resurrect a refusal.
+    const current = this.storedInstallations();
+    const currentlyRefused = this.refusedInstallations();
+    kept = kept.filter((installation) => !currentlyRefused.has(installation.id)).map((installation) => {
+      const latest = current.find((entry) => entry.id === installation.id);
+      return installation.accountType === "Organization" && latest?.status === "accepted"
+        ? { ...installation, status: "accepted" as const } : installation;
+    });
+    const previous = new Map(current.map((installation) => [installation.id, installation]));
     const keptIds = new Set(kept.map((installation) => installation.id));
     const sql = this.ctx.storage.sql;
     const changed = kept.filter((installation) => {
       const before = previous.get(installation.id);
       return before === undefined || !sameInstallation(before, installation);
     });
-    const gone = stored.filter((installation) => !keptIds.has(installation.id));
+    const gone = current.filter((installation) => !keptIds.has(installation.id));
     if (changed.length > 0 || gone.length > 0) {
       this.ctx.storage.transactionSync(() => {
         for (const installation of gone) {
@@ -175,6 +185,7 @@ export class InstanceObject extends DurableObject<Env> {
             this.overviewStore().removeRepository(repository.id);
           }
           this.selection?.forget(installation.id);
+          new RepositoryDiscoveryStore(this.ctx.storage).forget(installation.id);
           sql.exec("DELETE FROM installations WHERE id = ?", installation.id);
         }
         for (const installation of changed) {
@@ -238,8 +249,13 @@ export class InstanceObject extends DurableObject<Env> {
     try { jwt = await signAppJwt(config.app.clientId, config.app.privateKey, Math.floor(now / 1000)); }
     catch { return { ok: false }; }
     if (!await deleteInstallation(jwt, installationId)) return { ok: false };
-    // Only pending organizations can be refused; they have no repository data.
-    this.ctx.storage.sql.exec("DELETE FROM installations WHERE id = ? AND status = 'pending'", installationId);
+    // Installation IDs are immutable. Remember a successful refusal so a
+    // concurrent guard's earlier GitHub response cannot re-add it as pending.
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("INSERT INTO settings (key, value) VALUES (?, 'true') ON CONFLICT (key) DO NOTHING", `installation-refused:${installationId}`);
+      this.ctx.storage.sql.exec("DELETE FROM installations WHERE id = ? AND status = 'pending'", installationId);
+      new RepositoryDiscoveryStore(this.ctx.storage).forget(installationId);
+    });
     this.selection?.forget(installationId);
     return { ok: true };
   }
@@ -336,6 +352,11 @@ export class InstanceObject extends DurableObject<Env> {
   private overviewStore(): OverviewStore {
     this.ensureSchema();
     return new OverviewStore(this.ctx.storage);
+  }
+
+  private refusedInstallations(): Set<number> {
+    const rows = this.ctx.storage.sql.exec<{ key: string }>("SELECT key FROM settings WHERE key LIKE 'installation-refused:%'").toArray();
+    return new Set(rows.map(({ key }) => Number(key.slice("installation-refused:".length))));
   }
 
   private storedInstallations(): StoredInstallation[] {
