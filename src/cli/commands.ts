@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { parseProjectIndex } from "../shared/projects/index.ts";
 import type { IndexEntry, IndexProblem, ProjectIndex } from "../shared/projects/types.ts";
 import { CliError, isRelativeIndexPath, loadSettings } from "./settings.ts";
+import { cleanGitEnvironment } from "./git.ts";
 import type { Settings } from "./settings.ts";
 import { discoverDirectories, isPathExcluded, survey } from "./survey.ts";
 import type { SurveyDirectory, SurveyOptions } from "./survey.ts";
@@ -194,7 +195,7 @@ async function each(settings: Settings, index: ProjectIndex, args: Arguments): P
     process.stderr.write(`seshat: ${cell(target.classification)} / ${cell(target.name)}\n`);
     const code = await new Promise<number>(resolveExit => {
       const child = spawn(args.child[0]!, args.child.slice(1), { cwd: target.directory.absolutePath,
-        stdio: "inherit", env: { ...process.env, SESHAT_PROJECT: target.name,
+        stdio: "inherit", env: { ...cleanGitEnvironment(), SESHAT_PROJECT: target.name,
           SESHAT_CLASSIFICATION: target.classification, SESHAT_PATH: target.directory.path } });
       child.once("error", () => resolveExit(1));
       child.once("exit", (code, signal) => resolveExit(signal === "SIGINT" ? 130 : signal === "SIGTERM" ? 143 : code ?? 1));

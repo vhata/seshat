@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanGitEnvironment } from "./git.ts";
 
 const exec = promisify(execFile);
+const configure = (args: string[]) => exec("git", args, { env: cleanGitEnvironment() });
 const launcher = resolve("bin/seshat");
 let temporary: string;
 let root: string;
@@ -14,9 +16,20 @@ let index: string;
 let env: NodeJS.ProcessEnv;
 
 async function git(path: string, ...args: string[]) {
-  return exec("git", ["-C", path, ...args], { env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1",
+  const fixtureEnvironment = { ...cleanGitEnvironment(), GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid",
-    GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid" } });
+    GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid" };
+  if (args[0] === "init") {
+    // Fail before any mutation if an inherited process setting ever makes a
+    // fixture resolve to a repository outside this test's disposable root.
+    try {
+      const found = await exec("git", ["-C", path, "rev-parse", "--absolute-git-dir"], { env: fixtureEnvironment });
+      if (!found.stdout.trim().startsWith(`${await realpath(temporary)}/`)) throw new Error("Fixture escaped its temporary repository.");
+    } catch (error) {
+      if ((error as { code?: number }).code !== 128) throw error;
+    }
+  }
+  return exec("git", ["-C", path, ...args], { env: fixtureEnvironment });
 }
 
 async function run(args: string[], executable = launcher) {
@@ -38,9 +51,9 @@ beforeEach(async () => {
   await git(join(root, "alpha"), "commit", "--allow-empty", "-m", "Initial");
   config = join(temporary, "survey.conf");
   index = join(temporary, "PROJECTS.md");
-  await exec("git", ["config", "--file", config, "survey.root", root]);
-  await exec("git", ["config", "--file", config, "index.clone", temporary]);
-  env = { ...process.env, SESHAT_SURVEY_CONFIG: config, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" };
+  await configure(["config", "--file", config, "survey.root", root]);
+  await configure(["config", "--file", config, "index.clone", temporary]);
+  env = { ...cleanGitEnvironment(), SESHAT_SURVEY_CONFIG: config, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" };
   await writeFile(index, "# Projects\n\n## Active\n\n### alpha\n\n- Path: alpha\n- Remote: none\n\n## Cooling\n\n### elsewhere\n\n- Remote: example/elsewhere\n");
 });
 afterEach(async () => { await rm(temporary, { recursive: true, force: true }); });
@@ -102,8 +115,8 @@ describe("source-checkout command line", () => {
   });
 
   it("suppresses excluded missing paths and checkouts excluded by a secondary push URL", async () => {
-    await exec("git", ["config", "--file", config, "--add", "survey.exclude", "private/*"]);
-    await exec("git", ["config", "--file", config, "--add", "survey.excludeRemote", "*company.invalid*"]);
+    await configure(["config", "--file", config, "--add", "survey.exclude", "private/*"]);
+    await configure(["config", "--file", config, "--add", "survey.excludeRemote", "*company.invalid*"]);
     await git(join(root, "alpha"), "remote", "add", "secondary", "https://public.invalid/team/repo");
     await git(join(root, "alpha"), "remote", "set-url", "--push", "secondary", "https://token@company.invalid/team/repo");
     await writeFile(index, "## Active\n### alpha\n- Path: alpha\n- Remote: none\n### hidden\n- Path: private/missing\n");
@@ -143,8 +156,8 @@ describe("source-checkout command line", () => {
     await writeFile(index, "## Active\n### alpha\n- Path: alpha\n### missing\n- Path: missing\n");
     const failed = await run(["each", "--", process.execPath, "-e", "console.log('ran')"]);
     expect(failed).toMatchObject({ code: 2, stdout: "" });
-    await exec("git", ["config", "--file", config, "--add", "survey.exclude", "missing"]);
-    await exec("git", ["config", "--file", config, "--add", "survey.exclude", "alpha"]);
+    await configure(["config", "--file", config, "--add", "survey.exclude", "missing"]);
+    await configure(["config", "--file", config, "--add", "survey.exclude", "alpha"]);
     expect(await run(["each", "--", process.execPath, "-e", "console.log('ran')"])).toMatchObject({ code: 0, stdout: "" });
   });
 
@@ -189,5 +202,28 @@ describe("source-checkout command line", () => {
     expect(await run(["each", "Active"])).toMatchObject({ code: 2 });
     expect(await run(["check", "--file"])).toMatchObject({ code: 2 });
     expect(await run(["list", "--unexpected"])).toMatchObject({ code: 2 });
+  });
+
+  it("isolates survey, settings and each from a calling Git hook's repository environment", async () => {
+    const sentinel = join(temporary, "sentinel");
+    await mkdir(sentinel);
+    await git(sentinel, "init", "--initial-branch=main");
+    await git(sentinel, "commit", "--allow-empty", "-m", "Sentinel");
+    const configBefore = await readFile(join(sentinel, ".git", "config"));
+    const headBefore = await git(sentinel, "rev-parse", "HEAD");
+    env.GIT_DIR = join(sentinel, ".git");
+    env.GIT_WORK_TREE = sentinel;
+    env.GIT_INDEX_FILE = join(sentinel, ".git", "other-index");
+    env.GIT_CONFIG_COUNT = "1";
+    env.GIT_CONFIG_KEY_0 = "core.bare";
+    env.GIT_CONFIG_VALUE_0 = "true";
+    const result = await run(["survey", "--json"]);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).projects[0]).toMatchObject({ path: "alpha", checkout: true });
+    expect(await run(["each", "Active", "--", "git", "rev-parse", "--show-toplevel"]))
+      .toMatchObject({ code: 0, stdout: `${await realpath(join(root, "alpha"))}\n` });
+    expect(await readFile(join(sentinel, ".git", "config"))).toEqual(configBefore);
+    expect((await git(sentinel, "rev-parse", "HEAD")).stdout).toBe(headBefore.stdout);
+    await expect(readFile(join(sentinel, ".git", "other-index"))).rejects.toThrow();
   });
 });

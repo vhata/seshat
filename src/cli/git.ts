@@ -1,5 +1,19 @@
 import { execFile } from "node:child_process";
 
+/** Git hooks export repository selectors which override even an explicit -C. */
+export function cleanGitEnvironment(environment: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const clean = { ...environment };
+  const localVariables = [
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR",
+  ];
+  for (const key of Object.keys(clean)) {
+    if (localVariables.includes(key) || /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key)) delete clean[key];
+  }
+  return clean;
+}
+
 /** Keep command output private: git errors can contain credentials and paths. */
 export function git(
   directory: string,
@@ -10,7 +24,7 @@ export function git(
     execFile(
       "git",
       ["--no-optional-locks", "-C", directory, ...args],
-      { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+      { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, env: cleanGitEnvironment() },
       (error, stdout) => {
         const code = error ? (error as { code?: number | string }).code : 0;
         if (typeof code === "number" && allowedCodes.includes(code)) resolve(stdout);

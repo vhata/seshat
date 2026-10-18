@@ -473,9 +473,9 @@ side, and needs no Seshat credential.
   own GitHub CLI login, for use without an instance, they are labelled as
   GitHub's.
 
-How the CLI is built and distributed is still open. The hosted app's stack
-([decision](../DECISIONS.md#2026-10-13--cloudflare-stack)) does not settle
-it.
+Implemented on 2026-10-18 as TypeScript on Node.js with a local launcher;
+see [CLI.md](../CLI.md) and the
+[language and distribution decision](../DECISIONS.md#2026-10-18--local-project-index-cli).
 
 ## Hosted writes and self-PR behaviour
 
@@ -701,6 +701,7 @@ Queue entries in [TODO.md](../../TODO.md):
   where the repository field is labelled `Remote`
   ([decision](../DECISIONS.md#2026-10-15--project-index-format)).
 - `ship-projects-cli`: the [Seshat CLI](#seshat-cli), including `survey`.
+  Resolved on 2026-10-18: [local CLI](../CLI.md) and shared format parser.
 - `write-survey-prompt`: the laptop-agent prompt or skill. Resolved on
   2026-10-16: the [survey-projects skill](../../skills/survey-projects/SKILL.md).
 - `design-project-classifications`: the classifications design the brief

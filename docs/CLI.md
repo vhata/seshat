@@ -124,6 +124,12 @@ paths are checked before the first command, and a missing path stops the
 run. A failing command does not prevent later selected projects from
 running, but makes the final status 1. An interrupt stops the run.
 
+Repository-local Git environment overrides inherited from a calling hook
+(such as `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and injected config
+parameters) are removed for CLI Git reads and commands run by `each`, so
+the selected checkout determines the repository. Global Git configuration
+and other environment variables remain available.
+
 ## Check
 
 ```sh

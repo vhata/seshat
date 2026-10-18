@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
+import { cleanGitEnvironment } from "./git.ts";
 
 const exec = promisify(execFile);
 
@@ -37,7 +38,8 @@ export async function loadSettings(overrides: SettingsOverrides): Promise<Settin
     try {
       // NUL records preserve embedded whitespace and newlines in paths/patterns.
       const { stdout } = await exec("git", ["config", "--file", config, "--includes", "--null",
-        ...(path ? ["--type=path"] : []), "--get-all", key], { maxBuffer: 1024 * 1024 });
+        ...(path ? ["--type=path"] : []), "--get-all", key],
+      { maxBuffer: 1024 * 1024, env: cleanGitEnvironment() });
       return stdout.split("\0").filter((_, i, all) => i < all.length - 1);
     } catch (error) {
       if ((error as { code?: number }).code === 1) return [];

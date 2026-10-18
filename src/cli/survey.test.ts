@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, writeFile, rm, symlink, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { git, shellCaseMatches } from "./git.ts";
+import { cleanGitEnvironment, git, shellCaseMatches } from "./git.ts";
 import { discoverDirectories, isPathExcluded, survey, type SurveyOptions } from "./survey.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -13,10 +14,26 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 let temporary: string;
 let root: string;
-const run = (directory: string, ...args: string[]): string => execFileSync("git", [
-  "-c", "user.name=Survey Test", "-c", "user.email=survey@example.invalid",
-  "-c", "commit.gpgsign=false", "-C", directory, ...args,
-], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trimEnd();
+const run = (directory: string, ...args: string[]): string => {
+  const execute = (gitArgs: string[]): string => execFileSync("git", [
+    "-c", "user.name=Survey Test", "-c", "user.email=survey@example.invalid",
+    "-c", "commit.gpgsign=false", "-C", directory, ...gitArgs,
+  ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: cleanGitEnvironment() }).trimEnd();
+  // Guard every initialization, including direct calls and bare fixtures,
+  // independently of the sanitizer in case its isolation ever regresses.
+  if (args.includes("init")) {
+    try {
+      const existingGit = realpathSync(execute(["rev-parse", "--absolute-git-dir"]));
+      const disposableRoot = realpathSync(temporary);
+      if (existingGit !== disposableRoot && !existingGit.startsWith(`${disposableRoot}${sep}`)) {
+        throw new Error("Refusing to initialize a fixture outside its disposable repository root.");
+      }
+    } catch (error) {
+      if ((error as { status?: number }).status !== 128) throw error;
+    }
+  }
+  return execute(args);
+};
 const options = (extra: Partial<SurveyOptions> = {}): SurveyOptions => ({ root, exclude: [], excludeRemote: [], githubHosts: [], paths: [], ...extra });
 async function repo(name: string, initial = true): Promise<string> {
   const directory = join(root, name);
@@ -47,6 +64,44 @@ beforeEach(async () => {
 afterEach(async () => { vi.unstubAllEnvs(); await rm(temporary, { recursive: true, force: true }); });
 
 describe("shell exclusions and discovery", () => {
+  it("removes all inherited repository selectors while preserving global config and identity", () => {
+    const localVariables = [
+      "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+      "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE",
+      "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR",
+      "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_KEY_123", "GIT_CONFIG_VALUE_123",
+    ];
+    const environment = Object.fromEntries(localVariables.map((key) => [key, "inherited"]));
+    const retained = { GIT_CONFIG_GLOBAL: "/tmp/survey-global", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "Owner", PATH: "/bin" };
+    Object.assign(environment, retained);
+    expect(cleanGitEnvironment(environment)).toEqual(retained);
+    expect(environment.GIT_DIR).toBe("inherited");
+  });
+
+  it("surveys the intended checkout inside a hook without touching its enclosing repository", async () => {
+    const original = await repo("hook-target");
+    const guarded = join(temporary, "hook-target");
+    await rename(original, guarded);
+    const protectedFiles = ["config", "HEAD", "index"];
+    const before = await Promise.all(protectedFiles.map((name) => readFile(join(guarded, ".git", name))));
+    vi.stubEnv("GIT_DIR", join(guarded, ".git"));
+    vi.stubEnv("GIT_COMMON_DIR", join(guarded, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", guarded);
+    vi.stubEnv("GIT_INDEX_FILE", join(guarded, ".git", "index"));
+    vi.stubEnv("GIT_PREFIX", "hook/path/");
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "core.bare");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "true");
+    // Fixture commands must be isolated too: even init must target this directory.
+    const intended = await repo("intended");
+    run(intended, "branch", "-m", "intended-branch");
+    const result = await survey(options());
+    expect(result.projects.map((project) => [project.path, project.signals.checkedOut])).toEqual([["intended", "intended-branch"]]);
+    const after = await Promise.all(protectedFiles.map((name) => readFile(join(guarded, ".git", name))));
+    expect(after).toEqual(before);
+    expect(run(guarded, "config", "--bool", "core.bare")).toBe("false");
+  });
+
   it("uses Bash case semantics without evaluating pattern contents", async () => {
     expect(await shellCaseMatches("work/team/project", "work/*")).toBe(true);
     expect(await shellCaseMatches("project-b", "project-[!a]")).toBe(true);
