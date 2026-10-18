@@ -16,6 +16,9 @@ import {
   SOCKET_PATH, type OverviewSnapshot, type ServerMessage, type SocketAttachment,
 } from "../shared/overview/protocol";
 import { OverviewStore } from "./overview-store";
+import { RepositorySelection } from "./repository-selection";
+import type { RepositorySettings } from "../shared/repositories";
+import type { InstallationRefreshResult, MonitoringMutationResult } from "../shared/overview/protocol";
 import { MIGRATIONS } from "./schema";
 
 const VERSION_TABLE = "schema_version";
@@ -56,6 +59,8 @@ interface InstallationRow extends Record<string, SqlStorageValue> {
 export class InstanceObject extends DurableObject<Env> {
   /** The current schema version, once this instance has checked it. */
   private schemaVersion: number | undefined;
+  private selection: RepositorySelection | undefined;
+  private readonly installationDecisions = new Set<number>();
 
   /** Reports that the object is reachable and its schema is current. */
   async health(): Promise<{ schemaVersion: number }> {
@@ -165,6 +170,10 @@ export class InstanceObject extends DurableObject<Env> {
     if (changed.length > 0 || gone.length > 0) {
       this.ctx.storage.transactionSync(() => {
         for (const installation of gone) {
+          for (const repository of this.overviewStore().repositories(installation.id)) {
+            this.overviewStore().removeRepository(repository.id);
+          }
+          this.selection?.forget(installation.id);
           sql.exec("DELETE FROM installations WHERE id = ?", installation.id);
         }
         for (const installation of changed) {
@@ -185,7 +194,66 @@ export class InstanceObject extends DurableObject<Env> {
         }
       });
     }
+    if (gone.length > 0) {
+      await this.publishOverview({ type: "snapshot", snapshot: await this.overviewSnapshot(nowMs) });
+    }
     return { ok: true, kept, deleted, undeleted };
+  }
+
+  /** Owner-only settings; listing reads are explicit mutations, never a GET. */
+  async repositorySettings(): Promise<RepositorySettings> {
+    const store = this.overviewStore();
+    const ownerId = readConfig(this.env as unknown as Record<string, unknown>).ownerId ?? 0;
+    return { ownerId, installations: this.storedInstallations(), repositories: store.repositories() };
+  }
+
+  async refreshInstallation(installationId: number, now: number): Promise<InstallationRefreshResult> {
+    const selection = this.repositorySelection();
+    return selection ? selection.refreshInstallation(installationId, now) : { ok: false, reason: "github-unavailable" };
+  }
+
+  async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {
+    const selection = this.repositorySelection();
+    return selection ? selection.setMonitoringOverride(repositoryId, override, now) : { ok: false, reason: "not-allowed" };
+  }
+
+  async decideOrganization(installationId: number, accept: boolean, now: number): Promise<{ ok: boolean }> {
+    if (this.installationDecisions.has(installationId)) return { ok: false };
+    this.installationDecisions.add(installationId);
+    try { return await this.applyOrganizationDecision(installationId, accept, now); }
+    finally { this.installationDecisions.delete(installationId); }
+  }
+
+  private async applyOrganizationDecision(installationId: number, accept: boolean, now: number): Promise<{ ok: boolean }> {
+    this.ensureSchema();
+    const installation = this.storedInstallations().find((entry) => entry.id === installationId);
+    const config = readConfig(this.env as unknown as Record<string, unknown>);
+    if (!installation || installation.accountType !== "Organization" || installation.status !== "pending" || !config.app) return { ok: false };
+    if (accept) {
+      this.ctx.storage.sql.exec("UPDATE installations SET status = 'accepted' WHERE id = ?", installationId);
+      return { ok: true };
+    }
+    let jwt: string;
+    try { jwt = await signAppJwt(config.app.clientId, config.app.privateKey, Math.floor(now / 1000)); }
+    catch { return { ok: false }; }
+    if (!await deleteInstallation(jwt, installationId)) return { ok: false };
+    // Only pending organizations can be refused; they have no repository data.
+    this.ctx.storage.sql.exec("DELETE FROM installations WHERE id = ? AND status = 'pending'", installationId);
+    this.selection?.forget(installationId);
+    return { ok: true };
+  }
+
+  private repositorySelection(): RepositorySelection | null {
+    if (this.selection) return this.selection;
+    const config = readConfig(this.env as unknown as Record<string, unknown>);
+    if (!config.app || config.ownerId === null) return null;
+    const store = this.overviewStore();
+    this.selection = new RepositorySelection({
+      ownerId: config.ownerId, app: config.app, store,
+      installations: () => this.storedInstallations(),
+      publish: async (now) => this.publishOverview({ type: "snapshot", snapshot: await this.overviewSnapshot(now) }),
+    });
+    return this.selection;
   }
 
   /** RPC callers are owner-gated by the Worker; no private snapshot is public. */

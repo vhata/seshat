@@ -196,7 +196,9 @@ export function parseClientMessage(data: unknown): ClientMessage | null {
 
 export type InstallationRefreshResult =
   | { readonly ok: true; readonly changed: boolean; readonly repositoryIds: readonly number[] }
-  | { readonly ok: false; readonly reason: Exclude<SyncFailureReason, "cloudflare-quota"> };
+  | { readonly ok: false; readonly reason: Exclude<SyncFailureReason, "cloudflare-quota"> }
+  /** Incomplete work is private and resumable; callers re-arm promptly. */
+  | { readonly ok: false; readonly reason: "continuation" };
 export type MonitoringMutationResult =
   | { readonly ok: true; readonly repository: RepositoryRecord }
   | { readonly ok: false; readonly reason: "not-found" | "not-allowed" };
