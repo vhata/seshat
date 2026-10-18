@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Overview } from "./Overview";
+import { Repositories } from "./Repositories";
 import logo from "../../assets/seshat.svg";
 import "./styles.css";
 
@@ -19,7 +20,13 @@ export function App() {
       });
     return () => controller.abort();
   }, []);
-  if (session === "signed-in") return <Overview />;
+  if (session === "signed-in") {
+    return window.location.pathname === "/repositories" ? (
+      <Repositories />
+    ) : (
+      <Overview />
+    );
+  }
   return (
     <main className="sign-in">
       <img src={logo} alt="" />
