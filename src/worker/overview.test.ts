@@ -1,12 +1,16 @@
 import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { OverviewSync } from "../object/overview-sync";
 import { OverviewStore } from "../object/overview-store";
 import { fixturePr, FIXTURE_NOW, FIXTURE_REPOSITORY, SYNC_FIXTURES } from "../shared/overview/fixtures";
 import { KEEP_ALIVE_REQUEST, KEEP_ALIVE_RESPONSE, parseServerMessage, SNAPSHOT_PATH, SOCKET_PATH, toPrDto, type SocketAttachment } from "../shared/overview/protocol";
 import { instanceStub } from "./instance-stub";
 import { BASE, fetchWithConfig, ownerSession } from "./test-helpers";
 
+// Protocol/session tests isolate publication from background GitHub work;
+// overview-sync.test.ts exercises the real scheduler separately.
+beforeEach(() => { vi.spyOn(OverviewSync.prototype, "rearm").mockResolvedValue(undefined); });
 const clients: WebSocket[] = [];
 afterEach(async () => {
   for (const client of clients.splice(0)) client.close();

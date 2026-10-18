@@ -1,7 +1,8 @@
 import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixturePr } from "../shared/overview/fixtures";
+import { OverviewSync } from "./overview-sync";
 import { OverviewStore } from "./overview-store";
 import { instanceStub } from "../worker/instance-stub";
 import { BASE, json, OWNER_ID, ownerSession, storedRows, stubGitHub } from "../worker/test-helpers";
@@ -22,6 +23,9 @@ function githubRoutes(list: () => unknown[], installations: () => unknown[] = ()
     [`GET https://api.github.com/user/${OWNER_ID}`]: () => json({ id: OWNER_ID, login: "owner" }),
   };
 }
+// These tests drive discovery one bounded call at a time. The scheduler has
+// separate end-to-end tests and must not race the explicit continuation here.
+beforeEach(() => { vi.spyOn(OverviewSync.prototype, "rearm").mockResolvedValue(undefined); });
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("repository selection in the instance", () => {

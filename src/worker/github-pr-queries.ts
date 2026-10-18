@@ -3,7 +3,7 @@ export const PR_PAGE_SIZE = 20;
 export const REVIEW_PAGE_SIZE = 30;
 export const CHECK_PAGE_SIZE = 50;
 
-export const RATE_FIELDS = "rateLimit { cost remaining resetAt }";
+export const RATE_FIELDS = "rateLimit { cost limit remaining resetAt }";
 export const REPOSITORY_FIELDS = `id databaseId nameWithOwner visibility
   owner { login ... on User { databaseId } ... on Organization { databaseId } }`;
 const ACCOUNT_FIELDS = `__typename login ... on User { databaseId }
