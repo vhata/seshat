@@ -5,11 +5,13 @@ import type { InstallationRefreshResult, MonitoringMutationResult, RepositoryRec
 import { InstallationTokens } from "../worker/github-installation-token";
 import { GitHubRepositoryListing } from "../worker/github-repositories";
 import type { OverviewStore } from "./overview-store";
+import type { RepositoryDiscoveryProgress, RepositoryDiscoveryStore } from "./repository-discovery-store";
 
 interface SelectionContext {
   readonly ownerId: number;
   readonly app: AppConfig;
   readonly store: OverviewStore;
+  readonly discovery: RepositoryDiscoveryStore;
   installations(): readonly StoredInstallation[];
   publish(now: number): Promise<void>;
 }
@@ -23,55 +25,112 @@ export class RepositorySelection implements RepositorySelectionOperations {
     this.tokens = tokens ?? new InstallationTokens(context.app);
   }
 
-  refreshInstallation(installationId: number, now: number): Promise<InstallationRefreshResult> {
+  refreshInstallation(installationId: number, now: number, requestBudget = 25): Promise<InstallationRefreshResult> {
     const pending = this.refreshing.get(installationId);
     if (pending) return pending;
-    const refreshing = this.refreshCompleteInstallation(installationId, now)
+    const refreshing = this.refreshCompleteInstallation(installationId, now, requestBudget)
       .finally(() => this.refreshing.delete(installationId));
     this.refreshing.set(installationId, refreshing);
     return refreshing;
   }
 
-  private async refreshCompleteInstallation(installationId: number, now: number): Promise<InstallationRefreshResult> {
+  private async refreshCompleteInstallation(installationId: number, now: number, requestBudget: number): Promise<InstallationRefreshResult> {
+    const budget = Number.isFinite(requestBudget) ? Math.max(0, Math.min(25, Math.floor(requestBudget))) : 0;
+    let requestsUsed = 0;
     const installation = this.acceptedInstallation(installationId);
-    if (!installation) return { ok: false, reason: "installation-removed" };
+    if (!installation) return { ok: false, reason: "installation-removed", requestsUsed };
+    if (budget < 2) return { ok: false, reason: "continuation", requestsUsed };
+    // Reserving a mint slot even for a memory-cached token keeps the caller's
+    // invocation-wide allowance safe without exposing credential internals.
+    requestsUsed++;
     const authorization = await this.tokens.get(installationId, now);
-    if (!authorization.ok) return { ok: false, reason: "github-unavailable" };
-    const listing = await this.github.list(authorization.token, installationId);
-    if (!listing.ok) {
-      if (listing.reason === "installation-removed") this.tokens.forget(installationId);
-      return listing;
+    if (!authorization.ok) return { ok: false, reason: "github-unavailable", requestsUsed };
+    const state = this.context.discovery.get(installationId);
+    const progress: RepositoryDiscoveryProgress = state.progress ?? {
+      phase: "listing", total: null, pages: [], repositories: [],
+      permissionIndex: 0, permissions: [], permissionCache: {}, ownerLogin: null,
+    };
+    const saveProgress = () => {
+      if (this.acceptedInstallation(installationId)) this.context.discovery.save(installationId, { ...state, progress });
+      else this.context.discovery.forget(installationId);
+    };
+    while (progress.phase === "listing" && requestsUsed < budget) {
+      const index = progress.pages.length;
+      requestsUsed++;
+      const read = await this.github.readPage(authorization.token, index + 1, state.cachedPages[index]);
+      if (!read.ok) {
+        if (read.reason === "installation-removed") this.tokens.forget(installationId);
+        saveProgress();
+        return { ...read, requestsUsed };
+      }
+      const page = read.page;
+      progress.total ??= page.total;
+      const all = [...progress.repositories, ...page.repositories];
+      const complete = all.length === progress.total;
+      if (progress.total !== page.total || all.length > progress.total
+        || new Set(all.map((repository) => repository.id)).size !== all.length
+        || (!complete && page.repositories.length !== 100)) {
+        // An inconsistent listing cannot become authoritative on a later
+        // invocation; start a new round using the last complete validators.
+        this.context.discovery.save(installationId, { ...state, progress: null });
+        return { ok: false, reason: "github-unavailable", requestsUsed };
+      }
+      progress.pages.push(page);
+      progress.repositories = all;
+      if (complete) progress.phase = "permissions";
     }
-    const needsPermission = listing.repositories.some((repository) => repository.ownerAccountId !== this.context.ownerId);
-    const login = needsPermission ? await this.github.ownerLogin(authorization.token, this.context.ownerId) : null;
-    if (needsPermission && !login) return { ok: false, reason: "github-unavailable" };
-    const permissions = new Map<number, RepositoryRecord["ownerPermission"]>();
-    for (const repository of listing.repositories) {
-      const permission = await this.github.ownerPermission(authorization.token, repository, this.context.ownerId, login ?? repository.ownerLogin);
-      if (permission === null) return { ok: false, reason: "github-unavailable" };
-      permissions.set(repository.id, permission);
+    if (progress.phase === "permissions") {
+      const needsPermission = progress.repositories.some((repository) => repository.ownerAccountId !== this.context.ownerId);
+      if (needsPermission && !progress.ownerLogin && requestsUsed < budget) {
+        requestsUsed++;
+        progress.ownerLogin = await this.github.ownerLogin(authorization.token, this.context.ownerId);
+        if (!progress.ownerLogin) { saveProgress(); return { ok: false, reason: "github-unavailable", requestsUsed }; }
+      }
+      const priorRepositories = new Map(state.cachedPages.flatMap((page) => page.repositories).map((repository) => [repository.id, repository]));
+      while (progress.permissionIndex < progress.repositories.length) {
+        const repository = progress.repositories[progress.permissionIndex]!;
+        if (repository.ownerAccountId === this.context.ownerId) progress.permissions.push([repository.id, "admin"]);
+        else {
+          if (requestsUsed >= budget || !progress.ownerLogin) break;
+          requestsUsed++;
+          const previous = priorRepositories.get(repository.id)?.fullName === repository.fullName ? state.permissionCache[repository.id] ?? null : null;
+          const read = await this.github.readOwnerPermission(authorization.token, repository, this.context.ownerId, progress.ownerLogin, previous);
+          if (!read.ok || !read.entry) { saveProgress(); return { ok: false, reason: "github-unavailable", requestsUsed }; }
+          progress.permissions.push([repository.id, read.entry.permission]);
+          progress.permissionCache[repository.id] = read.entry;
+        }
+        progress.permissionIndex++;
+      }
     }
-    // Awaited GitHub calls allow settings to change. Read overrides and the
-    // installation again immediately before the synchronous replacement.
-    if (!this.acceptedInstallation(installationId)) return { ok: false, reason: "installation-removed" };
+    if (!this.acceptedInstallation(installationId)) {
+      this.context.discovery.forget(installationId);
+      return { ok: false, reason: "installation-removed", requestsUsed };
+    }
+    if (progress.phase !== "permissions" || progress.permissionIndex < progress.repositories.length) {
+      saveProgress();
+      return { ok: false, reason: "continuation", requestsUsed };
+    }
+    // Overrides may change while GitHub calls are in flight. Read them again
+    // immediately before committing the complete listing and its permissions.
     const previous = this.context.store.repositories();
     const before = new Map(previous.map((repository) => [repository.id, repository]));
-    const repositories = listing.repositories.filter((listed) => permissions.get(listed.id) !== "none")
+    const permissions = new Map(progress.permissions);
+    const repositories = progress.repositories.filter((listed) => permissions.get(listed.id) !== "none")
       .map((listed): RepositoryRecord => {
-      const repository = {
-        ...listed, installationId, ownerPermission: permissions.get(listed.id)!,
-        monitorOverride: before.get(listed.id)?.monitorOverride ?? null, listedAt: now,
-      };
-      return {
-        ...repository,
-        monitored: monitoredRepository(repository, this.context.ownerId, installation.accountType === "Organization"),
-      };
-    });
+        const repository = {
+          ...listed, installationId, ownerPermission: permissions.get(listed.id)!,
+          monitorOverride: before.get(listed.id)?.monitorOverride ?? null, listedAt: now,
+        };
+        return { ...repository, monitored: monitoredRepository(repository, this.context.ownerId, installation.accountType === "Organization") };
+      });
     const old = previous.filter((repository) => repository.installationId === installationId);
     const changed = JSON.stringify(old) !== JSON.stringify(repositories);
     this.context.store.replaceInstallationRepositories(installationId, repositories);
+    this.context.discovery.save(installationId, {
+      cachedPages: progress.pages, permissionCache: progress.permissionCache, progress: null,
+    });
     if (changed) await this.context.publish(now);
-    return { ok: true, changed, repositoryIds: repositories.filter((repository) => repository.monitored).map((repository) => repository.id) };
+    return { ok: true, changed, repositoryIds: repositories.filter((repository) => repository.monitored).map((repository) => repository.id), requestsUsed };
   }
 
   async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {
@@ -102,6 +161,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
   forget(installationId: number): void {
     this.tokens.forget(installationId);
     this.github.forget(installationId);
+    this.context.discovery.forget(installationId);
   }
 
   private acceptedInstallation(id: number): StoredInstallation | undefined {

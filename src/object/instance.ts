@@ -17,6 +17,7 @@ import {
 } from "../shared/overview/protocol";
 import { OverviewStore } from "./overview-store";
 import { RepositorySelection } from "./repository-selection";
+import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 import type { RepositorySettings } from "../shared/repositories";
 import type { InstallationRefreshResult, MonitoringMutationResult } from "../shared/overview/protocol";
 import { MIGRATIONS } from "./schema";
@@ -207,9 +208,9 @@ export class InstanceObject extends DurableObject<Env> {
     return { ownerId, installations: this.storedInstallations(), repositories: store.repositories() };
   }
 
-  async refreshInstallation(installationId: number, now: number): Promise<InstallationRefreshResult> {
+  async refreshInstallation(installationId: number, now: number, requestBudget = 25): Promise<InstallationRefreshResult> {
     const selection = this.repositorySelection();
-    return selection ? selection.refreshInstallation(installationId, now) : { ok: false, reason: "github-unavailable" };
+    return selection ? selection.refreshInstallation(installationId, now, requestBudget) : { ok: false, reason: "github-unavailable", requestsUsed: 0 };
   }
 
   async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {
@@ -249,7 +250,7 @@ export class InstanceObject extends DurableObject<Env> {
     if (!config.app || config.ownerId === null) return null;
     const store = this.overviewStore();
     this.selection = new RepositorySelection({
-      ownerId: config.ownerId, app: config.app, store,
+      ownerId: config.ownerId, app: config.app, store, discovery: new RepositoryDiscoveryStore(this.ctx.storage),
       installations: () => this.storedInstallations(),
       publish: async (now) => this.publishOverview({ type: "snapshot", snapshot: await this.overviewSnapshot(now) }),
     });

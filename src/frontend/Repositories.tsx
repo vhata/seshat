@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import type { StoredInstallation } from "../shared/installations";
-import type { RepositoryRecord } from "../shared/overview/protocol";
+import type { InstallationRefreshResult, RepositoryRecord } from "../shared/overview/protocol";
 import { canMonitorRepository, REPOSITORIES_PATH, type RepositorySettings } from "../shared/repositories";
 import "./Repositories.css";
+
+async function refreshInstallation(installationId: number): Promise<void> {
+  for (;;) {
+    const result = await settingsRequest("/refresh", { installationId }) as InstallationRefreshResult;
+    if (result.ok) return;
+    if (result.reason !== "continuation") throw new Error("Could not refresh the complete repository listing.");
+    // Continue in a fresh Worker invocation so large organizations fit the
+    // free-tier subrequest limit without exposing a partial repository set.
+  }
+}
 
 async function settingsRequest(path = "", data?: unknown): Promise<unknown> {
   const response = await fetch(`${REPOSITORIES_PATH}${path}`, data === undefined ? undefined : {
@@ -37,7 +47,7 @@ export function Repositories() {
       await settingsRequest(path, data);
       if (path === "/organization" && (data as { accept: boolean }).accept) {
         const installationId = (data as { installationId: number }).installationId;
-        await settingsRequest("/refresh", { installationId });
+        await refreshInstallation(installationId);
       }
       setSettings(await settingsRequest() as RepositorySettings);
     } catch (reason) {
@@ -56,7 +66,7 @@ export function Repositories() {
       setLogins(Object.fromEntries(result.kept.map((entry) => [entry.id, entry.accountLogin])));
       const current = await settingsRequest() as RepositorySettings;
       for (const installation of current.installations.filter((entry) => entry.status === "accepted")) {
-        await settingsRequest("/refresh", { installationId: installation.id });
+        await refreshInstallation(installation.id);
       }
       setSettings(await settingsRequest() as RepositorySettings);
     } catch (reason) {

@@ -25,7 +25,7 @@ export async function refreshRepositories(context: RouteContext): Promise<Respon
   const data = await body(context);
   if (!data || !id(data.installationId)) return jsonResponse({ error: "invalid request" }, 400);
   const result = await instanceStub(context.env).refreshInstallation(data.installationId, context.now);
-  return jsonResponse(result, result.ok ? 200 : 502);
+  return jsonResponse(result, result.ok ? 200 : result.reason === "continuation" ? 202 : 502);
 }
 export async function changeMonitoring(context: RouteContext): Promise<Response> {
   const data = await body(context);

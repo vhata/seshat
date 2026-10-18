@@ -1,5 +1,5 @@
 import { env, exports } from "cloudflare:workers";
-import { reset, runInDurableObject } from "cloudflare:test";
+import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixturePr } from "../shared/overview/fixtures";
 import { OverviewStore } from "./overview-store";
@@ -29,7 +29,7 @@ describe("repository selection in the instance", () => {
     let listed = [repository(1), repository(2, { fork: true }), repository(3, { archived: true })];
     stubGitHub(githubRoutes(() => listed));
     const stub = instanceStub(env); await stub.checkInstallations(NOW);
-    expect(await stub.refreshInstallation(10, NOW)).toEqual({ ok: true, changed: true, repositoryIds: [1] });
+    expect(await stub.refreshInstallation(10, NOW)).toEqual({ ok: true, changed: true, repositoryIds: [1], requestsUsed: 2 });
     let settings = await stub.repositorySettings();
     expect(settings.repositories.map((entry) => [entry.id, entry.monitored, entry.visibility, entry.listedAt])).toEqual([
       [1, true, "private", NOW], [2, false, "private", NOW], [3, false, "private", NOW],
@@ -74,7 +74,7 @@ describe("repository selection in the instance", () => {
       "GET https://api.github.com/repos/org/repo-5/collaborators/owner/permission": () => json({ permission: "read", user: { id: OWNER_ID } }),
     });
     const stub = instanceStub(env); await stub.checkInstallations(NOW);
-    expect(await stub.refreshInstallation(20, NOW)).toEqual({ ok: false, reason: "installation-removed" });
+    expect(await stub.refreshInstallation(20, NOW)).toMatchObject({ ok: false, reason: "installation-removed" });
     expect(github.calls).toHaveLength(1);
     expect(await stub.decideOrganization(20, true, NOW)).toEqual({ ok: true });
     await stub.refreshInstallation(20, NOW);
@@ -100,7 +100,7 @@ describe("repository selection in the instance", () => {
     });
     const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.decideOrganization(20, true, NOW); await stub.refreshInstallation(20, NOW);
     const before = await stub.repositorySettings(); expect(before.repositories).toHaveLength(1); failing = true;
-    expect(await stub.refreshInstallation(20, NOW + 1)).toEqual({ ok: false, reason: "github-unavailable" });
+    expect(await stub.refreshInstallation(20, NOW + 1)).toMatchObject({ ok: false, reason: "github-unavailable" });
     expect(await stub.repositorySettings()).toEqual(before);
   });
   it("does not permit archives to be switched on", async () => {
@@ -115,7 +115,7 @@ describe("repository selection in the instance", () => {
     const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
     await runInDurableObject(stub, (_instance, state) => { new OverviewStore(state.storage).putPullRequest(fixturePr()); });
     const before = await stub.repositorySettings(); failed = true;
-    expect(await stub.refreshInstallation(10, NOW + 1)).toEqual({ ok: false, reason: "github-unavailable" });
+    expect(await stub.refreshInstallation(10, NOW + 1)).toMatchObject({ ok: false, reason: "github-unavailable" });
     expect(await stub.repositorySettings()).toEqual(before);
     expect((await storedRows()).pull_requests).toHaveLength(1);
     failed = false; listed = []; await stub.refreshInstallation(10, NOW + 2);
@@ -151,6 +151,56 @@ describe("repository selection in the instance", () => {
     ]);
     expect(results).toEqual([{ ok: true }, { ok: false }]);
     expect((await stub.repositorySettings()).installations).toEqual([]);
+  });
+  it("resumes organization permission work after object eviction without exposing partial listings", async () => {
+    const repositories = Array.from({ length: 9 }, (_, index) => repository(index + 1, {
+      full_name: `org/repo-${index + 1}`, owner: { id: 3003, login: "org" },
+    }));
+    const routes = githubRoutes(() => repositories, () => [ORG]);
+    const permissions = Object.fromEntries(repositories.map((entry) => [
+      `GET https://api.github.com/repos/org/repo-${entry.id}/collaborators/owner/permission`,
+      () => json({ permission: "read", user: { id: OWNER_ID } }),
+    ]));
+    const github = stubGitHub({ ...routes, ...permissions });
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.decideOrganization(20, true, NOW);
+    const first = await stub.refreshInstallation(20, NOW, 5);
+    expect(first).toEqual({ ok: false, reason: "continuation", requestsUsed: 5 });
+    expect((await stub.repositorySettings()).repositories).toEqual([]);
+    expect(github.calls).toHaveLength(6); // Guard plus five budgeted requests.
+    // Eviction waits for each invocation's 10-second AbortSignal timer.
+    await evictDurableObject(stub);
+    const second = await stub.refreshInstallation(20, NOW + 1, 5);
+    expect(second).toEqual({ ok: false, reason: "continuation", requestsUsed: 5 });
+    expect((await stub.repositorySettings()).repositories).toEqual([]);
+    await evictDurableObject(stub);
+    const result = await stub.refreshInstallation(20, NOW + 2, 5);
+    expect(result).toMatchObject({ ok: true, repositoryIds: [], requestsUsed: 4 });
+    expect((await stub.repositorySettings()).repositories).toHaveLength(9);
+    expect(github.called("GET", "https://api.github.com/installation/repositories")).toHaveLength(1);
+    expect(JSON.stringify(await storedRows())).not.toMatch(/installation-secret|organization-secret/);
+  }, 30_000);
+  it("continues large installation pages without a permanent thousand-repository ceiling", async () => {
+    const github = stubGitHub({ ...githubRoutes(() => []), [LIST]: (call) => {
+      const page = Number(call.url.searchParams.get("page"));
+      const start = (page - 1) * 100;
+      return json({ total_count: 1101, repositories: Array.from({ length: Math.min(100, 1101 - start) }, (_, index) => repository(start + index + 1)) });
+    } });
+    const stub = instanceStub(env); await stub.checkInstallations(NOW);
+    for (let invocation = 0; invocation < 3; invocation++) {
+      expect(await stub.refreshInstallation(10, NOW + invocation, 4)).toEqual({ ok: false, reason: "continuation", requestsUsed: 4 });
+      expect((await stub.repositorySettings()).repositories).toEqual([]);
+    }
+    const result = await stub.refreshInstallation(10, NOW + 3, 4);
+    expect(result.ok).toBe(true);
+    expect(result.requestsUsed).toBe(4);
+    expect((await stub.repositorySettings()).repositories).toHaveLength(1101);
+    expect(github.called("GET", "https://api.github.com/installation/repositories").map((call) => Number(call.url.searchParams.get("page")))).toEqual(Array.from({ length: 12 }, (_, index) => index + 1));
+  });
+  it("charges no calls when the supplied allowance cannot start work", async () => {
+    const github = stubGitHub(githubRoutes(() => []));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW);
+    expect(await stub.refreshInstallation(10, NOW, 1)).toEqual({ ok: false, reason: "continuation", requestsUsed: 0 });
+    expect(github.calls).toHaveLength(1);
   });
   it("reports selected personal installations for the prominent warning", async () => {
     stubGitHub(githubRoutes(() => [], () => [{ ...PERSONAL, repository_selection: "selected" }]));
