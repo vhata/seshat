@@ -80,6 +80,20 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### P1 High
 
+- [PRODUCT] `select-monitored-repositories` — **Choose monitored repositories from each accepted installation's listing, with the owner's overrides, organization acceptance and the repositories screen.** This is acceptance check 2, and the sweep needs the monitored set before it reads any PR.
+  - Source: split of `build-pr-overview`, 2026-10-17
+  - Split from: `build-pr-overview`
+  - Blocked by: the owner choosing an organization to monitor and authorizing the App visibility change needed for its live installation.
+  - Starting point: [Monitored repositories](docs/DELIVERABLE.md#monitored-repositories), [Repository discovery and monitoring](docs/specs/2026-10-12-github-integration.md#repository-discovery-and-monitoring) and the guard's repository-selection paragraph under [Registration and installation](docs/specs/2026-10-12-github-integration.md#registration-and-installation); the Repositories screen in [docs/design/README.md](docs/design/README.md#screens).
+  - Covers `GET /installation/repositories` with conditional requests and paging, keyed by repository ID; the default rules (owned by the owner, not a fork, not archived); overrides to turn any repository off and an owned fork or an accepted organization's repository on, offered only where the owner's own permission is at least read; storing each repository's visibility and listing time; and an operation that refreshes one installation's listing, which the sweep and repository deliveries in `sync-and-live-updates` call.
+  - Includes the owner accepting or refusing a pending organization installation (formerly `accept-org-installations`; the sign-in PR holds one as pending with no way to accept it), and the prominent warning when the personal installation is set to selected repositories.
+  - Reuses the installation-token helper from `read-prs-from-github`; repository listing and selection live in separate modules from the PR reader.
+  - Gate: acceptance check 2. A repository created or archived after setup is shown by refreshing the listing; that a delivery or sweep triggers the refresh is shown in `sync-and-live-updates`. Turning a repository off removes its PRs from the snapshot.
+  - Demonstrating organization opt-in requires the owner's choice to monitor
+    an organization and make the private App public for installation there;
+    changing App visibility needs authorization at the time. Acceptance
+    check 2 remains a gate unless the owner explicitly amends it.
+
 - [GITHUB] `sync-and-live-updates` — **Keep the stored PRs current from webhooks and sweeps, and push every change to open pages.** This is the change detection design, and what makes the overview live.
   - Source: split of `build-pr-overview`, 2026-10-17
   - Split from: `build-pr-overview`
@@ -177,19 +191,6 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 ### P0 Critical
 
 ### P1 High
-
-- [PRODUCT] `select-monitored-repositories` — **Choose monitored repositories from each accepted installation's listing, with the owner's overrides, organization acceptance and the repositories screen.** This is acceptance check 2, and the sweep needs the monitored set before it reads any PR.
-  - Source: split of `build-pr-overview`, 2026-10-17
-  - Split from: `build-pr-overview`
-  - Starting point: [Monitored repositories](docs/DELIVERABLE.md#monitored-repositories), [Repository discovery and monitoring](docs/specs/2026-10-12-github-integration.md#repository-discovery-and-monitoring) and the guard's repository-selection paragraph under [Registration and installation](docs/specs/2026-10-12-github-integration.md#registration-and-installation); the Repositories screen in [docs/design/README.md](docs/design/README.md#screens).
-  - Covers `GET /installation/repositories` with conditional requests and paging, keyed by repository ID; the default rules (owned by the owner, not a fork, not archived); overrides to turn any repository off and an owned fork or an accepted organization's repository on, offered only where the owner's own permission is at least read; storing each repository's visibility and listing time; and an operation that refreshes one installation's listing, which the sweep and repository deliveries in `sync-and-live-updates` call.
-  - Includes the owner accepting or refusing a pending organization installation (formerly `accept-org-installations`; the sign-in PR holds one as pending with no way to accept it), and the prominent warning when the personal installation is set to selected repositories.
-  - Reuses the installation-token helper from `read-prs-from-github`; repository listing and selection live in separate modules from the PR reader.
-  - Gate: acceptance check 2. A repository created or archived after setup is shown by refreshing the listing; that a delivery or sweep triggers the refresh is shown in `sync-and-live-updates`. Turning a repository off removes its PRs from the snapshot.
-  - Demonstrating organization opt-in requires the owner's choice to monitor
-    an organization and make the private App public for installation there;
-    changing App visibility needs authorization at the time. Acceptance
-    check 2 remains a gate unless the owner explicitly amends it.
 
 - [PRODUCT] `render-pr-overview` — **Build the overview page: buckets and rows from the snapshot, live changes, the sync status states and the visibility reports that drive sweeps.** The page can be built against fixture snapshots and a fake socket while sync is built.
   - Source: split of `build-pr-overview`, 2026-10-17
