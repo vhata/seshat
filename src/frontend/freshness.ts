@@ -1,7 +1,8 @@
 import type { SyncStatus } from "../shared/overview/protocol";
 
 export const MINUTE = 60_000;
-export type Freshness = "Disconnected" | "Checking" | "Sync failed" | "Overdue" | "Live";
+export type Freshness =
+  "Disconnected" | "Checking" | "Sync failed" | "Overdue" | "Live";
 export interface FreshnessInput {
   sync: SyncStatus;
   connected: boolean;
@@ -9,14 +10,28 @@ export interface FreshnessInput {
   visibleSince: number;
 }
 export function isOverdue(sync: SyncStatus, now: number): boolean {
-  return sync.lastSuccessfulSweepAt === null || now - sync.lastSuccessfulSweepAt > 5 * MINUTE;
+  return (
+    sync.lastSuccessfulSweepAt === null ||
+    now - sync.lastSuccessfulSweepAt > 5 * MINUTE
+  );
 }
 /** Input times are on the object's clock; the page corrects its own clock. */
-export function freshness({ sync, connected, now, visibleSince }: FreshnessInput): Freshness {
+export function freshness({
+  sync,
+  connected,
+  now,
+  visibleSince,
+}: FreshnessInput): Freshness {
   if (!connected) return "Disconnected";
   const failed = sync.latestAttempt?.result === "failed";
-  const failedSinceVisible = failed && sync.latestAttempt.startedAt >= visibleSince;
-  if (now - visibleSince < MINUTE && isOverdue(sync, now) && !failedSinceVisible) return "Checking";
+  const failedSinceVisible =
+    failed && sync.latestAttempt.startedAt >= visibleSince;
+  if (
+    now - visibleSince < MINUTE &&
+    isOverdue(sync, now) &&
+    !failedSinceVisible
+  )
+    return "Checking";
   if (failed) return "Sync failed";
   if (isOverdue(sync, now)) return "Overdue";
   return "Live";
