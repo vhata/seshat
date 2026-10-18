@@ -34,6 +34,63 @@ function render(
   );
 }
 describe("overview presentation", () => {
+  it("annotates the owner's latest submitted review regardless of input ordering", () => {
+    const owner = { id: FIXTURE_OWNER_ID, login: "example", isBot: false };
+    const review = {
+      author: owner,
+      commitSha: "a".repeat(40),
+      submittedAt: now - 1000,
+      state: "commented" as const,
+    };
+    const pr = fixturePr({
+      author: { id: 202, login: "helper", isBot: false },
+      reviews: [
+        review,
+        { ...review, state: "approved", submittedAt: now - 2000 },
+      ],
+    });
+    const html = render(
+      buildSnapshot(
+        [FIXTURE_REPOSITORY],
+        [pr],
+        SYNC_FIXTURES.live,
+        FIXTURE_OWNER_ID,
+        now,
+      ),
+    );
+    expect(html).toContain("you commented at this head");
+    expect(html).not.toContain("you approved this head");
+    const tied = fixturePr({
+      ...pr,
+      reviews: [{ ...review, state: "approved" }, review],
+    });
+    expect(
+      render(
+        buildSnapshot(
+          [FIXTURE_REPOSITORY],
+          [tied],
+          SYNC_FIXTURES.live,
+          FIXTURE_OWNER_ID,
+          now,
+        ),
+      ),
+    ).toContain("you commented at this head");
+    const unknown = fixturePr({
+      ...pr,
+      reviews: [{ ...review, submittedAt: null }],
+    });
+    expect(
+      render(
+        buildSnapshot(
+          [FIXTURE_REPOSITORY],
+          [unknown],
+          SYNC_FIXTURES.live,
+          FIXTURE_OWNER_ID,
+          now,
+        ),
+      ),
+    ).toContain("you haven&#x27;t reviewed this head");
+  });
   it("renders every row fact, stale and bot labels, rules, buckets and safe sibling links", () => {
     const pr = fixturePr({
       title: "<Fix> & improve",

@@ -7,6 +7,7 @@ import {
   type ClientMessage,
   type OverviewSnapshot,
   type OverviewBucketDto,
+  type SyncStatus,
 } from "../shared/overview/protocol";
 import { isOverdue, MINUTE } from "./freshness";
 
@@ -78,6 +79,27 @@ function changesBetween(
   for (const id of changes.keys()) if (!after.has(id)) changes.delete(id);
   return changes;
 }
+/**
+ * A new attempt does not prove recovery. Keep a failure this page has seen,
+ * including through reconnect snapshots, until a successful sweep covers it.
+ * The producer must also persist this unresolved failure for fresh pages,
+ * which cannot reconstruct the instance's earlier messages.
+ */
+function retainUnresolvedFailure(
+  previous: SyncStatus | undefined,
+  next: SyncStatus,
+): SyncStatus {
+  const failed = previous?.latestAttempt;
+  if (failed?.result !== "failed" || next.latestAttempt?.result === "failed")
+    return next;
+  if (
+    next.lastSuccessfulSweepAt !== null &&
+    next.lastSuccessfulSweepAt >= failed.startedAt
+  )
+    return next;
+  return { ...next, latestAttempt: failed };
+}
+
 /** Owns timing and socket lifecycle; never derives buckets, facts or ordering. */
 export function startOverviewClient(
   env: ClientEnvironment,
@@ -174,7 +196,10 @@ export function startOverviewClient(
           next.sync.lastSuccessfulSweepAt
         )
           overdueSent = false;
-        state.snapshot = next;
+        state.snapshot = {
+          ...next,
+          sync: retainUnresolvedFailure(state.snapshot?.sync, next.sync),
+        };
       }
       publish();
     };

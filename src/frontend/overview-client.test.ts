@@ -102,6 +102,116 @@ function messages(h: ReturnType<typeof harness>) {
     .map((s) => JSON.parse(s) as { type: string; visible: boolean });
 }
 describe("overview socket lifecycle", () => {
+  it("keeps failure details through new attempts and reconnect snapshots until success", () => {
+    const h = harness();
+    h.socket.onopen?.();
+    snapshot(h);
+    const failed = {
+      ...SYNC_FIXTURES.live,
+      latestAttempt: {
+        result: "failed" as const,
+        startedAt: FIXTURE_NOW,
+        reason: "installation-suspended" as const,
+        unreadableRepositoryIds: [12],
+      },
+    };
+    h.socket.onmessage?.({
+      data: JSON.stringify({
+        type: "sync",
+        sync: failed,
+        serverTime: FIXTURE_NOW + 1000,
+      }),
+    });
+    const running = {
+      ...SYNC_FIXTURES.live,
+      latestAttempt: {
+        result: "running" as const,
+        startedAt: FIXTURE_NOW + 2000,
+      },
+    };
+    h.socket.onmessage?.({
+      data: JSON.stringify({
+        type: "sync",
+        sync: running,
+        serverTime: FIXTURE_NOW + 2000,
+      }),
+    });
+    expect(h.state.snapshot?.sync.latestAttempt).toEqual(failed.latestAttempt);
+    expect(freshness({ ...h.state, sync: h.state.snapshot!.sync })).toBe(
+      "Sync failed",
+    );
+    h.socket.onclose?.();
+    h.reconnect();
+    h.socket.onopen?.();
+    snapshot(h, {
+      ...fixtureSnapshot(running),
+      serverTime: FIXTURE_NOW + 3000,
+    });
+    expect(h.state.snapshot?.sync.latestAttempt).toEqual(failed.latestAttempt);
+    expect(freshness({ ...h.state, sync: h.state.snapshot!.sync })).toBe(
+      "Sync failed",
+    );
+    const success = {
+      ...SYNC_FIXTURES.live,
+      lastSuccessfulSweepAt: FIXTURE_NOW + 2000,
+      latestAttempt: {
+        result: "success" as const,
+        startedAt: FIXTURE_NOW + 2000,
+      },
+    };
+    h.socket.onmessage?.({
+      data: JSON.stringify({
+        type: "sync",
+        sync: success,
+        serverTime: FIXTURE_NOW + 4000,
+      }),
+    });
+    expect(h.state.snapshot?.sync).toEqual(success);
+    expect(freshness({ ...h.state, sync: h.state.snapshot!.sync })).toBe(
+      "Live",
+    );
+  });
+  it("gives a retained old failure the visibility catch-up grace and never treats a re-read as recovery", () => {
+    const h = harness();
+    h.socket.onopen?.();
+    snapshot(h, fixtureSnapshot(SYNC_FIXTURES.failed));
+    h.visibility(false);
+    h.advance(15_000);
+    h.visibility(true);
+    const running = {
+      ...SYNC_FIXTURES.failed,
+      latestAttempt: {
+        result: "running" as const,
+        startedAt: FIXTURE_NOW + 15000,
+      },
+    };
+    snapshot(h, {
+      ...fixtureSnapshot(running),
+      serverTime: FIXTURE_NOW + 15000,
+    });
+    expect(h.state.snapshot?.sync.latestAttempt).toEqual(
+      SYNC_FIXTURES.failed.latestAttempt,
+    );
+    expect(freshness({ ...h.state, sync: h.state.snapshot!.sync })).toBe(
+      "Checking",
+    );
+    const next = fixtureSnapshot();
+    h.socket.onmessage?.({
+      data: JSON.stringify({
+        type: "pr-changes",
+        buckets: next.buckets,
+        removed: [],
+        serverTime: FIXTURE_NOW + 15000,
+      }),
+    });
+    expect(h.state.snapshot?.sync.latestAttempt).toEqual(
+      SYNC_FIXTURES.failed.latestAttempt,
+    );
+    for (let i = 0; i < 4; i++) h.advance(15_000);
+    expect(freshness({ ...h.state, sync: h.state.snapshot!.sync })).toBe(
+      "Sync failed",
+    );
+  });
   it("times out a silent socket but accepts keepalive replies", () => {
     const h = harness();
     h.socket.onopen?.();

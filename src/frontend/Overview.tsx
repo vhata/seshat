@@ -72,9 +72,20 @@ function Time({
 function ownerReview(row: OverviewRowDto, ownerId: number) {
   if (row.facts.isOwners) return null;
   const reviews = row.pr.reviews.filter(
-    (r) => r.author?.id === ownerId && r.state !== "pending",
+    (r) =>
+      r.author?.id === ownerId &&
+      r.state !== "pending" &&
+      r.submittedAt !== null,
   );
-  const current = reviews.filter((r) => r.commitSha === row.pr.headSha).at(-1);
+  const current = reviews
+    .filter((r) => r.commitSha === row.pr.headSha)
+    .map((review, index) => ({ review, index }))
+    .sort(
+      (a, b) =>
+        (a.review.submittedAt ?? 0) - (b.review.submittedAt ?? 0) ||
+        a.index - b.index,
+    )
+    .at(-1)?.review;
   if (current) {
     const label = {
       approved: "you approved this head",
