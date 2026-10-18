@@ -271,8 +271,8 @@ own additions survive surveys and a newer tool's fields survive an older one.
 One check, shared by every reader, keeps their parsers from drifting. Seshat
 runs it on ingestion, the CLI runs it as `check`, the laptop agent runs it
 before it pushes, and the index repository's CI can run it through the CLI.
-Until the CLI or the shared module exists, the laptop agent follows these rules
-itself and the owner's review of its diff stands in for the check.
+The laptop agent runs `seshat check` from the [CLI](CLI.md) before pushing;
+reviewing the diff also verifies that the edit preserved the owner's text.
 
 The check reads the file and produces the parse below and a list of problems.
 Each problem has:
@@ -510,19 +510,23 @@ it into the private index repository also brings it to format 1:
   rules needs updating for `Path`; its legend can stay.
 
 The laptop agent can do this in one session with the owner reviewing the diff,
-running the check, once it exists, until it reports no errors. The owner's
+running `seshat check` until it reports no errors. The owner's
 local script needs the same `Path` change. Its rule that every section must
 appear in the legend is the script's own and is not part of this format.
 
 ## Implementation
 
-The parser and check should exist once, as a TypeScript module with no
-dependency beyond a CommonMark parser, so that the Worker uses it on ingestion
-and the CLI uses it if the CLI is built in TypeScript. Its tests are a set of
-conformance fixtures, each an input file with its expected parse and problems,
-which a second implementation in another language would have to pass too.
-Whichever of `show-project-index` and `ship-projects-cli` starts first builds
-the module and its fixtures.
+The parser and check live in `src/shared/projects/index.ts`, as the pure
+`parseProjectIndex(string | Uint8Array)` function. The [CLI](CLI.md) calls it,
+and the Worker can use the same module on ingestion. Its only runtime
+dependencies are the CommonMark/GFM parser utilities. It performs no clock,
+network or disk reads.
+
+Portable conformance fixtures in `src/shared/projects/fixtures/` pair each
+input Markdown file with its expected JSON parse and problems. Another
+implementation would have to pass the same fixtures; diagnostic messages
+are explanatory, while codes, severities, lines and entry names are stable.
+Additional tests cover invalid UTF-8 bytes and source normalization.
 
 ## Owner decisions
 

@@ -1,0 +1,150 @@
+{
+  "format": 1,
+  "preamble": "# Projects",
+  "fields": [
+    {
+      "label": "Format",
+      "kind": "file",
+      "value": "1",
+      "line": 3
+    }
+  ],
+  "sections": [
+    {
+      "name": "Active",
+      "line": 5,
+      "notes": "",
+      "entries": [
+        {
+          "name": "lighthouse",
+          "line": 7,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "example-owner/lighthouse",
+              "line": 9
+            },
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "lighthouse",
+              "line": 10
+            },
+            {
+              "label": "Next",
+              "kind": "owner",
+              "value": "Publish the draft theme.",
+              "line": 11
+            },
+            {
+              "label": "Stack",
+              "kind": "laptop",
+              "value": "TypeScript, Vite",
+              "line": 12
+            },
+            {
+              "label": "Last commit",
+              "kind": "laptop",
+              "value": "2026-10-13 on theme-draft",
+              "line": 13
+            },
+            {
+              "label": "Checked out",
+              "kind": "laptop",
+              "value": "theme-draft",
+              "line": 14
+            },
+            {
+              "label": "Unpushed",
+              "kind": "laptop",
+              "value": "2 on theme-draft",
+              "line": 15
+            },
+            {
+              "label": "Uncommitted",
+              "kind": "laptop",
+              "value": "none",
+              "line": 16
+            },
+            {
+              "label": "Surveyed",
+              "kind": "survey-date",
+              "value": "2026-10-14",
+              "line": 17
+            }
+          ],
+          "summary": "A static site generator for project pages.",
+          "key": "remote:example-owner/lighthouse"
+        }
+      ]
+    },
+    {
+      "name": "Stranded",
+      "line": 21,
+      "notes": "",
+      "entries": [
+        {
+          "name": "kiln",
+          "line": 23,
+          "fields": [
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "kiln",
+              "line": 25
+            },
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "none",
+              "line": 26
+            },
+            {
+              "label": "Branches",
+              "kind": "laptop",
+              "value": "scheduler-rewrite",
+              "line": 28
+            },
+            {
+              "label": "Next",
+              "kind": "owner",
+              "value": "Decide whether the scheduler rewrite is worth finishing.",
+              "line": 29
+            },
+            {
+              "label": "Surveyed",
+              "kind": "survey-date",
+              "value": "2026-09-30",
+              "line": 30
+            }
+          ],
+          "summary": "A firing scheduler for a pottery kiln controller.",
+          "key": "path:kiln"
+        }
+      ]
+    },
+    {
+      "name": "Not projects",
+      "line": 32,
+      "notes": "",
+      "entries": [
+        {
+          "name": "scratch",
+          "line": 34,
+          "fields": [
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "scratch",
+              "line": 36
+            }
+          ],
+          "summary": "Throwaway files, not a project.",
+          "key": "path:scratch"
+        }
+      ]
+    }
+  ],
+  "problems": []
+}

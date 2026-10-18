@@ -724,3 +724,25 @@ Rejected: keeping sign-in state in the object (a write for every attempt,
 which a stranger could repeat against the daily quota); sessions extended on
 use (a write on every request); deleting the owner's authorization at every
 sign-in (a consent screen each time, which the integration decision avoided).
+
+## 2026-10-18 — Local project-index CLI
+
+Chosen in `ship-projects-cli`, which left language and distribution to its
+implementation. The CLI is TypeScript on Node.js 24 or later, using Node's
+native type stripping and the repository's locked npm toolchain. Its
+checkout-local `bin/seshat` launcher can be symlinked onto PATH; no package
+is published. This avoids a second parser or a separate build artifact and
+lets the future hosted index reader call the same pure module under
+`src/shared/projects/`.
+
+`list`, `check`, `each` and `survey` follow [CLI.md](CLI.md). Settings reuse
+the laptop skill's git-config file, including includes and exclusions;
+relative root and clone values resolve against that file's directory.
+Commands use Git without a GitHub login or a hosting assumption. Surveys
+read local state without fetching or rewriting a checkout; only `each`
+executes the command the owner explicitly supplies. The survey skill uses
+the CLI's format check and signals, retaining its own index-editing and
+approval flow.
+
+Rejected: a second-language parser, a transpilation/build prerequisite for
+local use, and an npm release before a packaged distribution is needed.

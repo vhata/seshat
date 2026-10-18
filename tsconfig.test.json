@@ -14,5 +14,8 @@
     "src/test",
     "src/object/**/*.test.ts",
     "src/shared/**/*.test.ts"
-  ]
+  ],
+  // The conformance fixture tests read files in Node, like the CLI tests.
+  // tsconfig.cli.json checks them without adding Node globals to Worker tests.
+  "exclude": ["src/shared/projects/**/*.test.ts"]
 }

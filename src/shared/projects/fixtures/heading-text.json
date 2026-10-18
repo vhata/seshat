@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "preamble": "",
+  "fields": [],
+  "sections": [
+    {
+      "name": "Active",
+      "line": 1,
+      "notes": "",
+      "entries": [
+        {
+          "name": "Project",
+          "line": 2,
+          "fields": [{ "label": "Path", "kind": "key", "value": "first", "line": 3 }],
+          "summary": "",
+          "key": "path:first"
+        }
+      ]
+    },
+    {
+      "name": "Active",
+      "line": 4,
+      "notes": "",
+      "entries": [
+        {
+          "name": "Project",
+          "line": 5,
+          "fields": [{ "label": "Path", "kind": "key", "value": "second", "line": 6 }],
+          "summary": "",
+          "key": "path:second"
+        }
+      ]
+    },
+    {
+      "name": "",
+      "line": 7,
+      "notes": "",
+      "entries": [
+        {
+          "name": "",
+          "line": 8,
+          "fields": [{ "label": "Path", "kind": "key", "value": "third", "line": 9 }],
+          "summary": "",
+          "key": "path:third"
+        }
+      ]
+    }
+  ],
+  "problems": [
+    { "code": "duplicate-section", "severity": "warning", "line": 4, "message": "Section Active appears more than once." },
+    { "code": "duplicate-name", "severity": "warning", "line": 5, "entry": "Project", "message": "Entry Project appears more than once." },
+    { "code": "empty-heading", "severity": "error", "line": 7, "message": "Section heading is empty." },
+    { "code": "empty-heading", "severity": "error", "line": 8, "entry": "", "message": "Entry heading is empty." }
+  ]
+}

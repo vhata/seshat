@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# A source-checkout installation; resolve symlinks without changing the
+# caller's working directory or relying on GNU readlink -f (absent on macOS).
+set -euo pipefail
+launcher="${BASH_SOURCE[0]}"
+while [ -L "$launcher" ]; do
+  launcher_dir="$(cd -P "$(dirname "$launcher")" && pwd)"
+  launcher="$(readlink "$launcher")"
+  case "$launcher" in
+    /*) ;;
+    *) launcher="$launcher_dir/$launcher" ;;
+  esac
+done
+cli_root="$(cd -P "$(dirname "$launcher")/.." && pwd)"
+command -v node >/dev/null || { echo 'seshat: Node.js 24 or later is required' >&2; exit 2; }
+if [ "$(node -p 'Number(process.versions.node.split(".")[0]) >= 24')" != true ]; then
+  echo 'seshat: Node.js 24 or later is required' >&2
+  exit 2
+fi
+exec node "$cli_root/src/cli/main.ts" "$@"

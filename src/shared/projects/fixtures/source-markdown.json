@@ -1,0 +1,86 @@
+{
+  "format": 1,
+  "preamble": "# Projects *we own*\n\n- A legend, without labels.\n- Another ordinary item.\n\nPreamble prose.\n\n* A file-list item stays a list item.\n\nAfter the file list.",
+  "fields": [
+    {
+      "label": "Format",
+      "kind": "file",
+      "value": "1",
+      "line": 10
+    },
+    {
+      "label": "Custom-file",
+      "kind": "unknown",
+      "value": "**kept**",
+      "line": 12
+    }
+  ],
+  "sections": [
+    {
+      "name": "Active work",
+      "line": 16,
+      "notes": "Section **notes**.\n\n> ### This is not an entry\n>\n> - Path: quoted",
+      "entries": [
+        {
+          "name": "kiln & friends",
+          "line": 26,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "Example-Owner/Kiln",
+              "line": 30
+            },
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "pottery/kiln",
+              "line": 31
+            },
+            {
+              "label": "Next",
+              "kind": "owner",
+              "value": "Try the **next** task.\nKeep this continuation.\n\nA second paragraph.\n\n- first nested item\n  - second nested item",
+              "line": 32
+            },
+            {
+              "label": "Surveyed",
+              "kind": "survey-date",
+              "value": "2024-02-29",
+              "line": 43
+            },
+            {
+              "label": "Future-field",
+              "kind": "unknown",
+              "value": "Custom `Markdown`.",
+              "line": 44
+            },
+            {
+              "label": "Note",
+              "kind": "owner",
+              "value": "This empty predecessor does not repeat.",
+              "line": 46
+            }
+          ],
+          "summary": "Introductory paragraph.\n\nA description with *emphasis*.\n\nMore on the description.\n\nA kiln scheduler. Rewritten 2026-09: with no label.\n\nAfter the fields.\n\n```markdown\n## Not a section\n### Not an entry\n- Path: not-a-field\n```\n\n#### Details\n\n| Name | Value |\n| --- | --- |\n| kiln | warm |\n\n- This second list stays a list.\n- [x] Checked item",
+          "key": "remote:example-owner/kiln"
+        }
+      ]
+    }
+  ],
+  "problems": [
+    {
+      "code": "unknown-field",
+      "severity": "warning",
+      "line": 12,
+      "message": "Unrecognised field Custom-file."
+    },
+    {
+      "code": "unknown-field",
+      "severity": "warning",
+      "line": 44,
+      "entry": "kiln & friends",
+      "message": "Unrecognised field Future-field."
+    }
+  ]
+}
