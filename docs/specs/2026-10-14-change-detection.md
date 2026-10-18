@@ -614,6 +614,12 @@ supersedes those three points; the stack itself is unchanged.
   constraints](2026-10-13-cloudflare-stack.md#constraints-for-implementation)
   require; the alarm check on each request writes only when no alarm is set.
 
+Installation-token costs, node-ID access and the private-PR transport are now
+measured in [the reader validation](../GITHUB_READER.md#installation-token-validation).
+The current query includes activity and inline-comment fields omitted from
+the earlier measurements, so the updated costs there supersede the initial
+estimate for that query shape.
+
 ## Not verified
 
 - **Whether GitHub's API reflects a change by the time its webhook arrives.**
@@ -630,9 +636,6 @@ supersedes those three points; the stack itself is unchanged.
   through the REST endpoint in turn, a few per sweep.
 - **Whether a GraphQL read starts the mergeability computation.** The design
   uses the REST endpoint, which is documented to.
-- **Costs with an installation token.** The measurements used a user token. The
-  documented point rule does not depend on the token, but GraphQL access with
-  an installation token to `nodes` by repository ID is not yet exercised.
 - **Subrequest budget in an alarm.** The stack spike found a fresh budget of 50
   for an RPC call into the object, and alarms were not tested. Cloudflare's
   limits page lists alarm handlers as an invocation type for wall time, but

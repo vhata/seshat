@@ -281,7 +281,9 @@ describe("bounded reads across invocations", () => {
   it("does not repeat successful permission refreshes when a repository needs more than one invocation", async () => {
     const reviews = Array.from({ length: 41 }, (_, i) => review(i + 1, "APPROVED", actor(i + 2)));
     let permissionCalls = 0;
-    const calls = github(() => ({ nodes: [{ ...repo(), pullRequests: connection([pr("P1", { reviews: connection(reviews) })]) }] }), (url) => {
+    const calls = github((query) => query.includes("query SeshatReviewPage")
+      ? { node: { id: "P1", headRefOid: "head", reviews: connection(reviews.slice(30), 41) } }
+      : { nodes: [{ ...repo(), pullRequests: connection([pr("P1", { reviews: connection(reviews.slice(0, 30), 41, "after") })]) }] }, (url) => {
       permissionCalls++;
       const accountId = Number(/user(\d+)\/permission/.exec(url)?.[1]);
       return Response.json({ user: { id: accountId }, permission: "write" });
@@ -292,7 +294,7 @@ describe("bounded reads across invocations", () => {
     expect(second.status).toBe("complete");
     expect(second.repositories[0]?.prs[0]?.reviewerPermissions.size).toBe(41);
     expect(permissionCalls).toBe(41);
-    expect(calls).toHaveBeenCalledTimes(43);
+    expect(calls).toHaveBeenCalledTimes(44);
   });
 
   it("reads >250-commit PR head dates through the timeline and resumes backwards paging", async () => {

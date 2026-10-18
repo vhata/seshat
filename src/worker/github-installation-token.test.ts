@@ -11,6 +11,17 @@ const account = { id: 2, login: "reviewer" };
 const previous = { repositoryId: 1, accountId: 2, login: "reviewer", permission: "write" as const, etag: '"old"' };
 
 describe("installation credentials", () => {
+  it("constructs a real Workers Request and refuses redirects without following credentials", async () => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const request = new Request(url, init);
+      expect(request.redirect).toBe("manual");
+      expect(request.headers.get("authorization")).toMatch(/^Bearer ey/);
+      return new Response(null, { status: 302, headers: { location: "https://other.example/token" } });
+    });
+    expect(await new InstallationTokens(app).get(3, NOW)).toEqual({ ok: false, reason: "github-failed" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("coalesces concurrent mints, caches in memory and renews three minutes early", async () => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       expect(init?.method).toBe("POST");

@@ -15,7 +15,9 @@ export async function githubRequest(token: string, path: string, init: RequestIn
       ...init,
       headers,
       signal: AbortSignal.timeout(10_000),
-      redirect: "error",
+      // workerd supports follow/manual; manual also keeps credentials away
+      // from redirected hosts. Every reader rejects the resulting 3xx.
+      redirect: "manual",
     });
   } catch {
     return null;
