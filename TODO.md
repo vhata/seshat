@@ -80,15 +80,6 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### P1 High
 
-- [PRODUCT] `build-pr-overview` — **Run the assembled PR overview against a real GitHub App and complete the acceptance checks that need the whole of it.** The other parts each demonstrate their own checks; this records the rest and confirms the deliverable is done.
-  - Source: TODO.md triage, 2026-10-14
-  - Depends on: `render-pr-overview`
-  - Starting point: [Acceptance checks](docs/DELIVERABLE.md#acceptance-checks). Gate: check 9 (no paid Cloudflare service and no LLM key) and check 10 (a recorded manual review that the overview is readable on a phone and that no wording implies local evidence was inspected), with a note in the PR naming where each other check was demonstrated.
-  - Verify the assembled page through the real browser, Worker and Durable Object, including the owner session, snapshot, socket updates, visibility-driven catch-up and monitoring changes. Stub GitHub for repeatable timing and failure scenarios; record real-App evidence separately. Component checks against fake sockets alone do not complete the deliverable.
-  - Run on a local instance with the local App from PR #20, which has no webhook GitHub can reach, so live webhooks need a tunnel or a deployed instance; either needs the owner's word at the time.
-  - Split on 2026-10-17 into `define-overview-protocol`, `read-prs-from-github`, `select-monitored-repositories`, `render-pr-overview` and `sync-and-live-updates`; earlier, `bucket-prs` and `owner-sign-in`.
-  - The manual half of acceptance check 1 (a second GitHub account refused at sign-in) is waived by the owner, 2026-10-17. GitHub blocked creating a second account, and its terms allow one free account per person. The automated half landed with `owner-sign-in` (PR #19): the stubbed `GET /user` test, and tests that a refused account sees no instance data and leaves no stored credential.
-
 ### P2 Normal
 
 - [PRODUCT] `show-project-index` — **Ingest the project index and show it beside GitHub evidence.** The index decision defines what the dashboard shows; this is the deliverable that builds it, after the PR overview.
@@ -169,13 +160,13 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### P1 High
 
-- [PRODUCT] `render-pr-overview` — **Build the overview page: buckets and rows from the snapshot, live changes, the sync status states and the visibility reports that drive sweeps.** The page can be built against fixture snapshots and a fake socket while sync is built.
-  - Source: split of `build-pr-overview`, 2026-10-17
-  - Split from: `build-pr-overview`
-  - Starting point: [PR overview](docs/DELIVERABLE.md#pr-overview), [Freshness](docs/DELIVERABLE.md#freshness) and [Evidence boundary](docs/DELIVERABLE.md#evidence-boundary); [Sync status on the overview](docs/specs/2026-10-14-change-detection.md#sync-status-on-the-overview) and the page's side of [When the object sweeps](docs/specs/2026-10-14-change-detection.md#when-the-object-sweeps); the prototype and its [notes for implementation](docs/design/README.md#notes-for-implementation). The page renders what `buildOverview` returns and recomputes nothing about buckets.
-  - Covers the summary strip, groups and buckets with their rules in words, rows with every field in [Row contents](docs/DELIVERABLE.md#row-contents) and the stale badge, empty states, and the initial-load state; applying changes from the socket and marking changed rows; Live, Checking, Overdue, Sync failed and Disconnected judged on the page's own clock with the object's clock correction, reconnection, "Retry now" and the overdue message; visibility reports on connect, on `visibilitychange`, every 10 minutes while visible and after a timer gap of more than a minute; and the narrow layout.
-  - From the design notes: fonts served from the instance, no nested interactive elements in rows, and "by you" describing only the owner's own review.
-  - Gate: acceptance checks 4 and 7.
+- [PRODUCT] `build-pr-overview` — **Run the assembled PR overview against a real GitHub App and complete the acceptance checks that need the whole of it.** The other parts each demonstrate their own checks; this records the rest and confirms the deliverable is done.
+  - Source: TODO.md triage, 2026-10-14
+  - Starting point: [Acceptance checks](docs/DELIVERABLE.md#acceptance-checks). Gate: check 9 (no paid Cloudflare service and no LLM key) and check 10 (a recorded manual review that the overview is readable on a phone and that no wording implies local evidence was inspected), with a note in the PR naming where each other check was demonstrated.
+  - Verify the assembled page through the real browser, Worker and Durable Object, including the owner session, snapshot, socket updates, visibility-driven catch-up and monitoring changes. Stub GitHub for repeatable timing and failure scenarios; record real-App evidence separately. Component checks against fake sockets alone do not complete the deliverable.
+  - Run on a local instance with the local App from PR #20, which has no webhook GitHub can reach, so live webhooks need a tunnel or a deployed instance; either needs the owner's word at the time.
+  - Split on 2026-10-17 into `define-overview-protocol`, `read-prs-from-github`, `select-monitored-repositories`, `render-pr-overview` and `sync-and-live-updates`; earlier, `bucket-prs` and `owner-sign-in`.
+  - The manual half of acceptance check 1 (a second GitHub account refused at sign-in) is waived by the owner, 2026-10-17. GitHub blocked creating a second account, and its terms allow one free account per person. The automated half landed with `owner-sign-in` (PR #19): the stubbed `GET /user` test, and tests that a refused account sees no instance data and leaves no stored credential.
 
 ### P2 Normal
 
