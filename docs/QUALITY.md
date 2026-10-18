@@ -31,12 +31,14 @@ called from any working directory, and runs in order:
 3. `wrangler types`, regenerating `worker-configuration.d.ts`, then the type
    check (`tsc --build` over the frontend, Worker, test and configuration
    projects, plus the Node-only CLI project).
-4. The tests (`vitest run`): the `shared` project runs pure logic under
+4. The tests (`vitest run`): the `frontend` project checks the page markup,
+   socket lifecycle and browser-clock freshness logic in Node. The `shared`
+   project runs pure logic under
    `src/shared/` in Node, and the `workers` project runs Worker and Durable
    Object tests in the Workers runtime with the bindings from
    `wrangler.jsonc`. The `workers` project also gets a test configuration
    (a fixed owner ID and a throwaway App key generated on each run, so no
-   private key is committed). In both projects a setup file,
+   private key is committed). In all projects a setup file,
    `src/test/fetch-guard.ts`, replaces `fetch` before every test with a
    guard that refuses the request, and fails the test afterwards if any
    request was made that the test's own stub of GitHub did not answer, so
@@ -108,9 +110,10 @@ resources; deploying needs the owner's word each time
 The empty review index means no whole-codebase review has been recorded.
 Independent PR review is separate and belongs in a PR comment. Builds and
 application tests run in every check. Scheduled extended validation and
-automated browser checks wait until the overview has behaviour worth driving
-in a browser; until then the placeholder page is checked by hand with
-`npm run dev`.
+automated browser checks remain outside the default gate. For overview
+changes, check desktop and phone layouts with `npm run dev`, including
+sync warnings and socket updates; fixture-driven headless browser checks can
+exercise these without GitHub access.
 A red main must be addressed the same day or filed as P1 with evidence (P0 if
 release-blocking); recovery requires a green run on main.
 
