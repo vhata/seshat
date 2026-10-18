@@ -8,9 +8,12 @@ export const GITHUB_HEADERS = {
 
 export async function githubRequest(token: string, path: string, init: RequestInit = {}): Promise<Response | null> {
   try {
+    const headers = new Headers(GITHUB_HEADERS);
+    headers.set("authorization", `Bearer ${token}`);
+    new Headers(init.headers).forEach((value, name) => headers.set(name, value));
     return await fetch(`${GITHUB_API}${path}`, {
       ...init,
-      headers: { ...GITHUB_HEADERS, authorization: `Bearer ${token}`, ...init.headers },
+      headers,
       signal: AbortSignal.timeout(10_000),
       redirect: "error",
     });

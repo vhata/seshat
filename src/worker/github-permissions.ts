@@ -38,6 +38,7 @@ export async function readReviewerPermission(
   }
   if (!response?.ok) return { ok: false, entry: matching };
   const body = record(await responseJson(response));
+  if (record(body?.user)?.id !== account.id) return { ok: false, entry: matching };
   const value = body?.permission;
   const builtin = body?.role_name;
   const permission = value === "admin" || value === "write" || value === "read" || value === "none"

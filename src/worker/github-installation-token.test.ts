@@ -56,12 +56,18 @@ describe("collaborator permission reads", () => {
   });
 
   it("uses base permission for custom roles, maps 404 to none, and rejects a custom role name as proof of trust", async () => {
-    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ permission: "write", role_name: "release captain" }, { headers: { etag: '"new"' } }));
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ user: { id: 2 }, permission: "write", role_name: "release captain" }, { headers: { etag: '"new"' } }));
     expect((await readReviewerPermission("token", repo, account)).entry).toMatchObject({ permission: "write", etag: '"new"' });
     fetcher.mockResolvedValue(Response.json({}, { status: 404 }));
     expect((await readReviewerPermission("token", repo, account, previous)).entry?.permission).toBe("none");
-    fetcher.mockResolvedValue(Response.json({ permission: "maintain", role_name: "custom" }));
+    fetcher.mockResolvedValue(Response.json({ user: { id: 2 }, permission: "maintain", role_name: "custom" }));
     expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: false, entry: previous });
+  });
+
+  it("refuses a reused login's permission and preserves the requested identity's last known permission", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ user: { id: 999 }, permission: "admin" }));
+    expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: false, entry: previous });
+    expect(await readReviewerPermission("token", repo, account)).toEqual({ ok: false, entry: null });
   });
 
   it("does not send another identity's ETag, or an old login's ETag", async () => {
