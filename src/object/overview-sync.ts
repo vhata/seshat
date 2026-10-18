@@ -402,6 +402,8 @@ export class OverviewSync {
     if (!this.context.selection) return;
     if (!this.state.sweep) {
       this.state.sweep = { startedAt: now, retry: 0, installations: this.context.installations().filter((entry) => entry.status === "accepted").map((entry) => entry.id), installationIndex: 0, stage: "listing", ids: [], continuation: null, unreadable: [], reason: "github-unavailable" };
+      const firstInstallation = this.state.sweep.installations[0];
+      if (firstInstallation !== undefined) this.context.selection.discardRefreshProgress(firstInstallation);
       const sync = this.context.store.syncStatus();
       // A fresh load must still see the previous failure during recovery.
       if (sync.latestAttempt?.result !== "failed") this.context.store.putSyncStatus({ ...sync, latestAttempt: { startedAt: now, result: "running" } });
@@ -475,6 +477,8 @@ export class OverviewSync {
           return;
         } else {
           sweep.installationIndex++;
+          const nextInstallation = sweep.installations[sweep.installationIndex];
+          if (nextInstallation !== undefined) this.context.selection.discardRefreshProgress(nextInstallation);
           sweep.stage = "listing";
           sweep.ids = [];
           sweep.continuation = null;
@@ -500,6 +504,8 @@ export class OverviewSync {
       this.state.sweep = { ...sweep, retry: 1, installationIndex: 0, stage: "listing", ids: [], continuation: null, unreadable: [], reason };
       this.state.nextSweep = now + 15_000;
     } else {
+      const installation = sweep.installations[sweep.installationIndex];
+      if (installation !== undefined && sweep.stage === "listing") this.context.selection?.discardRefreshProgress(installation);
       const sync = this.context.store.syncStatus();
       this.context.store.putSyncStatus({ ...sync, latestAttempt: { startedAt: sweep.startedAt, result: "failed", reason, unreadableRepositoryIds: [...new Set(unreadable)] } });
       this.state.sweep = null;

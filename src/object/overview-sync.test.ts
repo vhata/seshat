@@ -437,4 +437,32 @@ describe("durable overview reconciliation", () => {
     });
   });
 
+  it("forgets a failed logical listing before later catch-up confirms changed repository facts", async () => {
+    let archived = false; let failing = true; let lists = 0;
+    const org = [{ ...INSTALLATIONS[0]!, accountType: "Organization" as const, accountId: 3003 }];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const address = String(url);
+      if (address.endsWith("/access_tokens")) return Response.json({ token: "secret", expires_at: new Date(NOW + 7_200_000).toISOString() }, { status: 201 });
+      if (address.includes("/installation/repositories?")) { lists++; return Response.json({ total_count: 1, repositories: [{ id: 1, node_id: "R1", full_name: "org/repository", owner: { id: 3003, login: "org" }, visibility: "public", fork: false, archived }] }); }
+      if (address.endsWith("/user/1001")) return Response.json({ id: 1001, login: "example" });
+      if (address.includes("/collaborators/")) return failing ? new Response(null, { status: 503 }) : Response.json({ permission: "read", user: { id: 1001 } });
+      throw new Error(address);
+    });
+    const stub = await object("failed-listing-fresh-round");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage); const discovery = new RepositoryDiscoveryStore(state.storage); let visible = true;
+      const actual = new ActualSelection({ ownerId: 1001, app: readConfig(env as unknown as Record<string, unknown>).app!, store, discovery, installations: () => org, publish: async () => {} });
+      const sync = new OverviewSync({ storage: state.storage, store, selection: actual, installations: () => org, visible: () => visible, guard: async () => true, publish: async () => {} });
+      await sync.visibility(NOW, false); await sync.alarm(NOW);
+      expect(discovery.get(9).progress).not.toBeNull();
+      await sync.alarm(NOW + 15_000); expect(store.syncStatus().latestAttempt?.result).toBe("failed");
+      expect(discovery.get(9).progress).toBeNull();
+      visible = false; await sync.visibility(NOW + 15_001, false);
+      failing = false; archived = true; visible = true; await sync.visibility(NOW + 120_000, false);
+      for (let i = 0; i < 4; i++) await sync.alarm(NOW + 120_000 + i);
+      expect(lists).toBe(2); expect(store.repositories()[0]?.isArchived).toBe(true);
+      expect(store.syncStatus().latestAttempt?.result).toBe("success");
+    });
+  });
+
 });
