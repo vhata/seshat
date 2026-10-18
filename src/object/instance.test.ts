@@ -31,7 +31,7 @@ describe("InstanceObject", () => {
     const tables = await runInDurableObject(stub, (_instance, state) =>
       userTables(state.storage.sql),
     );
-    expect(tables).toEqual(["installations", "schema_version", "sessions", "settings"]);
+    expect(tables).toEqual(["installations", "overview_sync", "pull_requests", "repositories", "schema_version", "sessions", "settings"]);
   });
 
   it("only reads once its schema is current, even after a restart", async () => {

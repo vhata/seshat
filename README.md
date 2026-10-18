@@ -13,7 +13,12 @@ is a Cloudflare Worker with its Durable Object, owner-only sign-in through
 the instance's own GitHub App, the setup pages that register and install
 that App, and a placeholder React page. The rules that sort open PRs into
 the overview's buckets are written and tested in `src/shared/overview/`,
-but nothing feeds them from GitHub yet. Nothing is deployed.
+but nothing feeds them from GitHub yet. The owner-only snapshot at
+`/api/overview` and hibernating WebSocket at `/api/overview/socket` expose
+stored overview data with those rules already applied. The socket requires
+the owner's session and a matching Origin, sends a snapshot on connect,
+answers `ping` with `pong`, and retains visibility reports across hibernation.
+Nothing is deployed.
 
 The intended dashboard connects to GitHub, lets the instance owner monitor
 selected repositories, groups projects by their state, and shows open pull

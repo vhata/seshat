@@ -36,4 +36,28 @@ export const MIGRATIONS: readonly Migration[] = [
       ) STRICT`,
     ],
   },
+  {
+    version: 3,
+    statements: [
+      // JSON is an explicit DTO, never a raw PrInput (which contains a Map).
+      // Indexed columns support listing/monitoring without decoding every row.
+      `CREATE TABLE repositories (
+        id INTEGER PRIMARY KEY,
+        installation_id INTEGER NOT NULL,
+        monitored INTEGER NOT NULL CHECK (monitored IN (0, 1)),
+        data TEXT NOT NULL CHECK (json_valid(data))
+      ) STRICT`,
+      "CREATE INDEX repositories_installation ON repositories (installation_id)",
+      `CREATE TABLE pull_requests (
+        node_id TEXT PRIMARY KEY,
+        repository_id INTEGER NOT NULL,
+        data TEXT NOT NULL CHECK (json_valid(data))
+      ) STRICT`,
+      "CREATE INDEX pull_requests_repository ON pull_requests (repository_id)",
+      `CREATE TABLE overview_sync (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        data TEXT NOT NULL CHECK (json_valid(data))
+      ) STRICT`,
+    ],
+  },
 ];
