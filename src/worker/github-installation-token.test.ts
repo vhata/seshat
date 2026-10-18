@@ -53,6 +53,16 @@ describe("installation credentials", () => {
     expect(await tokens.get(-1, NOW)).toEqual({ ok: false, reason: "invalid-installation" });
     expect(await new InstallationTokens({ ...app, privateKey: "invalid" }).get(3, NOW)).toEqual({ ok: false, reason: "signing-failed" });
   });
+  it("distinguishes rate limits, suspended installations and removed installations", async () => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}, { status: 429 }));
+    const tokens = new InstallationTokens(app);
+    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "rate-limited" });
+    fetcher.mockResolvedValue(Response.json({ message: "This installation has been suspended." }, { status: 403 }));
+    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "installation-suspended" });
+    fetcher.mockResolvedValue(Response.json({}, { status: 404 }));
+    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "installation-removed" });
+  });
+
 });
 
 describe("collaborator permission reads", () => {
@@ -63,7 +73,7 @@ describe("collaborator permission reads", () => {
     });
     expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: true, entry: previous });
     fetcher.mockResolvedValue(Response.json({}, { status: 429 }));
-    expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: false, entry: previous });
+    expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: false, entry: previous, reason: "rate-limited" });
   });
 
   it("uses base permission for custom roles, maps 404 to none, and rejects a custom role name as proof of trust", async () => {

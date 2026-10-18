@@ -324,3 +324,12 @@ describe("bounded reads across invocations", () => {
     expect(calls).toHaveBeenCalledTimes(3);
   });
 });
+
+
+describe("rate-limited reviewer permissions", () => {
+  it("retains the throttle reason when a reviewer's collaborator lookup is rate limited", async () => {
+    github(() => ({ nodes: [pr("P1", { reviews: connection([review(1, "APPROVED")]) })] }), () => new Response(null, { status: 403, headers: { "x-ratelimit-remaining": "0" } }));
+    const result = await new GithubPrReader("token").rereadPrs(["P1"]);
+    expect(result.issues).toContainEqual({ nodeId: "P1", reason: "rate-limited" });
+  });
+});

@@ -17,7 +17,10 @@ export interface RepositoryRecord {
   readonly ownerPermission: RepositoryPermission;
   readonly monitorOverride: boolean | null;
   readonly monitored: boolean;
+  /** Last GitHub API read, never refreshed by a public webhook payload. */
   readonly listedAt: number;
+  /** Most recent delivery or read reporting visibility, independently of confirmation. */
+  readonly visibilityReportedAt?: number;
 }
 
 /** Facts used to verify that a re-read has caught up with a delivery. */
@@ -240,7 +243,8 @@ function repositoryRecord(value: unknown): boolean {
     && typeof value.isFork === "boolean" && typeof value.isArchived === "boolean"
     && oneOf(value.ownerPermission, PERMISSIONS)
     && (value.monitorOverride === null || typeof value.monitorOverride === "boolean")
-    && typeof value.monitored === "boolean" && number(value.listedAt);
+    && typeof value.monitored === "boolean" && number(value.listedAt)
+    && (value.visibilityReportedAt === undefined || number(value.visibilityReportedAt));
 }
 /** Shared storage and socket decoder rejects malformed JSON before a Map is made. */
 export function isPrDto(value: unknown): value is PrDto {

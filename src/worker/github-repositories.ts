@@ -1,5 +1,5 @@
 import type { RepositoryRecord } from "../shared/overview/protocol";
-import { githubRequest, record, responseJson } from "./github-http";
+import { githubRequest, rateLimited, record, responseJson } from "./github-http";
 import { readReviewerPermission, type PermissionCacheEntry, type PermissionRead } from "./github-permissions";
 
 export const REPOSITORY_PAGES = 10;
@@ -68,7 +68,7 @@ export class GitHubRepositoryListing {
       headers: cached?.etag ? { "if-none-match": cached.etag } : {},
     });
     if (response?.status === 401 || response?.status === 404) return { ok: false, reason: "installation-removed" };
-    if (response?.status === 429 || (response?.status === 403 && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after")))) {
+    if (rateLimited(response)) {
       return { ok: false, reason: "rate-limited" };
     }
     if (response?.status === 304 && cached?.etag) return { ok: true, page: cached };
@@ -87,10 +87,17 @@ export class GitHubRepositoryListing {
     return readReviewerPermission(token, repository, { id: ownerId, login }, previous);
   }
 
-  async ownerLogin(token: string, ownerId: number): Promise<string | null> {
+  async readOwnerLogin(token: string, ownerId: number): Promise<{ ok: true; login: string } | { ok: false; reason: "rate-limited" | "github-unavailable" }> {
     const response = await githubRequest(token, `/user/${ownerId}`);
+    if (rateLimited(response)) return { ok: false, reason: "rate-limited" };
     const body = record(await responseJson(response));
-    return response?.ok && body?.id === ownerId && typeof body.login === "string" && body.login ? body.login : null;
+    return response?.ok && body?.id === ownerId && typeof body.login === "string" && body.login
+      ? { ok: true, login: body.login } : { ok: false, reason: "github-unavailable" };
+  }
+
+  async ownerLogin(token: string, ownerId: number): Promise<string | null> {
+    const result = await this.readOwnerLogin(token, ownerId);
+    return result.ok ? result.login : null;
   }
 
   async ownerPermission(token: string, repository: ListedRepository, ownerId: number, login: string): Promise<RepositoryRecord["ownerPermission"] | null> {

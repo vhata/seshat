@@ -3,7 +3,7 @@ import type {
   Review,
 } from "../shared/overview/types";
 import type { PullRequestRecord } from "../shared/overview/protocol";
-import { githubRequest, record, responseJson } from "./github-http";
+import { githubRequest, rateLimited, record, responseJson } from "./github-http";
 import { readReviewerPermission, type PermissionCacheEntry } from "./github-permissions";
 import {
   CHECK_PAGE_QUERY, COUNT_QUERY, PR_PAGE_QUERY, REPOSITORIES_QUERY,
@@ -12,7 +12,7 @@ import {
 
 export type ReadPr = PullRequestRecord;
 
-export type ReadFailure = "github-failed" | "graphql-errors" | "malformed" | "unavailable" | "request-limit" | "permission-failed" | "changed-during-read";
+export type ReadFailure = "github-failed" | "graphql-errors" | "malformed" | "unavailable" | "request-limit" | "permission-failed" | "changed-during-read" | "rate-limited" | "interrupted";
 export interface ReadIssue { readonly nodeId: string; readonly reason: ReadFailure }
 export interface RateLimit { readonly remaining: number; readonly resetAt: number; readonly cost: number; readonly limit?: number }
 export interface HeadCommitDate {
@@ -133,6 +133,7 @@ export class GithubPrReader {
   private readonly requestLimit: number;
   private readonly refreshPermissions: boolean;
   private readonly verifyMergeability: boolean;
+  private readonly shouldContinue: () => boolean;
 
   constructor(private readonly token: string, options: {
     readonly permissionCache?: readonly PermissionCacheEntry[];
@@ -140,6 +141,8 @@ export class GithubPrReader {
     readonly refreshPermissions?: boolean;
     /** Trigger REST computation even when GraphQL returns an old known value. */
     readonly verifyMergeability?: boolean;
+    /** Stop before another HTTP call when a visible sweep loses its reader. */
+    readonly shouldContinue?: () => boolean;
     readonly headCommitDates?: readonly HeadCommitDate[];
     readonly continuation?: ReaderContinuation | null;
   } = {}) {
@@ -147,6 +150,7 @@ export class GithubPrReader {
     this.requestLimit = Number.isFinite(requested) ? Math.min(40, Math.max(0, Math.floor(requested))) : 40;
     this.refreshPermissions = options.refreshPermissions ?? false;
     this.verifyMergeability = options.verifyMergeability ?? false;
+    this.shouldContinue = options.shouldContinue ?? (() => true);
     for (const entry of options.continuation?.permissionCache ?? options.permissionCache ?? []) this.permissions.set(`${entry.repositoryId}:${entry.accountId}`, entry);
     for (const entry of options.continuation?.headCommitDates ?? options.headCommitDates ?? []) {
       if (Number.isFinite(entry.committedAt)) this.commitDates.set(`${entry.repositoryId}:${entry.headSha}`, entry);
@@ -160,6 +164,7 @@ export class GithubPrReader {
   }
 
   private consume(): void {
+    if (!this.shouldContinue()) fail("interrupted");
     if (this.used >= this.requestLimit) fail("request-limit");
     this.used++;
   }
@@ -171,6 +176,7 @@ export class GithubPrReader {
     const response = await githubRequest(this.token, "/graphql", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, variables }),
     });
+    if (rateLimited(response)) fail("rate-limited");
     if (!response?.ok) fail("github-failed");
     const body = obj(await responseJson(response));
     const data = record(body.data);
@@ -192,6 +198,7 @@ export class GithubPrReader {
     }
     this.consume();
     const response = await githubRequest(this.token, path);
+    if (rateLimited(response)) fail("rate-limited");
     if (!response?.ok) fail("github-failed");
     const raw = await responseJson(response);
     // Continuations keep only fields used here, excluding comment bodies,
@@ -394,7 +401,7 @@ export class GithubPrReader {
         try {
           this.consume();
           const permission = await readReviewerPermission(this.token, { id: repo.repositoryId, fullName: repo.fullName }, author, entry);
-          if (!permission.ok) issues.push({ nodeId, reason: "permission-failed" });
+          if (!permission.ok) issues.push({ nodeId, reason: permission.reason === "rate-limited" ? "rate-limited" : "permission-failed" });
           else this.completedPermissions.add(key);
           entry = permission.entry;
           if (entry) this.permissions.set(key, entry);

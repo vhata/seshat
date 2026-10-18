@@ -299,3 +299,16 @@ describe("owner-only repository routes", () => {
     expect(github.calls).toEqual([]);
   });
 });
+
+
+describe("discovery throttle reasons", () => {
+  for (const endpoint of ["login", "permission"]) it(`preserves a throttled owner ${endpoint} lookup`, async () => {
+    const routes = githubRoutes(() => [repository(5, { full_name: "org/repo-5", owner: { id: 3003, login: "org" } })], () => [ORG]);
+    stubGitHub({ ...routes,
+      [`GET https://api.github.com/user/${OWNER_ID}`]: () => endpoint === "login" ? json({}, 429) : json({ id: OWNER_ID, login: "owner" }),
+      "GET https://api.github.com/repos/org/repo-5/collaborators/owner/permission": () => Response.json({}, { status: 403, headers: { "x-ratelimit-remaining": "0" } }),
+    });
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.decideOrganization(20, true, NOW);
+    expect(await stub.refreshInstallation(20, NOW)).toMatchObject({ ok: false, reason: "rate-limited" });
+  });
+});

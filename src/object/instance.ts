@@ -239,7 +239,7 @@ export class InstanceObject extends DurableObject<Env> {
     const selection = this.repositorySelection();
     const result = selection ? await selection.refreshInstallation(installationId, now, requestBudget) : { ok: false as const, reason: "github-unavailable" as const, requestsUsed: 0 };
     if (result.ok) this.syncScheduler().discoveryChanged(installationId, now);
-    else if (result.reason === "continuation") this.syncScheduler().refresh(installationId, now);
+    else if (result.reason === "continuation") this.syncScheduler().refresh(installationId, now, false);
     await this.syncScheduler().rearm(now);
     return result;
   }
@@ -253,6 +253,7 @@ export class InstanceObject extends DurableObject<Env> {
   }
 
   async decideOrganization(installationId: number, accept: boolean, now: number): Promise<{ ok: boolean }> {
+    await this.syncScheduler().rearm(now);
     if (this.installationDecisions.has(installationId)) return { ok: false };
     this.installationDecisions.add(installationId);
     try { return await this.applyOrganizationDecision(installationId, accept, now); }
@@ -386,6 +387,7 @@ export class InstanceObject extends DurableObject<Env> {
 
   /** All future sync publications use this session-checking boundary. */
   async publishOverview(message: ServerMessage): Promise<void> {
+    await this.syncScheduler().rearm(Date.now());
     const encoded = JSON.stringify(message);
     const now = Date.now();
     for (const socket of this.ctx.getWebSockets()) {
