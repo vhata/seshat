@@ -235,7 +235,6 @@ try {
   await page.clock.install({ time: now });
   await page.goto(origin);
   console.log("acceptance: browser loaded production assets");
-  if (!live) console.log("acceptance: initial page", await page.locator("body").innerText());
   async function drain(count = 12) { return command("alarm", { count }); }
   async function advance(ms, { alarm = true } = {}) {
     const target = now + ms;
@@ -389,6 +388,9 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(evidence, "phone-failed.png"), fullPage: true });
   failing = false;
+  // Catch-up and explicit retry share the specified per-instance minute
+  // throttle. Let it expire before asking for a manual recovery attempt.
+  await advance(60_000, { alarm: false });
   await page.getByRole("button", { name: "Retry now" }).click();
   await page.waitForTimeout(100);
   await drain();

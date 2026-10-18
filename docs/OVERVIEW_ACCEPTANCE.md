@@ -69,7 +69,7 @@ The numbered requirements are in
 | 4: row facts | `src/frontend/Overview.test.tsx` and the assembled desktop and phone renders. |
 | 5: notified changes | `src/object/overview-sync.test.ts`, webhook reduction tests and signed deliveries through the assembled Worker to the real browser socket. |
 | 6: missed events and visibility | Sync runtime tests plus the assembled missed-delivery sweep, hidden-tab dormancy and visible catch-up. |
-| 7: sync status | Freshness/client tests plus the assembled last-success display, failed sweep/retry and recovery. |
+| 7: sync status | Freshness/client tests plus assembled last-success display, checking before overdue, failed sweep/retry and recovery. |
 | 8: stale flag | Activity/rule tests, reader activity mapping, sync tests and assembled seven-day stale badges. |
 | 9: free tier and no LLM key | Configuration and dependency review below. |
 | 10: phone readability and wording | Recorded assembled screenshots and visual review below. |
@@ -111,7 +111,41 @@ No Cloudflare resource was provisioned for these local checks.
 
 ## Recorded observations
 
-The read-only real-App scenario completed on 2026-10-18 at 06:42 UTC. A
+The repeatable assembled scenario passed on 2026-10-18. Seven sample PRs
+appeared once each, one per bucket, with stale flags from GitHub activity
+eight days earlier. Thirteen signed deliveries exercised PR state, head,
+review, status, check-run and repository changes through the real Worker,
+object and browser socket. Each transition was observed after 2.512 seconds
+of controlled scheduler time. This is deterministic local timing with
+stubbed GitHub, not a measurement of GitHub delivery latency.
+
+A missed delivery was recovered by the next visible sweep within two
+minutes of controlled time. Six minutes hidden produced no scheduled
+GitHub reads; becoming visible started catch-up. A newly visible overview
+with old data said Checking, then Overdue after a minute without a sweep.
+A failed sweep and its retry produced a prominent failed banner while
+retaining all known rows. An explicit retry after the shared one-minute
+catch-up throttle recovered. Evicting the object closed the real socket;
+the page reconnected and recovered its stored snapshot without reloading.
+Revoking the session disconnected the socket, and an anonymous snapshot
+request returned 401 without repository data.
+
+### Phone and wording review
+
+The generated full-page 390 px screenshot, 320 px viewport screenshot and
+390 px failed-sync screenshot were visually reviewed. Header controls,
+summary chips, long rules and PR titles wrap within the viewport. Cards
+show repository, author/bot, draft/stale labels, CI, review, conflicts,
+opened age and last activity without horizontal scrolling. The failed
+banner remains prominent above the dimmed rows. Document scroll widths
+were exactly 390 and 320 px respectively. The page names GitHub as its
+source and makes no claim to have inspected local checkouts, local changes
+or unpushed commits. This is a headless Chromium phone-viewport review;
+physical-device interaction was not exercised.
+
+### Real App read
+
+The read-only real-App scenario completed on 2026-10-18 at 06:55 UTC. A
 production sweep discovered 74 repositories, including 13 private ones;
 the default monitored owned-repository set produced 52 open PR rows.
 All 52 rows had distinct GitHub node IDs, and the browser

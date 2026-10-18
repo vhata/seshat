@@ -13,8 +13,9 @@ owned repositories, forks and accepted organization installations. Setup
 pages register and install the instance's own GitHub App.
 
 Open PRs are grouped by the action they need, with the CI, review, conflict
-and activity facts behind each bucket. Signed GitHub deliveries and sweeps
-while a page is visible keep the stored overview current. The page receives
+and activity facts behind each bucket. Signed GitHub deliveries and
+[sweeps while a page is visible](docs/OVERVIEW_SYNC.md) keep the stored
+overview current. The page receives
 updates through its owner-gated WebSocket, displays the last successful
 GitHub sync and flags failed or overdue data. Desktop and phone scenarios,
 runtime integration and the free-tier boundary are recorded in
