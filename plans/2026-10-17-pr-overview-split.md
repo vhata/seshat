@@ -1,9 +1,13 @@
 # PR overview: parallel work
 
-The owner requested this split on 2026-10-17. The claimable work and its
-acceptance gates live in [TODO.md](../TODO.md); this plan records how agents
-share interfaces and avoid overlapping writes. It authorizes no deployment
-or product work beyond the repository's existing scope.
+The PR overview combines storage, GitHub reads, repository selection, live
+synchronization and presentation. Building these together risks conflicting
+interfaces, overlapping edits and gaps in acceptance coverage. Split the
+work around shared contracts so independent parts can proceed in parallel
+and converge on a verified overview.
+
+The claimable tasks and their acceptance gates live in [TODO.md](../TODO.md).
+This plan defines their dependencies, ownership and integration checks.
 
 ## Dependencies
 
@@ -90,6 +94,6 @@ Splitting work does not waive its checks.
 Final assembly exercises the real page, Worker, object and socket together;
 fixture-only component tests do not prove that wiring. Use stubbed GitHub
 for repeatable freshness/failure checks and record real-App scenarios
-separately. A local App has no reachable webhook by default; tunnels and
-deployment need the owner's authorization at the time. No billable resource
-is provisioned by this planning change.
+separately. A local App has no reachable webhook by default; real delivery
+checks need a tunnel or deployed instance, subject to the repository's
+[deployment rules](../AGENTS.md#docket).
