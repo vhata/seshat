@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { GithubPrReader } from "./github-pr-reader";
+import { GithubPrReader, type ReaderContinuation } from "./github-pr-reader";
 import { CHECK_PAGE_QUERY, COUNT_QUERY, PR_FIELDS, REPOSITORIES_QUERY, REREAD_QUERY } from "./github-pr-queries";
 
 const WHEN = "2026-10-17T00:00:00Z";
@@ -242,5 +242,83 @@ describe("repository reads", () => {
     expect(PR_FIELDS).not.toContain("pushedDate");
     expect(PR_FIELDS).toContain("HEAD_REF_FORCE_PUSHED_EVENT");
     expect(PR_FIELDS).toContain("REOPENED_EVENT, CONVERT_TO_DRAFT_EVENT, READY_FOR_REVIEW_EVENT");
+  });
+});
+
+describe("bounded reads across invocations", () => {
+  it("makes forward progress through more than 40 nested pages without repeating HTTP requests", async () => {
+    const calls = github((query, variables) => {
+      if (query.includes("query SeshatReviewPage")) {
+        const next = Number(String(variables.after).slice(1)) + 1;
+        return { node: { id: "P1", headRefOid: "head", reviews: connection([review(next)], 45, next === 45 ? null : `r${next}`) } };
+      }
+      if (query === CHECK_PAGE_QUERY) {
+        const next = Number(String(variables.after).slice(1)) + 1;
+        return { node: { id: "P1", headRefOid: "head", statusCheckRollup: { contexts: connection([check(next)], 45, next === 45 ? null : `c${next}`) } } };
+      }
+      return { nodes: [pr("P1", { reviews: connection([review(1)], 45, "r1"), statusCheckRollup: { contexts: connection([check(1)], 45, "c1") } })] };
+    });
+    let continuation: ReaderContinuation | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await new GithubPrReader("secret-token", { continuation }).rereadPrs(["P1"]);
+      expect(result.requestsUsed).toBeLessThanOrEqual(40);
+      if (attempt < 2) {
+        expect(result.status).toBe("failed");
+        expect(result.continuation).not.toBeNull();
+        expect(JSON.stringify(result.continuation)).not.toContain("secret-token");
+        continuation = JSON.parse(JSON.stringify(result.continuation)) as ReaderContinuation;
+      } else {
+        expect(result.status).toBe("complete");
+        expect(result.continuation).toBeNull();
+        const node = result.nodes[0];
+        expect(node?.kind === "open" && node.pr.reviews.length).toBe(45);
+        expect(node?.kind === "open" && node.pr.ci.length).toBe(45);
+      }
+    }
+    expect(calls).toHaveBeenCalledTimes(90);
+  });
+
+  it("does not repeat successful permission refreshes when a repository needs more than one invocation", async () => {
+    const reviews = Array.from({ length: 41 }, (_, i) => review(i + 1, "APPROVED", actor(i + 2)));
+    let permissionCalls = 0;
+    const calls = github(() => ({ nodes: [{ ...repo(), pullRequests: connection([pr("P1", { reviews: connection(reviews) })]) }] }), (url) => {
+      permissionCalls++;
+      const accountId = Number(/user(\d+)\/permission/.exec(url)?.[1]);
+      return Response.json({ user: { id: accountId }, permission: "write" });
+    });
+    const first = await new GithubPrReader("token", { refreshPermissions: true }).readRepositories(["R1"]);
+    expect(first.continuation).not.toBeNull();
+    const second = await new GithubPrReader("token", { refreshPermissions: true, continuation: first.continuation }).readRepositories(["R1"]);
+    expect(second.status).toBe("complete");
+    expect(second.repositories[0]?.prs[0]?.reviewerPermissions.size).toBe(41);
+    expect(permissionCalls).toBe(41);
+    expect(calls).toHaveBeenCalledTimes(43);
+  });
+
+  it("reads >250-commit PR head dates through the timeline and resumes backwards paging", async () => {
+    const calls = github(() => ({ nodes: [pr("P1", { commits: { totalCount: 300 } })] }), (url) => {
+      const path = "https://api.github.com/repos/owner/repoR1/issues/1/timeline";
+      expect(url.startsWith(path)).toBe(true);
+      const page = new URL(url).searchParams.get("page");
+      if (page === "1") return Response.json([{ event: "committed", sha: "old", committer: { date: WHEN } }], { headers: { link: `<${path}?per_page=100&page=3>; rel="last"` } });
+      if (page === "3") return Response.json([{ event: "commented", body: "private text" }], { headers: { link: `<${path}?per_page=100&page=2>; rel="prev"` } });
+      return Response.json([{ event: "committed", sha: "head", committer: { date: WHEN, email: "private@example.com" } }]);
+    });
+    const first = await new GithubPrReader("token", { requestLimit: 2 }).rereadPrs(["P1"]);
+    expect(first.continuation).not.toBeNull();
+    const second = await new GithubPrReader("token", { requestLimit: 2, continuation: first.continuation }).rereadPrs(["P1"]);
+    expect(second.status).toBe("complete");
+    expect(second.nodes[0]?.kind === "open" && second.nodes[0].pr.activity.lastCommitAt).toBe(Date.parse(WHEN));
+    expect(calls).toHaveBeenCalledTimes(4);
+    expect(JSON.stringify(first.continuation)).not.toContain("private@example.com");
+  });
+
+  it("caches head dates by repository and immutable SHA across fresh sweeps", async () => {
+    const calls = github(() => ({ nodes: [pr()] }));
+    const first = await new GithubPrReader("token").rereadPrs(["P1"]);
+    const second = await new GithubPrReader("token", { headCommitDates: first.headCommitDates }).rereadPrs(["P1"]);
+    expect(second.status).toBe("complete");
+    expect(second.requestsUsed).toBe(1);
+    expect(calls).toHaveBeenCalledTimes(3);
   });
 });

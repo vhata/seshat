@@ -20,6 +20,20 @@ export interface HeadCommitDate {
   readonly headSha: string;
   readonly committedAt: number;
 }
+/**
+ * Owner-private, JSON-safe progress for one logical read. Replay it only with
+ * the same installation, operation and inputs. It contains selected API facts,
+ * never authorization headers or tokens. Discard on a non-budget failure or
+ * when starting a new sweep, so cached responses cannot mask future changes.
+ */
+export interface ReaderContinuation {
+  readonly version: 1;
+  readonly responses: readonly (readonly [string, unknown])[];
+  readonly permissionCache: readonly PermissionCacheEntry[];
+  readonly headCommitDates: readonly HeadCommitDate[];
+  readonly refreshedPermissionKeys: readonly string[];
+  readonly rateLimit: RateLimit | null;
+}
 export interface ReadMeta {
   readonly status: "complete" | "partial" | "failed";
   readonly issues: readonly ReadIssue[];
@@ -29,6 +43,7 @@ export interface ReadMeta {
   readonly permissionCache: readonly PermissionCacheEntry[];
   /** Immutable head commit dates; safe to carry into the next invocation. */
   readonly headCommitDates: readonly HeadCommitDate[];
+  readonly continuation: ReaderContinuation | null;
 }
 export type PrNodeRead =
   | { readonly kind: "open"; readonly pr: ReadPr }
@@ -112,7 +127,9 @@ export class GithubPrReader {
   private rate: RateLimit | null = null;
   private readonly permissions = new Map<string, PermissionCacheEntry>();
   private readonly refreshedPermissions = new Set<string>();
+  private readonly completedPermissions = new Set<string>();
   private readonly commitDates = new Map<string, HeadCommitDate>();
+  private readonly responses = new Map<string, unknown>();
   private readonly requestLimit: number;
   private readonly refreshPermissions: boolean;
 
@@ -121,14 +138,21 @@ export class GithubPrReader {
     readonly requestLimit?: number;
     readonly refreshPermissions?: boolean;
     readonly headCommitDates?: readonly HeadCommitDate[];
+    readonly continuation?: ReaderContinuation | null;
   } = {}) {
     const requested = options.requestLimit ?? 40;
     this.requestLimit = Number.isFinite(requested) ? Math.min(40, Math.max(0, Math.floor(requested))) : 40;
     this.refreshPermissions = options.refreshPermissions ?? false;
-    for (const entry of options.permissionCache ?? []) this.permissions.set(`${entry.repositoryId}:${entry.accountId}`, entry);
-    for (const entry of options.headCommitDates ?? []) {
+    for (const entry of options.continuation?.permissionCache ?? options.permissionCache ?? []) this.permissions.set(`${entry.repositoryId}:${entry.accountId}`, entry);
+    for (const entry of options.continuation?.headCommitDates ?? options.headCommitDates ?? []) {
       if (Number.isFinite(entry.committedAt)) this.commitDates.set(`${entry.repositoryId}:${entry.headSha}`, entry);
     }
+    for (const key of options.continuation?.refreshedPermissionKeys ?? []) {
+      this.refreshedPermissions.add(key);
+      this.completedPermissions.add(key);
+    }
+    for (const [key, value] of options.continuation?.responses ?? []) this.responses.set(key, value);
+    this.rate = options.continuation?.rateLimit ?? null;
   }
 
   private consume(): void {
@@ -137,6 +161,8 @@ export class GithubPrReader {
   }
 
   private async graphql(query: string, variables: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const key = JSON.stringify([query, variables]);
+    if (this.responses.has(key)) return obj(this.responses.get(key));
     this.consume();
     const response = await githubRequest(this.token, "/graphql", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, variables }),
@@ -149,14 +175,50 @@ export class GithubPrReader {
       this.rate = { remaining: integer(rate.remaining), resetAt: time(rate.resetAt), cost: integer(rate.cost) };
     }
     if (Array.isArray(body.errors) && body.errors.length) fail("graphql-errors");
-    return data ?? fail();
+    if (!data) fail();
+    this.responses.set(key, data);
+    return data;
+  }
+
+  private async rest(path: string): Promise<{ body: unknown; link: string | null }> {
+    const key = `REST ${path}`;
+    if (this.responses.has(key)) {
+      const cached = obj(this.responses.get(key));
+      return { body: cached.body, link: cached.link === null ? null : text(cached.link) };
+    }
+    this.consume();
+    const response = await githubRequest(this.token, path);
+    if (!response?.ok) fail("github-failed");
+    const raw = await responseJson(response);
+    // Continuations keep only fields used here, excluding comment bodies,
+    // commit messages and the remaining REST pull-request response.
+    const body = path.includes("/timeline?")
+      ? list(raw).map((value) => {
+        const event = obj(value);
+        return { event: event.event, sha: event.sha ?? null, committer: { date: record(event.committer)?.date ?? null } };
+      })
+      : path.includes("/commits?") ? list(raw).map((value) => {
+        const commit = obj(value);
+        return { sha: commit.sha, commit: { committer: { date: record(obj(commit.commit).committer)?.date ?? null } } };
+      }) : (() => {
+        const pr = obj(raw);
+        return { mergeable: pr.mergeable, head: { sha: obj(pr.head).sha } };
+      })();
+    const result = { body, link: response.headers.get("link") };
+    this.responses.set(key, result);
+    return result;
   }
 
   private meta(issues: readonly ReadIssue[], successes: number): ReadMeta {
+    const permissionCache = [...this.permissions.values()];
+    const headCommitDates = [...this.commitDates.values()];
+    const continuation: ReaderContinuation | null = issues.some((issue) => issue.reason === "request-limit")
+      ? { version: 1, responses: [...this.responses.entries()], permissionCache, headCommitDates,
+        refreshedPermissionKeys: [...this.completedPermissions], rateLimit: this.rate } : null;
     return {
       status: issues.length === 0 ? "complete" : successes > 0 ? "partial" : "failed",
-      issues, rateLimit: this.rate, requestsUsed: this.used, permissionCache: [...this.permissions.values()],
-      headCommitDates: [...this.commitDates.values()],
+      issues, rateLimit: this.rate, requestsUsed: this.used, permissionCache,
+      headCommitDates, continuation,
     };
   }
 
@@ -329,6 +391,7 @@ export class GithubPrReader {
           this.consume();
           const permission = await readReviewerPermission(this.token, { id: repo.repositoryId, fullName: repo.fullName }, author, entry);
           if (!permission.ok) issues.push({ nodeId, reason: "permission-failed" });
+          else this.completedPermissions.add(key);
           entry = permission.entry;
           if (entry) this.permissions.set(key, entry);
         } catch (error) { issues.push({ nodeId, reason: reason(error) }); }
@@ -353,11 +416,8 @@ export class GithubPrReader {
     let mergeable = enumValue(raw.mergeable, ["mergeable", "conflicting", "unknown"]);
     if (mergeable === "unknown") {
       try {
-        this.consume();
         const path = repo.fullName.split("/").map(encodeURIComponent).join("/");
-        const response = await githubRequest(this.token, `/repos/${path}/pulls/${number}`);
-        const rest = record(await responseJson(response));
-        if (!response?.ok || !rest) fail("github-failed");
+        const rest = obj((await this.rest(`/repos/${path}/pulls/${number}`)).body);
         // A REST response on a newer head cannot resolve this GraphQL read.
         if (obj(rest.head).sha === headSha) {
           mergeable = rest.mergeable === true ? "mergeable" : rest.mergeable === false ? "conflicting" : "unknown";
@@ -384,22 +444,62 @@ export class GithubPrReader {
     const cached = this.commitDates.get(key);
     if (cached) return cached.committedAt;
     const count = id(obj(raw.commits).totalCount);
-    // The PR commits endpoint exposes at most 250 commits. Beyond that, it
-    // cannot prove the head date with our permissions. Keep the old PR rather
-    // than manufacture an activity time and potentially show a false stale flag.
-    if (count > 250) fail("unavailable");
-    this.consume();
     const path = fullName.split("/").map(encodeURIComponent).join("/");
-    const response = await githubRequest(this.token, `/repos/${path}/pulls/${number}/commits?per_page=1&page=${count}`);
-    if (!response?.ok) fail("github-failed");
-    const commits = list(await responseJson(response));
-    if (commits.length !== 1) fail("changed-during-read");
-    const commit = obj(commits[0]);
-    if (commit.sha !== headSha) fail("changed-during-read");
-    const committedAt = time(obj(obj(commit.commit).committer).date);
+    let committedAt: number;
+    if (count <= 250) {
+      const commits = list((await this.rest(`/repos/${path}/pulls/${number}/commits?per_page=1&page=${count}`)).body);
+      if (commits.length !== 1) fail("changed-during-read");
+      const commit = obj(commits[0]);
+      if (commit.sha !== headSha) fail("changed-during-read");
+      committedAt = time(obj(obj(commit.commit).committer).date);
+    } else {
+      // Unlike the PR commits endpoint's 250-commit cap, the issue timeline
+      // pages committed events. It accepts Pull requests read on private PRs.
+      committedAt = await this.timelineHeadDate(`/repos/${path}/issues/${number}/timeline`, headSha);
+    }
     this.commitDates.set(key, { repositoryId, headSha, committedAt });
     return committedAt;
   }
+
+  private async timelineHeadDate(path: string, headSha: string): Promise<number> {
+    let current = await this.rest(`${path}?per_page=100&page=1`);
+    const find = (body: unknown): number | null => {
+      for (const raw of list(body)) {
+        const event = obj(raw);
+        if (event.event === "committed" && event.sha === headSha) return time(obj(event.committer).date);
+      }
+      return null;
+    };
+    let date = find(current.body);
+    if (date !== null) return date;
+    const last = linkedPage(current.link, "last", path);
+    if (last === null) fail("changed-during-read");
+    const visited = new Set([1]);
+    let page = last;
+    for (;;) {
+      if (visited.has(page)) fail("changed-during-read");
+      visited.add(page);
+      current = await this.rest(`${path}?per_page=100&page=${page}`);
+      date = find(current.body);
+      if (date !== null) return date;
+      const previous = linkedPage(current.link, "prev", path);
+      if (previous === null || previous === 1) fail("changed-during-read");
+      page = previous;
+    }
+  }
+}
+
+function linkedPage(link: string | null, relation: string, expectedPath: string): number | null {
+  if (!link) return null;
+  for (const item of link.split(",")) {
+    const match = /^\s*<([^>]+)>;\s*rel="([^"]+)"\s*$/.exec(item);
+    if (match?.[2] !== relation) continue;
+    const url = new URL(match[1]!);
+    // Reconstruct the request ourselves; never send credentials to Link's URL.
+    if (url.origin !== "https://api.github.com" || url.pathname !== expectedPath || url.searchParams.get("per_page") !== "100") fail();
+    return id(Number(url.searchParams.get("page")));
+  }
+  return null;
 }
 
 function reason(error: unknown): ReadFailure { return error instanceof ReadError ? error.reason : "malformed"; }
