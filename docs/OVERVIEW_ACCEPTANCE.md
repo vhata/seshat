@@ -64,7 +64,7 @@ The numbered requirements are in
 | Check | Evidence |
 | --- | --- |
 | 1: owner boundary | `src/worker/auth.test.ts`, `src/worker/overview.test.ts` and assembled anonymous snapshot/session revocation checks. The separate manual scenario has the explicit waiver recorded below. |
-| 2: repository selection | `src/object/repository-selection.test.ts` covers selection and owner-only repository routes, with discovery through sync tests and assembled monitoring changes through `/repositories`. Live organization opt-in remains outstanding as described below. |
+| 2: repository selection | `src/object/repository-selection.test.ts` covers selection and owner-only repository routes, with discovery through sync tests and assembled monitoring changes through `/repositories`. Organization coverage meets the initial-release amendment below; live organization verification is deferred. |
 | 3: complete bucketing and ordering | `src/shared/overview/*.test.ts`, reader and sync runtime tests, and one assembled row in each of the seven buckets. |
 | 4: row facts | `src/frontend/Overview.test.tsx` and the assembled desktop and phone renders. |
 | 5: notified changes | `src/object/overview-sync.test.ts`, webhook reduction tests and signed deliveries through the assembled Worker to the real browser socket. |
@@ -78,18 +78,19 @@ The reader's real-App checks, including private repository reads, live query
 cost and pagination limits, are recorded in
 [GITHUB_READER.md](GITHUB_READER.md).
 
-### Outstanding organization acceptance
+### Organization acceptance for the initial release
 
 Selection tests exercise organization acceptance, refusal, owner permissions
 and repository opt-in with stubbed GitHub responses. The real-App run below
 used the owner's installation and does not demonstrate a live organization
 installation.
 
-Acceptance check 2 retains the explicit gate in
-[TODO.md](../TODO.md): the owner must choose an organization to monitor and
-authorize the App visibility change needed to install the private App there.
-That live scenario has not been performed, and no waiver is recorded.
-Repository selection and final overview acceptance therefore remain open.
+The [initial-release decision](DECISIONS.md#2026-10-23--organization-acceptance-for-the-initial-release)
+accepts this automated coverage for check 2 because the instance owner
+controls no organizations. Live organization installation and opt-in remain
+unverified and are deferred under `verify-live-organization-opt-in` in
+[TODO.md](../TODO.md). This amendment applies to that live scenario; the
+other acceptance requirements continue to apply.
 
 ### Second-account manual check waiver
 
