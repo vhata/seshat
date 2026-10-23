@@ -28,21 +28,18 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 - [GITHUB] `track-upstream-prs` — **Show PRs the owner opened in repositories they do not own.** Upstream contributions are part of the owner's open work but fall outside the monitored-repository set chosen for the first cut.
   - Source: `define-minimal-deliverable` discussion on branch todo/define-minimal-deliverable, 2026-10-11
-  - Depends on: `build-pr-overview`
   - Related: `show-review-requests`
   - Needs a query beyond monitored repositories (for example a search for PRs authored by the owner), which changes the permissions and change-detection story; ties to the brief's Upstream classification.
   - The GitHub integration decision stores no owner user token; this entry may add one, with its own lifecycle, if acting as the owner is needed ([spec](docs/specs/2026-10-12-github-integration.md#d-hybrids)).
 
 - [GITHUB] `show-review-requests` — **Show PRs in other owners' repositories where the owner's review is requested.** The first cut covers only PRs on monitored repositories, whoever opened them.
   - Source: `define-minimal-deliverable` discussion on branch todo/define-minimal-deliverable, 2026-10-11
-  - Depends on: `build-pr-overview`
   - Related: `track-upstream-prs`
   - Overlaps GitHub's own review-requested inbox; decide whether a personal instance should surface organization or work review load at all.
   - The GitHub integration decision stores no owner user token; this entry may add one, with its own lifecycle, if acting as the owner is needed ([spec](docs/specs/2026-10-12-github-integration.md#d-hybrids)).
 
 - [PRODUCT] `use-docket-labels` — **Show Docket labels on PR rows when a PR has them, without depending on them.** Docket's `pr-labels.sh` labels PRs with `docket` and `type:<kind>`, and with `queue:<todo|review|roadmap>`, `area:<area>` and `priority:<p0-p3>` when the PR claims or resolves queue entries; they say what a change is and how urgent its queue entry was, but not every PR has them, even in Docket repositories.
   - Source: owner, during replace-projects-index (PR #5), 2026-10-12; example labels on vhata/docket#22
-  - Depends on: `build-pr-overview`
   - Related: `show-project-index`
   - Labels arrive with each PR under the Pull requests permission the GitHub App already has, and label changes arrive as `pull_request` events with the `labeled` and `unlabeled` actions, which need only Pull requests read ([webhook events](https://docs.github.com/en/webhooks/webhook-events-and-payloads#pull_request)).
   - Bucketing stays on the GitHub facts in [docs/DELIVERABLE.md](docs/DELIVERABLE.md); a PR without these labels must look and sort exactly as it does today. Whether labels go beyond display (filtering, or a tie-break within a bucket) is the owner's call at triage.
@@ -82,18 +79,6 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### P2 Normal
 
-- [PRODUCT] `show-project-index` — **Ingest the project index and show it beside GitHub evidence.** The index decision defines what the dashboard shows; this is the deliverable that builds it, after the PR overview.
-  - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Depends on: `build-pr-overview`
-  - Related: `suggest-classifications`
-  - Needs Contents read added to the GitHub App chosen for the integration ([decision](docs/DECISIONS.md#2026-10-12--github-integration)): for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
-  - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. The index stays on GitHub for now ([decision](docs/DECISIONS.md#2026-10-13--project-index-stays-on-github)).
-  - Requirements are in the model and evidence-boundary sections of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md): per-field provenance and survey dates, "not reported" rather than "none", rename-safe joins, last good parse kept on errors, and a warning when the index repository is public.
-  - Parses the index with the shared `parseProjectIndex` module and conformance fixtures in `src/shared/projects/`, following [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md#implementation).
-  - Serves nothing from the index on an unauthenticated route; publishing entries is `publish-index-entries` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
-
-  - From the [classifications decision](docs/DECISIONS.md#2026-10-15--project-classifications): sections are shown in the file's order with unknown names as written; laptop observations that change day to day (`Last commit`, `Checked out`, `Branches`, `Unpushed`, `Uncommitted`) carry a warning when their survey is more than 30 days old, and a survey date after today is flagged ([laptop evidence age](docs/specs/2026-10-15-project-classifications.md#laptop-evidence-age)); an Upstream entry whose repository is outside the installation is described as not visible to the GitHub App. Suggestions themselves are `suggest-classifications`.
-
 - [PRODUCT] `suggest-classifications` — **Compute classification suggestions from evidence and show them beside the owner's classification in the index view.** The owner's section is authoritative, so Seshat's only way to flag an entry whose classification looks out of date is a suggestion.
   - Source: design-project-classifications decision, branch todo/design-project-classifications, 2026-10-15
   - Depends on: `show-project-index`
@@ -120,14 +105,6 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Blocked by: the owner's judgment, after using both, that owner fields (summaries, next actions, sections) still go stale between laptop surveys, for example through work on other machines or on GitHub alone ([revisit conditions](docs/specs/2026-10-15-llm-refresh.md#what-would-make-it-worthwhile)).
   - Needs a second GitHub App installed only on the index repository with Contents and Pull requests write, registered by the owner, which needs the owner's word at the time. The richer bundle needs Contents read on the main App, which `show-project-index` may already have added; adding it prompts every installation and covers every repository in it.
   - The provider key is an owner-set Worker secret; without one nothing changes. Calling a provider is a billable owner cost, so tests stub the provider.
-
-- [PRODUCT] `build-public-view` — **Build the opt-in public view of published repositories' open PRs, served without sign-in.** The public view decision allows one under explicit per-repository consent and a fixed field list; nothing is built for it in the first deliverable.
-  - Source: define-public-view decision, branch todo/define-public-view, 2026-10-15
-  - Depends on: `build-pr-overview`
-  - Related: `publish-index-entries`
-  - Starting point: [docs/specs/2026-10-15-public-view.md](docs/specs/2026-10-15-public-view.md) and the [decision](docs/DECISIONS.md#2026-10-15--public-view): the off switch, per-repository consent kept with the repository ID and owner account ID and cleared when the repository stops being public, changes owner or leaves the installation's listing, the 24-hour [confirmation bound](docs/specs/2026-10-15-public-view.md#confirmation-bound), the rotatable random path served from a custom domain where the owner has one, with `workers_dev = false` and `preview_urls = false`, the allowlist projection in the Durable Object, freshness worded as visibility confirmed within the last day plus notified changes, with no exact sync time, `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer`, `Cache-Control: private, max-age=60`, no Cloudflare cache, no socket, no storage writes and no sweeps from public requests.
-  - Tests must show that a fixture with private and internal repositories, unpublished public repositories and owner settings yields a public response containing none of their names or IDs, and that each withdrawal event in the spec's table, including a repository not confirmed public for 24 hours, takes effect on the next response.
-  - Check before relying on them: whether the Workers Rate Limiting binding is available on Free, and whether GitHub shows conflict state to visitors without write access ([not verified](docs/specs/2026-10-15-public-view.md#not-verified)).
 
 - [PRODUCT] `publish-index-entries` — **Let the owner publish chosen project index entries on the public view, bound to the text they approved.** The index decision keeps index content private unless consent names it, and the public view decision says what consent may cover.
   - Source: define-public-view decision, branch todo/define-public-view, 2026-10-15
@@ -160,15 +137,18 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### P1 High
 
-- [PRODUCT] `build-pr-overview` — **Run the assembled PR overview against a real GitHub App and complete the acceptance checks that need the whole of it.** The other parts each demonstrate their own checks; this records the rest and confirms the deliverable is done.
-  - Source: TODO.md triage, 2026-10-14
-  - Starting point: [Acceptance checks](docs/DELIVERABLE.md#acceptance-checks). Gate: check 9 (no paid Cloudflare service and no LLM key) and check 10 (a recorded manual review that the overview is readable on a phone and that no wording implies local evidence was inspected), with a note in the PR naming where each other check was demonstrated.
-  - Verify the assembled page through the real browser, Worker and Durable Object, including the owner session, snapshot, socket updates, visibility-driven catch-up and monitoring changes. Stub GitHub for repeatable timing and failure scenarios; record real-App evidence separately. Component checks against fake sockets alone do not complete the deliverable.
-  - Run on a local instance with the local App from PR #20, which has no webhook GitHub can reach, so live webhooks need a tunnel or a deployed instance; either needs the owner's word at the time.
-  - Split on 2026-10-17 into `define-overview-protocol`, `read-prs-from-github`, `select-monitored-repositories`, `render-pr-overview` and `sync-and-live-updates`; earlier, `bucket-prs` and `owner-sign-in`.
-  - The manual half of acceptance check 1 (a second GitHub account refused at sign-in) is waived by the owner, 2026-10-17. GitHub blocked creating a second account, and its terms allow one free account per person. The automated half landed with `owner-sign-in` (PR #19): the stubbed `GET /user` test, and tests that a refused account sees no instance data and leaves no stored credential.
-
 ### P2 Normal
+
+- [PRODUCT] `show-project-index` — **Ingest the project index and show it beside GitHub evidence.** The index decision defines what the dashboard shows; this is the deliverable that builds it, after the PR overview.
+  - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
+  - Related: `suggest-classifications`
+  - Needs Contents read added to the GitHub App chosen for the integration ([decision](docs/DECISIONS.md#2026-10-12--github-integration)): for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
+  - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. The index stays on GitHub for now ([decision](docs/DECISIONS.md#2026-10-13--project-index-stays-on-github)).
+  - Requirements are in the model and evidence-boundary sections of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md): per-field provenance and survey dates, "not reported" rather than "none", rename-safe joins, last good parse kept on errors, and a warning when the index repository is public.
+  - Parses the index with the shared `parseProjectIndex` module and conformance fixtures in `src/shared/projects/`, following [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md#implementation).
+  - Serves nothing from the index on an unauthenticated route; publishing entries is `publish-index-entries` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
+
+  - From the [classifications decision](docs/DECISIONS.md#2026-10-15--project-classifications): sections are shown in the file's order with unknown names as written; laptop observations that change day to day (`Last commit`, `Checked out`, `Branches`, `Unpushed`, `Uncommitted`) carry a warning when their survey is more than 30 days old, and a survey date after today is flagged ([laptop evidence age](docs/specs/2026-10-15-project-classifications.md#laptop-evidence-age)); an Upstream entry whose repository is outside the installation is described as not visible to the GitHub App. Suggestions themselves are `suggest-classifications`.
 
 - [GITHUB] `rate-limit-sign-in-callback` — **Limit sign-in callback token exchanges to reduce abuse of the App's OAuth token budget.** GitHub allows 2,000 OAuth token requests an hour per app, and every refused sign-in spends one, which could lock the owner out.
   - Source: owner-sign-in, branch todo/owner-sign-in (PR #19), 2026-10-16
@@ -194,5 +174,12 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
     Worker; setting `run_worker_first: true` would defeat that constraint.
 
 ### P3 Low
+
+- [PRODUCT] `build-public-view` — **Build the opt-in public view of published repositories' open PRs, served without sign-in.** The public view decision allows one under explicit per-repository consent and a fixed field list; nothing is built for it in the first deliverable.
+  - Source: define-public-view decision, branch todo/define-public-view, 2026-10-15
+  - Related: `publish-index-entries`
+  - Starting point: [docs/specs/2026-10-15-public-view.md](docs/specs/2026-10-15-public-view.md) and the [decision](docs/DECISIONS.md#2026-10-15--public-view): the off switch, per-repository consent kept with the repository ID and owner account ID and cleared when the repository stops being public, changes owner or leaves the installation's listing, the 24-hour [confirmation bound](docs/specs/2026-10-15-public-view.md#confirmation-bound), the rotatable random path served from a custom domain where the owner has one, with `workers_dev = false` and `preview_urls = false`, the allowlist projection in the Durable Object, freshness worded as visibility confirmed within the last day plus notified changes, with no exact sync time, `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer`, `Cache-Control: private, max-age=60`, no Cloudflare cache, no socket, no storage writes and no sweeps from public requests.
+  - Tests must show that a fixture with private and internal repositories, unpublished public repositories and owner settings yields a public response containing none of their names or IDs, and that each withdrawal event in the spec's table, including a repository not confirmed public for 24 hours, takes effect on the next response.
+  - Check before relying on them: whether the Workers Rate Limiting binding is available on Free, and whether GitHub shows conflict state to visitors without write access ([not verified](docs/specs/2026-10-15-public-view.md#not-verified)).
 
 ### Unprioritized

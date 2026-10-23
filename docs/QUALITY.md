@@ -110,10 +110,11 @@ resources; deploying needs the owner's word each time
 The empty review index means no whole-codebase review has been recorded.
 Independent PR review is separate and belongs in a PR comment. Builds and
 application tests run in every check. Scheduled extended validation and
-automated browser checks remain outside the default gate. For overview
-changes, check desktop and phone layouts with `npm run dev`, including
-sync warnings and socket updates; fixture-driven headless browser checks can
-exercise these without GitHub access.
+automated browser checks remain outside the default gate. The assembled
+overview's browser scenario runs separately with
+`node scripts/acceptance-overview.mjs`; its runtime, browser requirements and
+evidence boundary are recorded in
+[OVERVIEW_ACCEPTANCE.md](OVERVIEW_ACCEPTANCE.md).
 A red main must be addressed the same day or filed as P1 with evidence (P0 if
 release-blocking); recovery requires a green run on main.
 
