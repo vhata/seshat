@@ -11,6 +11,11 @@ import {
 } from "../shared/installations";
 import { latestVersion, pendingMigrations } from "../shared/migrations";
 import { deleteInstallation, listInstallations } from "../worker/github";
+import {
+  buildSnapshot, KEEP_ALIVE_REQUEST, KEEP_ALIVE_RESPONSE, parseClientMessage,
+  SOCKET_PATH, type OverviewSnapshot, type ServerMessage, type SocketAttachment,
+} from "../shared/overview/protocol";
+import { OverviewStore } from "./overview-store";
 import { MIGRATIONS } from "./schema";
 
 const VERSION_TABLE = "schema_version";
@@ -98,6 +103,9 @@ export class InstanceObject extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     const exists = sql.exec("SELECT 1 FROM sessions WHERE key = ?", key).toArray().length > 0;
     if (exists) sql.exec("DELETE FROM sessions WHERE key = ?", key);
+    for (const socket of this.ctx.getWebSockets()) {
+      if (this.socketAttachment(socket)?.sessionKey === key) socket.close(1008, "session ended");
+    }
   }
 
   /**
@@ -178,6 +186,87 @@ export class InstanceObject extends DurableObject<Env> {
       });
     }
     return { ok: true, kept, deleted, undeleted };
+  }
+
+  /** RPC callers are owner-gated by the Worker; no private snapshot is public. */
+  async overviewSnapshot(nowMs: number): Promise<OverviewSnapshot> {
+    const store = this.overviewStore();
+    const ownerId = readConfig(this.env as unknown as Record<string, unknown>).ownerId;
+    return buildSnapshot(store.repositories(), store.pullRequests(), store.syncStatus(), ownerId ?? 0, nowMs);
+  }
+
+  /** Only the Worker forwards this request after its owner session gate. */
+  override async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname !== SOCKET_PATH) return new Response(null, { status: 404 });
+    if (request.method !== "GET") return new Response(null, { status: 405 });
+    if (request.headers.get("origin") !== url.origin) return new Response(null, { status: 403 });
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response(null, { status: 426 });
+    const sessionKey = request.headers.get("x-seshat-session-key");
+    const now = Date.now();
+    const expiresAt = sessionKey === null ? null : await this.sessionExpiry(sessionKey, now);
+    if (sessionKey === null || expiresAt === null) return new Response(null, { status: 401 });
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
+    // Configure on connection, never in the constructor. The runtime handles
+    // pings without invoking webSocketMessage or writing the database.
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(KEEP_ALIVE_REQUEST, KEEP_ALIVE_RESPONSE));
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ sessionKey, expiresAt, visibility: null } satisfies SocketAttachment);
+    server.send(JSON.stringify({ type: "snapshot", snapshot: await this.overviewSnapshot(now) } satisfies ServerMessage));
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  override async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer): Promise<void> {
+    const now = Date.now();
+    if (!await this.authorizedSocket(socket, now)) return;
+    const message = parseClientMessage(data);
+    if (!message) {
+      socket.close(1008, "invalid message");
+      return;
+    }
+    const attachment = this.socketAttachment(socket)!;
+    socket.serializeAttachment({ ...attachment, visibility: { visible: message.visible, reportedAt: now } } satisfies SocketAttachment);
+    // Scheduling and acting on retry/overdue belong to sync-and-live-updates.
+  }
+
+  override webSocketClose(socket: WebSocket, code: number, reason: string): void {
+    socket.close(code, reason);
+  }
+
+  override webSocketError(socket: WebSocket): void {
+    socket.close(1011, "socket error");
+  }
+
+  /** All future sync publications use this session-checking boundary. */
+  async publishOverview(message: ServerMessage): Promise<void> {
+    const encoded = JSON.stringify(message);
+    const now = Date.now();
+    for (const socket of this.ctx.getWebSockets()) {
+      if (await this.authorizedSocket(socket, now)) {
+        try { socket.send(encoded); }
+        catch { socket.close(1011, "send failed"); }
+      }
+    }
+  }
+
+  private socketAttachment(socket: WebSocket): SocketAttachment | null {
+    return socket.deserializeAttachment() as SocketAttachment | null;
+  }
+
+  private async authorizedSocket(socket: WebSocket, now: number): Promise<boolean> {
+    const attachment = this.socketAttachment(socket);
+    if (attachment === null || attachment.expiresAt <= now
+      || await this.sessionExpiry(attachment.sessionKey, now) === null) {
+      socket.close(1008, "session ended");
+      return false;
+    }
+    return true;
+  }
+
+  private overviewStore(): OverviewStore {
+    this.ensureSchema();
+    return new OverviewStore(this.ctx.storage);
   }
 
   private storedInstallations(): StoredInstallation[] {
