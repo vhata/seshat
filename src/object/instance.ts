@@ -16,6 +16,10 @@ import {
   SOCKET_PATH, type OverviewSnapshot, type ServerMessage, type SocketAttachment,
 } from "../shared/overview/protocol";
 import { OverviewStore } from "./overview-store";
+import { RepositorySelection } from "./repository-selection";
+import { RepositoryDiscoveryStore } from "./repository-discovery-store";
+import type { RepositorySettings } from "../shared/repositories";
+import type { InstallationRefreshResult, MonitoringMutationResult } from "../shared/overview/protocol";
 import { MIGRATIONS } from "./schema";
 
 const VERSION_TABLE = "schema_version";
@@ -56,6 +60,8 @@ interface InstallationRow extends Record<string, SqlStorageValue> {
 export class InstanceObject extends DurableObject<Env> {
   /** The current schema version, once this instance has checked it. */
   private schemaVersion: number | undefined;
+  private selection: RepositorySelection | undefined;
+  private readonly installationDecisions = new Set<number>();
 
   /** Reports that the object is reachable and its schema is current. */
   async health(): Promise<{ schemaVersion: number }> {
@@ -139,9 +145,10 @@ export class InstanceObject extends DurableObject<Env> {
       .filter((installation): installation is ReportedInstallation => installation !== null);
 
     const stored = this.storedInstallations();
-    const actions = guardInstallations(reported, stored, config.ownerId);
+    const refused = this.refusedInstallations();
+    const actions = guardInstallations(reported.filter((installation) => !refused.has(installation.id)), stored, config.ownerId);
     const logins = new Map(reported.map((installation) => [installation.id, installation.accountLogin]));
-    const kept: (StoredInstallation & { accountLogin: string })[] = [];
+    let kept: (StoredInstallation & { accountLogin: string })[] = [];
     const deleted: ReportedInstallation[] = [];
     const undeleted: ReportedInstallation[] = [];
     for (const action of actions) {
@@ -154,17 +161,31 @@ export class InstanceObject extends DurableObject<Env> {
       }
     }
 
-    const previous = new Map(stored.map((installation) => [installation.id, installation]));
+    // A decision can finish while a stranger's uninstall request is in
+    // flight. Preserve current acceptance and never resurrect a refusal.
+    const current = this.storedInstallations();
+    const currentlyRefused = this.refusedInstallations();
+    kept = kept.filter((installation) => !currentlyRefused.has(installation.id)).map((installation) => {
+      const latest = current.find((entry) => entry.id === installation.id);
+      return installation.accountType === "Organization" && latest?.status === "accepted"
+        ? { ...installation, status: "accepted" as const } : installation;
+    });
+    const previous = new Map(current.map((installation) => [installation.id, installation]));
     const keptIds = new Set(kept.map((installation) => installation.id));
     const sql = this.ctx.storage.sql;
     const changed = kept.filter((installation) => {
       const before = previous.get(installation.id);
       return before === undefined || !sameInstallation(before, installation);
     });
-    const gone = stored.filter((installation) => !keptIds.has(installation.id));
+    const gone = current.filter((installation) => !keptIds.has(installation.id));
     if (changed.length > 0 || gone.length > 0) {
       this.ctx.storage.transactionSync(() => {
         for (const installation of gone) {
+          for (const repository of this.overviewStore().repositories(installation.id)) {
+            this.overviewStore().removeRepository(repository.id);
+          }
+          this.selection?.forget(installation.id);
+          new RepositoryDiscoveryStore(this.ctx.storage).forget(installation.id);
           sql.exec("DELETE FROM installations WHERE id = ?", installation.id);
         }
         for (const installation of changed) {
@@ -185,7 +206,71 @@ export class InstanceObject extends DurableObject<Env> {
         }
       });
     }
+    if (gone.length > 0) {
+      await this.publishOverview({ type: "snapshot", snapshot: await this.overviewSnapshot(nowMs) });
+    }
     return { ok: true, kept, deleted, undeleted };
+  }
+
+  /** Owner-only settings; listing reads are explicit mutations, never a GET. */
+  async repositorySettings(): Promise<RepositorySettings> {
+    const store = this.overviewStore();
+    const ownerId = readConfig(this.env as unknown as Record<string, unknown>).ownerId ?? 0;
+    return { ownerId, installations: this.storedInstallations(), repositories: store.repositories() };
+  }
+
+  async refreshInstallation(installationId: number, now: number, requestBudget = 25): Promise<InstallationRefreshResult> {
+    const selection = this.repositorySelection();
+    return selection ? selection.refreshInstallation(installationId, now, requestBudget) : { ok: false, reason: "github-unavailable", requestsUsed: 0 };
+  }
+
+  async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {
+    const selection = this.repositorySelection();
+    return selection ? selection.setMonitoringOverride(repositoryId, override, now) : { ok: false, reason: "not-allowed" };
+  }
+
+  async decideOrganization(installationId: number, accept: boolean, now: number): Promise<{ ok: boolean }> {
+    if (this.installationDecisions.has(installationId)) return { ok: false };
+    this.installationDecisions.add(installationId);
+    try { return await this.applyOrganizationDecision(installationId, accept, now); }
+    finally { this.installationDecisions.delete(installationId); }
+  }
+
+  private async applyOrganizationDecision(installationId: number, accept: boolean, now: number): Promise<{ ok: boolean }> {
+    this.ensureSchema();
+    const installation = this.storedInstallations().find((entry) => entry.id === installationId);
+    const config = readConfig(this.env as unknown as Record<string, unknown>);
+    if (!installation || installation.accountType !== "Organization" || installation.status !== "pending" || !config.app) return { ok: false };
+    if (accept) {
+      this.ctx.storage.sql.exec("UPDATE installations SET status = 'accepted' WHERE id = ?", installationId);
+      return { ok: true };
+    }
+    let jwt: string;
+    try { jwt = await signAppJwt(config.app.clientId, config.app.privateKey, Math.floor(now / 1000)); }
+    catch { return { ok: false }; }
+    if (!await deleteInstallation(jwt, installationId)) return { ok: false };
+    // Installation IDs are immutable. Remember a successful refusal so a
+    // concurrent guard's earlier GitHub response cannot re-add it as pending.
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("INSERT INTO settings (key, value) VALUES (?, 'true') ON CONFLICT (key) DO NOTHING", `installation-refused:${installationId}`);
+      this.ctx.storage.sql.exec("DELETE FROM installations WHERE id = ? AND status = 'pending'", installationId);
+      new RepositoryDiscoveryStore(this.ctx.storage).forget(installationId);
+    });
+    this.selection?.forget(installationId);
+    return { ok: true };
+  }
+
+  private repositorySelection(): RepositorySelection | null {
+    if (this.selection) return this.selection;
+    const config = readConfig(this.env as unknown as Record<string, unknown>);
+    if (!config.app || config.ownerId === null) return null;
+    const store = this.overviewStore();
+    this.selection = new RepositorySelection({
+      ownerId: config.ownerId, app: config.app, store, discovery: new RepositoryDiscoveryStore(this.ctx.storage),
+      installations: () => this.storedInstallations(),
+      publish: async (now) => this.publishOverview({ type: "snapshot", snapshot: await this.overviewSnapshot(now) }),
+    });
+    return this.selection;
   }
 
   /** RPC callers are owner-gated by the Worker; no private snapshot is public. */
@@ -267,6 +352,11 @@ export class InstanceObject extends DurableObject<Env> {
   private overviewStore(): OverviewStore {
     this.ensureSchema();
     return new OverviewStore(this.ctx.storage);
+  }
+
+  private refusedInstallations(): Set<number> {
+    const rows = this.ctx.storage.sql.exec<{ key: string }>("SELECT key FROM settings WHERE key LIKE 'installation-refused:%'").toArray();
+    return new Set(rows.map(({ key }) => Number(key.slice("installation-refused:".length))));
   }
 
   private storedInstallations(): StoredInstallation[] {

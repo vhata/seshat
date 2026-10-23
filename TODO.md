@@ -80,23 +80,9 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### P1 High
 
-- [GITHUB] `sync-and-live-updates` — **Keep the stored PRs current from webhooks and sweeps, and push every change to open pages.** This is the change detection design, and what makes the overview live.
-  - Source: split of `build-pr-overview`, 2026-10-17
-  - Split from: `build-pr-overview`
-  - Depends on: `select-monitored-repositories`
-  - Starting point: [Recommended design](docs/specs/2026-10-14-change-detection.md#recommended-design) in the change detection design, within its [decision](docs/DECISIONS.md#2026-10-15--change-detection).
-  - Covers reducing deliveries to marks and the facts a re-read must show, with the webhook path doing no GitHub reads; dropping deliveries from installations that are not accepted, and running the installation guard and listing refresh on `installation` and `installation_repositories` deliveries (formerly `guard-installation-webhooks`; the sign-in PR runs the guard only from the setup page); repository deliveries triggering the listing refresh; holding unmatched CI SHAs for a minute; re-reads with their 5, 15 and 30 second retries; mergeability checks; the one alarm and its re-arming; sweeps every 2 minutes only while a page has a current visible report, the catch-up sweep, dormancy, the retry before failure, the slower interval when the GraphQL budget is low and continuation across invocations; recording sync status; and pushing changes to sockets.
-  - Updates each repository's visibility, and when it was last reported, from every read that stores its PRs and from every delivery's `repository` object, including `privatized`, `publicized`, `transferred` and `deleted` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
-  - Test the design's [not verified](docs/specs/2026-10-14-change-detection.md#not-verified) point about mergeability after a conflicting push to a base branch, and add its REST fallback if GitHub leaves the old value.
-  - Gate: acceptance checks 5 and 6, and the end-to-end halves of check 3 (every open PR on a monitored repository appears exactly once) and check 8 (the stale flag from GitHub's activity data), by automated tests with GitHub stubbed.
-  - The existing webhook only verifies signatures and acknowledges deliveries.
-    Guard accepted installations before processing their data; retain the
-    Worker path's no-GitHub-read boundary by running guard reads in the
-    object after reduction and handoff.
-
 - [PRODUCT] `build-pr-overview` — **Run the assembled PR overview against a real GitHub App and complete the acceptance checks that need the whole of it.** The other parts each demonstrate their own checks; this records the rest and confirms the deliverable is done.
   - Source: TODO.md triage, 2026-10-14
-  - Depends on: `select-monitored-repositories`, `render-pr-overview`, `sync-and-live-updates`
+  - Depends on: `render-pr-overview`, `sync-and-live-updates`
   - Starting point: [Acceptance checks](docs/DELIVERABLE.md#acceptance-checks). Gate: check 9 (no paid Cloudflare service and no LLM key) and check 10 (a recorded manual review that the overview is readable on a phone and that no wording implies local evidence was inspected), with a note in the PR naming where each other check was demonstrated.
   - Verify the assembled page through the real browser, Worker and Durable Object, including the owner session, snapshot, socket updates, visibility-driven catch-up and monitoring changes. Stub GitHub for repeatable timing and failure scenarios; record real-App evidence separately. Component checks against fake sockets alone do not complete the deliverable.
   - Run on a local instance with the local App from PR #20, which has no webhook GitHub can reach, so live webhooks need a tunnel or a deployed instance; either needs the owner's word at the time.
@@ -172,24 +158,29 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
+- [GITHUB] `verify-live-organization-opt-in` — **Record live organization installation and repository opt-in evidence when a suitable organization is available.** Automated organization coverage is sufficient for the initial release; a real installation remains unverified.
+  - Source: [organization acceptance decision](docs/DECISIONS.md#2026-10-23--organization-acceptance-for-the-initial-release), 2026-10-23
+  - Blocked by: a suitable authorized organization installation becoming available; changing the App's visibility still requires approval at the time.
+  - Starting point: install the App on an authorized organization, confirm its installation remains pending until accepted, confirm repositories stay off until individually selected, and verify opting a repository in and out adds and removes its PRs from the overview.
+
 ## Ready for separate work
 
 ### P0 Critical
 
 ### P1 High
 
-- [PRODUCT] `select-monitored-repositories` — **Choose monitored repositories from each accepted installation's listing, with the owner's overrides, organization acceptance and the repositories screen.** This is acceptance check 2, and the sweep needs the monitored set before it reads any PR.
+- [GITHUB] `sync-and-live-updates` — **Keep the stored PRs current from webhooks and sweeps, and push every change to open pages.** This is the change detection design, and what makes the overview live.
   - Source: split of `build-pr-overview`, 2026-10-17
   - Split from: `build-pr-overview`
-  - Starting point: [Monitored repositories](docs/DELIVERABLE.md#monitored-repositories), [Repository discovery and monitoring](docs/specs/2026-10-12-github-integration.md#repository-discovery-and-monitoring) and the guard's repository-selection paragraph under [Registration and installation](docs/specs/2026-10-12-github-integration.md#registration-and-installation); the Repositories screen in [docs/design/README.md](docs/design/README.md#screens).
-  - Covers `GET /installation/repositories` with conditional requests and paging, keyed by repository ID; the default rules (owned by the owner, not a fork, not archived); overrides to turn any repository off and an owned fork or an accepted organization's repository on, offered only where the owner's own permission is at least read; storing each repository's visibility and listing time; and an operation that refreshes one installation's listing, which the sweep and repository deliveries in `sync-and-live-updates` call.
-  - Includes the owner accepting or refusing a pending organization installation (formerly `accept-org-installations`; the sign-in PR holds one as pending with no way to accept it), and the prominent warning when the personal installation is set to selected repositories.
-  - Reuses the installation-token helper from `read-prs-from-github`; repository listing and selection live in separate modules from the PR reader.
-  - Gate: acceptance check 2. A repository created or archived after setup is shown by refreshing the listing; that a delivery or sweep triggers the refresh is shown in `sync-and-live-updates`. Turning a repository off removes its PRs from the snapshot.
-  - Demonstrating organization opt-in requires the owner's choice to monitor
-    an organization and make the private App public for installation there;
-    changing App visibility needs authorization at the time. Acceptance
-    check 2 remains a gate unless the owner explicitly amends it.
+  - Starting point: [Recommended design](docs/specs/2026-10-14-change-detection.md#recommended-design) in the change detection design, within its [decision](docs/DECISIONS.md#2026-10-15--change-detection).
+  - Covers reducing deliveries to marks and the facts a re-read must show, with the webhook path doing no GitHub reads; dropping deliveries from installations that are not accepted, and running the installation guard and listing refresh on `installation` and `installation_repositories` deliveries (formerly `guard-installation-webhooks`; the sign-in PR runs the guard only from the setup page); repository deliveries triggering the listing refresh; holding unmatched CI SHAs for a minute; re-reads with their 5, 15 and 30 second retries; mergeability checks; the one alarm and its re-arming; sweeps every 2 minutes only while a page has a current visible report, the catch-up sweep, dormancy, the retry before failure, the slower interval when the GraphQL budget is low and continuation across invocations; recording sync status; and pushing changes to sockets.
+  - Updates each repository's visibility, and when it was last reported, from every read that stores its PRs and from every delivery's `repository` object, including `privatized`, `publicized`, `transferred` and `deleted` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
+  - Test the design's [not verified](docs/specs/2026-10-14-change-detection.md#not-verified) point about mergeability after a conflicting push to a base branch, and add its REST fallback if GitHub leaves the old value.
+  - Gate: acceptance checks 5 and 6, and the end-to-end halves of check 3 (every open PR on a monitored repository appears exactly once) and check 8 (the stale flag from GitHub's activity data), by automated tests with GitHub stubbed.
+  - The existing webhook only verifies signatures and acknowledges deliveries.
+    Guard accepted installations before processing their data; retain the
+    Worker path's no-GitHub-read boundary by running guard reads in the
+    object after reduction and handoff.
 
 - [PRODUCT] `render-pr-overview` — **Build the overview page: buckets and rows from the snapshot, live changes, the sync status states and the visibility reports that drive sweeps.** The page can be built against fixture snapshots and a fake socket while sync is built.
   - Source: split of `build-pr-overview`, 2026-10-17

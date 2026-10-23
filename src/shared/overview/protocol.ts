@@ -194,15 +194,20 @@ export function parseClientMessage(data: unknown): ClientMessage | null {
   }
 }
 
-export type InstallationRefreshResult =
+/** HTTP allowance charged conservatively, including one token-mint slot. */
+export type InstallationRefreshResult = (
   | { readonly ok: true; readonly changed: boolean; readonly repositoryIds: readonly number[] }
-  | { readonly ok: false; readonly reason: Exclude<SyncFailureReason, "cloudflare-quota"> };
+  | { readonly ok: false; readonly reason: Exclude<SyncFailureReason, "cloudflare-quota"> }
+  /** Incomplete work is private and resumable; callers re-arm promptly. */
+  | { readonly ok: false; readonly reason: "continuation" }
+) & { readonly requestsUsed: number };
 export type MonitoringMutationResult =
   | { readonly ok: true; readonly repository: RepositoryRecord }
   | { readonly ok: false; readonly reason: "not-found" | "not-allowed" };
 /** Selection owns these operations; sync consumes the complete-list refresh. */
 export interface RepositorySelectionOperations {
-  refreshInstallation(installationId: number, now: number): Promise<InstallationRefreshResult>;
+  /** Callers budget the whole invocation and resume continuations promptly. */
+  refreshInstallation(installationId: number, now: number, requestBudget?: number): Promise<InstallationRefreshResult>;
   setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult>;
 }
 
