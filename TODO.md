@@ -80,24 +80,10 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### P1 High
 
-- [PRODUCT] `select-monitored-repositories` — **Choose monitored repositories from each accepted installation's listing, with the owner's overrides, organization acceptance and the repositories screen.** This is acceptance check 2, and the sweep needs the monitored set before it reads any PR.
-  - Source: split of `build-pr-overview`, 2026-10-17
-  - Split from: `build-pr-overview`
-  - Depends on: `read-prs-from-github`
-  - Starting point: [Monitored repositories](docs/DELIVERABLE.md#monitored-repositories), [Repository discovery and monitoring](docs/specs/2026-10-12-github-integration.md#repository-discovery-and-monitoring) and the guard's repository-selection paragraph under [Registration and installation](docs/specs/2026-10-12-github-integration.md#registration-and-installation); the Repositories screen in [docs/design/README.md](docs/design/README.md#screens).
-  - Covers `GET /installation/repositories` with conditional requests and paging, keyed by repository ID; the default rules (owned by the owner, not a fork, not archived); overrides to turn any repository off and an owned fork or an accepted organization's repository on, offered only where the owner's own permission is at least read; storing each repository's visibility and listing time; and an operation that refreshes one installation's listing, which the sweep and repository deliveries in `sync-and-live-updates` call.
-  - Includes the owner accepting or refusing a pending organization installation (formerly `accept-org-installations`; the sign-in PR holds one as pending with no way to accept it), and the prominent warning when the personal installation is set to selected repositories.
-  - Reuses the installation-token helper from `read-prs-from-github`; repository listing and selection live in separate modules from the PR reader.
-  - Gate: acceptance check 2. A repository created or archived after setup is shown by refreshing the listing; that a delivery or sweep triggers the refresh is shown in `sync-and-live-updates`. Turning a repository off removes its PRs from the snapshot.
-  - Demonstrating organization opt-in requires the owner's choice to monitor
-    an organization and make the private App public for installation there;
-    changing App visibility needs authorization at the time. Acceptance
-    check 2 remains a gate unless the owner explicitly amends it.
-
 - [GITHUB] `sync-and-live-updates` — **Keep the stored PRs current from webhooks and sweeps, and push every change to open pages.** This is the change detection design, and what makes the overview live.
   - Source: split of `build-pr-overview`, 2026-10-17
   - Split from: `build-pr-overview`
-  - Depends on: `read-prs-from-github`, `select-monitored-repositories`
+  - Depends on: `select-monitored-repositories`
   - Starting point: [Recommended design](docs/specs/2026-10-14-change-detection.md#recommended-design) in the change detection design, within its [decision](docs/DECISIONS.md#2026-10-15--change-detection).
   - Covers reducing deliveries to marks and the facts a re-read must show, with the webhook path doing no GitHub reads; dropping deliveries from installations that are not accepted, and running the installation guard and listing refresh on `installation` and `installation_repositories` deliveries (formerly `guard-installation-webhooks`; the sign-in PR runs the guard only from the setup page); repository deliveries triggering the listing refresh; holding unmatched CI SHAs for a minute; re-reads with their 5, 15 and 30 second retries; mergeability checks; the one alarm and its re-arming; sweeps every 2 minutes only while a page has a current visible report, the catch-up sweep, dormancy, the retry before failure, the slower interval when the GraphQL budget is low and continuation across invocations; recording sync status; and pushing changes to sockets.
   - Updates each repository's visibility, and when it was last reported, from every read that stores its PRs and from every delivery's `repository` object, including `privatized`, `publicized`, `transferred` and `deleted` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
@@ -192,15 +178,18 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### P1 High
 
-- [GITHUB] `read-prs-from-github` — **Read open PRs from GitHub with an installation token and turn each read into a `PrInput`, through the one code path that re-reads and sweeps will share.** The queries, their costs and the mapping can be built and tested against stubbed responses before anything schedules them.
+- [PRODUCT] `select-monitored-repositories` — **Choose monitored repositories from each accepted installation's listing, with the owner's overrides, organization acceptance and the repositories screen.** This is acceptance check 2, and the sweep needs the monitored set before it reads any PR.
   - Source: split of `build-pr-overview`, 2026-10-17
   - Split from: `build-pr-overview`
-  - Starting point: [Re-reads](docs/specs/2026-10-14-change-detection.md#re-reads), [Mergeability](docs/specs/2026-10-14-change-detection.md#mergeability), [The sweep](docs/specs/2026-10-14-change-detection.md#the-sweep) steps 1, 3 to 5 and [Constraints for implementation](docs/specs/2026-10-14-change-detection.md#constraints-for-implementation); [PR signals](docs/specs/2026-10-12-github-integration.md#pr-signals) for reviewer permission. `PrInput` ([types](src/shared/overview/types.ts)) notes the GitHub field behind each input.
-  - Covers minting and caching installation tokens; the open-PR count query by repository node ID; the per-repository read (20 PRs, 30 reviews, 50 check contexts, further pages only where a count says so, at most 10 repositories a query); the re-read of up to 10 PRs by node ID; the REST mergeability fetch for `UNKNOWN`; reviewer permission through the collaborator endpoint with conditional requests, keeping the last known permission when a lookup fails; `rateLimit.remaining` and `resetAt`; and each repository's visibility as the read reports it. Scheduling, storage and webhooks are `sync-and-live-updates`.
-  - The reader result also carries closed/merged state and the review/check identifiers and observed states sync needs to retire PRs and compare webhook facts with API reads; `PrInput` alone cannot represent those. Keep inaccessible or missing nodes distinguishable from confirmed closure and partial reads distinguishable from complete listings.
-  - The re-read and sweep queries in the design do not yet read everything `PrActivity` needs for the stale flag and ordering: `timelineItems` of types `HEAD_REF_FORCE_PUSHED_EVENT`, `REOPENED_EVENT`, `CONVERT_TO_DRAFT_EVENT` and `READY_FOR_REVIEW_EVENT` (Pull requests read), and the head commit's `committedDate`. GitHub reports no push time (`Commit.pushedDate` was removed), so a plain push is known only from the client-set committer date. Estimate the queries' GraphQL cost with these fields included.
-  - Settle the design's [not verified](docs/specs/2026-10-14-change-detection.md#not-verified) item on costs with an installation token, including `nodes` by repository ID, using the local App from PR #20; record measured costs and access results in validation evidence. A failed or partial read must be distinguishable from "no open PRs".
-  - New GitHub calls go in their own modules beside `src/worker/github.ts`; `select-monitored-repositories` owns the separate repository-listing module and reuses this task's token helper.
+  - Starting point: [Monitored repositories](docs/DELIVERABLE.md#monitored-repositories), [Repository discovery and monitoring](docs/specs/2026-10-12-github-integration.md#repository-discovery-and-monitoring) and the guard's repository-selection paragraph under [Registration and installation](docs/specs/2026-10-12-github-integration.md#registration-and-installation); the Repositories screen in [docs/design/README.md](docs/design/README.md#screens).
+  - Covers `GET /installation/repositories` with conditional requests and paging, keyed by repository ID; the default rules (owned by the owner, not a fork, not archived); overrides to turn any repository off and an owned fork or an accepted organization's repository on, offered only where the owner's own permission is at least read; storing each repository's visibility and listing time; and an operation that refreshes one installation's listing, which the sweep and repository deliveries in `sync-and-live-updates` call.
+  - Includes the owner accepting or refusing a pending organization installation (formerly `accept-org-installations`; the sign-in PR holds one as pending with no way to accept it), and the prominent warning when the personal installation is set to selected repositories.
+  - Reuses the installation-token helper from `read-prs-from-github`; repository listing and selection live in separate modules from the PR reader.
+  - Gate: acceptance check 2. A repository created or archived after setup is shown by refreshing the listing; that a delivery or sweep triggers the refresh is shown in `sync-and-live-updates`. Turning a repository off removes its PRs from the snapshot.
+  - Demonstrating organization opt-in requires the owner's choice to monitor
+    an organization and make the private App public for installation there;
+    changing App visibility needs authorization at the time. Acceptance
+    check 2 remains a gate unless the owner explicitly amends it.
 
 - [PRODUCT] `render-pr-overview` — **Build the overview page: buckets and rows from the snapshot, live changes, the sync status states and the visibility reports that drive sweeps.** The page can be built against fixture snapshots and a fake socket while sync is built.
   - Source: split of `build-pr-overview`, 2026-10-17
