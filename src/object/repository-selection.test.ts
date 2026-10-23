@@ -1,7 +1,8 @@
 import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixturePr } from "../shared/overview/fixtures";
+import { OverviewSync } from "./overview-sync";
 import { OverviewStore } from "./overview-store";
 import { instanceStub } from "../worker/instance-stub";
 import { BASE, json, OWNER_ID, ownerSession, storedRows, stubGitHub } from "../worker/test-helpers";
@@ -22,6 +23,9 @@ function githubRoutes(list: () => unknown[], installations: () => unknown[] = ()
     [`GET https://api.github.com/user/${OWNER_ID}`]: () => json({ id: OWNER_ID, login: "owner" }),
   };
 }
+// These tests drive discovery one bounded call at a time. The scheduler has
+// separate end-to-end tests and must not race the explicit continuation here.
+beforeEach(() => { vi.spyOn(OverviewSync.prototype, "rearm").mockResolvedValue(undefined); });
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("repository selection in the instance", () => {
@@ -293,5 +297,18 @@ describe("owner-only repository routes", () => {
       expect((await exports.default.fetch(`${BASE}/api/repositories/${path}`, { method: "POST", headers: { cookie, origin: "https://elsewhere.test", "content-type": "application/json" }, body: JSON.stringify(body) })).status).toBe(403);
     }
     expect(github.calls).toEqual([]);
+  });
+});
+
+
+describe("discovery throttle reasons", () => {
+  for (const endpoint of ["login", "permission"]) it(`preserves a throttled owner ${endpoint} lookup`, async () => {
+    const routes = githubRoutes(() => [repository(5, { full_name: "org/repo-5", owner: { id: 3003, login: "org" } })], () => [ORG]);
+    stubGitHub({ ...routes,
+      [`GET https://api.github.com/user/${OWNER_ID}`]: () => endpoint === "login" ? json({}, 429) : json({ id: OWNER_ID, login: "owner" }),
+      "GET https://api.github.com/repos/org/repo-5/collaborators/owner/permission": () => Response.json({}, { status: 403, headers: { "x-ratelimit-remaining": "0" } }),
+    });
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.decideOrganization(20, true, NOW);
+    expect(await stub.refreshInstallation(20, NOW)).toMatchObject({ ok: false, reason: "rate-limited" });
   });
 });

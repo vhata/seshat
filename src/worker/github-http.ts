@@ -36,3 +36,9 @@ export function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown> : null;
 }
+
+/** Both primary and secondary throttles must remain visible to sync. */
+export function rateLimited(response: Response | null): boolean {
+  return response?.status === 429 || response?.status === 403
+    && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after"));
+}

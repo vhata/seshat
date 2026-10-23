@@ -84,7 +84,8 @@ using only the latest review or thread would miss newer replies. Those
 nested comment connections raise the cost above the earlier partial-query
 estimate. At 30 sweeps an hour this query shape alone costs about 2,100
 points; actual cost also includes counts, additional pages and event reads.
-The scheduler must use the returned remaining budget and reset time.
+The scheduler uses the returned actual installation limit, remaining budget
+and reset time; see [overview synchronization](OVERVIEW_SYNC.md).
 
 The original nested `commits.nodes.commit` query returned integration-access
 errors on private PRs. The production query instead uses the PR's direct

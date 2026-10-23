@@ -21,6 +21,8 @@ import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 import type { RepositorySettings } from "../shared/repositories";
 import type { InstallationRefreshResult, MonitoringMutationResult } from "../shared/overview/protocol";
 import { MIGRATIONS } from "./schema";
+import { OverviewSync } from "./overview-sync";
+import type { ReducedDelivery } from "../shared/overview/webhook-marks";
 
 const VERSION_TABLE = "schema_version";
 
@@ -61,11 +63,14 @@ export class InstanceObject extends DurableObject<Env> {
   /** The current schema version, once this instance has checked it. */
   private schemaVersion: number | undefined;
   private selection: RepositorySelection | undefined;
+  private sync: OverviewSync | undefined;
   private readonly installationDecisions = new Set<number>();
 
   /** Reports that the object is reachable and its schema is current. */
   async health(): Promise<{ schemaVersion: number }> {
-    return { schemaVersion: this.ensureSchema() };
+    const schemaVersion = this.ensureSchema();
+    await this.syncScheduler().rearm(Date.now());
+    return { schemaVersion };
   }
 
   /**
@@ -76,6 +81,7 @@ export class InstanceObject extends DurableObject<Env> {
    */
   async createSession(key: string, nowMs: number): Promise<number> {
     this.ensureSchema();
+    await this.syncScheduler().rearm(nowMs);
     const expiresAt = nowMs + SESSION_SECONDS * 1000;
     const sql = this.ctx.storage.sql;
     this.ctx.storage.transactionSync(() => {
@@ -93,6 +99,7 @@ export class InstanceObject extends DurableObject<Env> {
   /** The session's expiry if it exists and has not expired; reads only. */
   async sessionExpiry(key: string, nowMs: number): Promise<number | null> {
     this.ensureSchema();
+    await this.syncScheduler().rearm(nowMs);
     const [row] = this.ctx.storage.sql
       .exec<{ expires_at: number }>(
         "SELECT expires_at FROM sessions WHERE key = ? AND expires_at > ?",
@@ -106,6 +113,7 @@ export class InstanceObject extends DurableObject<Env> {
   /** Ends a session. Writes only if the session exists. */
   async endSession(key: string): Promise<void> {
     this.ensureSchema();
+    await this.syncScheduler().rearm(Date.now());
     const sql = this.ctx.storage.sql;
     const exists = sql.exec("SELECT 1 FROM sessions WHERE key = ?", key).toArray().length > 0;
     if (exists) sql.exec("DELETE FROM sessions WHERE key = ?", key);
@@ -122,6 +130,7 @@ export class InstanceObject extends DurableObject<Env> {
    */
   async checkInstallations(nowMs: number): Promise<InstallationCheck> {
     this.ensureSchema();
+    await this.syncScheduler().rearm(nowMs);
     const config = readConfig(this.env as unknown as Record<string, unknown>);
     if (config.app === null || config.ownerId === null) {
       return { ok: false, reason: "not-configured" };
@@ -151,10 +160,14 @@ export class InstanceObject extends DurableObject<Env> {
     let kept: (StoredInstallation & { accountLogin: string })[] = [];
     const deleted: ReportedInstallation[] = [];
     const undeleted: ReportedInstallation[] = [];
+    // listInstallations uses at most ten calls. Deletions share the remaining
+    // forty, including refused deletions, so even an untrusted App installation
+    // burst cannot exceed Free's fifty subrequests. The alarm retries the rest.
+    let deletionAllowance = 40;
     for (const action of actions) {
       if (action.kind === "keep") {
         kept.push({ ...action.installation, accountLogin: logins.get(action.installation.id) ?? "" });
-      } else if (await deleteInstallation(jwt, action.installation.id)) {
+      } else if (deletionAllowance-- > 0 && await deleteInstallation(jwt, action.installation.id)) {
         deleted.push(action.installation);
       } else {
         undeleted.push(action.installation);
@@ -209,31 +222,42 @@ export class InstanceObject extends DurableObject<Env> {
     if (gone.length > 0) {
       await this.publishOverview({ type: "snapshot", snapshot: await this.overviewSnapshot(nowMs) });
     }
+    if (undeleted.length > 0) this.syncScheduler().requestGuard(nowMs + 15_000);
+    await this.syncScheduler().rearm(nowMs);
     return { ok: true, kept, deleted, undeleted };
   }
 
   /** Owner-only settings; listing reads are explicit mutations, never a GET. */
   async repositorySettings(): Promise<RepositorySettings> {
     const store = this.overviewStore();
+    await this.syncScheduler().rearm(Date.now());
     const ownerId = readConfig(this.env as unknown as Record<string, unknown>).ownerId ?? 0;
     return { ownerId, installations: this.storedInstallations(), repositories: store.repositories() };
   }
 
   async refreshInstallation(installationId: number, now: number, requestBudget = 25): Promise<InstallationRefreshResult> {
     const selection = this.repositorySelection();
-    return selection ? selection.refreshInstallation(installationId, now, requestBudget) : { ok: false, reason: "github-unavailable", requestsUsed: 0 };
+    const result = selection ? await selection.refreshInstallation(installationId, now, requestBudget) : { ok: false as const, reason: "github-unavailable" as const, requestsUsed: 0 };
+    if (result.ok) this.syncScheduler().discoveryChanged(installationId, now);
+    else if (result.reason === "continuation") this.syncScheduler().refresh(installationId, now, false);
+    await this.syncScheduler().rearm(now);
+    return result;
   }
 
   async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {
     const selection = this.repositorySelection();
-    return selection ? selection.setMonitoringOverride(repositoryId, override, now) : { ok: false, reason: "not-allowed" };
+    const result = selection ? await selection.setMonitoringOverride(repositoryId, override, now) : { ok: false as const, reason: "not-allowed" as const };
+    if (result.ok && result.repository.monitored) this.syncScheduler().discoveryChanged(result.repository.installationId, now);
+    await this.syncScheduler().rearm(now);
+    return result;
   }
 
   async decideOrganization(installationId: number, accept: boolean, now: number): Promise<{ ok: boolean }> {
+    await this.syncScheduler().rearm(now);
     if (this.installationDecisions.has(installationId)) return { ok: false };
     this.installationDecisions.add(installationId);
     try { return await this.applyOrganizationDecision(installationId, accept, now); }
-    finally { this.installationDecisions.delete(installationId); }
+    finally { this.installationDecisions.delete(installationId); await this.syncScheduler().rearm(now); }
   }
 
   private async applyOrganizationDecision(installationId: number, accept: boolean, now: number): Promise<{ ok: boolean }> {
@@ -243,6 +267,7 @@ export class InstanceObject extends DurableObject<Env> {
     if (!installation || installation.accountType !== "Organization" || installation.status !== "pending" || !config.app) return { ok: false };
     if (accept) {
       this.ctx.storage.sql.exec("UPDATE installations SET status = 'accepted' WHERE id = ?", installationId);
+      this.syncScheduler().refresh(installationId, now);
       return { ok: true };
     }
     let jwt: string;
@@ -273,15 +298,50 @@ export class InstanceObject extends DurableObject<Env> {
     return this.selection;
   }
 
+  private syncScheduler(): OverviewSync {
+    if (this.sync) return this.sync;
+    this.sync = new OverviewSync({
+      storage: this.ctx.storage, store: this.overviewStore(),
+      selection: this.repositorySelection(),
+      installations: () => this.storedInstallations(),
+      visible: (now) => this.ctx.getWebSockets().some((socket) => {
+        const attachment = this.socketAttachment(socket);
+        if (!attachment || socket.readyState !== WebSocket.OPEN || attachment.expiresAt <= now
+          || !attachment.visibility?.visible || now - attachment.visibility.reportedAt >= 900_000) return false;
+        return this.ctx.storage.sql.exec("SELECT 1 FROM sessions WHERE key = ? AND expires_at > ?", attachment.sessionKey, now).toArray().length > 0;
+      }),
+      guard: async (now) => {
+        const result = await this.checkInstallations(now);
+        return result.ok && result.undeleted.length === 0;
+      },
+      publish: async (now) => this.publishOverview({ type: "snapshot", snapshot: await this.overviewSnapshot(now) }),
+    });
+    return this.sync;
+  }
+
+  /** Verified webhook facts are persisted before the Worker acknowledges them. */
+  async receiveDelivery(delivery: ReducedDelivery, now: number): Promise<boolean> {
+    this.ensureSchema();
+    return this.syncScheduler().receive(delivery, now);
+  }
+
+  override async alarm(): Promise<void> {
+    this.ensureSchema();
+    await this.syncScheduler().alarm(Date.now());
+  }
+
   /** RPC callers are owner-gated by the Worker; no private snapshot is public. */
   async overviewSnapshot(nowMs: number): Promise<OverviewSnapshot> {
     const store = this.overviewStore();
+    await this.syncScheduler().rearm(nowMs);
     const ownerId = readConfig(this.env as unknown as Record<string, unknown>).ownerId;
     return buildSnapshot(store.repositories(), store.pullRequests(), store.syncStatus(), ownerId ?? 0, nowMs);
   }
 
   /** Only the Worker forwards this request after its owner session gate. */
   override async fetch(request: Request): Promise<Response> {
+    this.ensureSchema();
+    await this.syncScheduler().rearm(Date.now());
     const url = new URL(request.url);
     if (url.pathname !== SOCKET_PATH) return new Response(null, { status: 404 });
     if (request.method !== "GET") return new Response(null, { status: 405 });
@@ -312,19 +372,22 @@ export class InstanceObject extends DurableObject<Env> {
     }
     const attachment = this.socketAttachment(socket)!;
     socket.serializeAttachment({ ...attachment, visibility: { visible: message.visible, reportedAt: now } } satisfies SocketAttachment);
-    // Scheduling and acting on retry/overdue belong to sync-and-live-updates.
+    await this.syncScheduler().visibility(now, message.type === "retry-now");
   }
 
-  override webSocketClose(socket: WebSocket, code: number, reason: string): void {
+  override async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
     socket.close(code, reason);
+    await this.syncScheduler().visibility(Date.now(), false);
   }
 
-  override webSocketError(socket: WebSocket): void {
+  override async webSocketError(socket: WebSocket): Promise<void> {
     socket.close(1011, "socket error");
+    await this.syncScheduler().visibility(Date.now(), false);
   }
 
   /** All future sync publications use this session-checking boundary. */
   async publishOverview(message: ServerMessage): Promise<void> {
+    await this.syncScheduler().rearm(Date.now());
     const encoded = JSON.stringify(message);
     const now = Date.now();
     for (const socket of this.ctx.getWebSockets()) {

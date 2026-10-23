@@ -25,26 +25,26 @@ export class RepositorySelection implements RepositorySelectionOperations {
     this.tokens = tokens ?? new InstallationTokens(context.app);
   }
 
-  refreshInstallation(installationId: number, now: number, requestBudget = 25): Promise<InstallationRefreshResult> {
+  refreshInstallation(installationId: number, now: number, requestBudget = 25, shouldContinue: () => boolean = () => true): Promise<InstallationRefreshResult> {
     const pending = this.refreshing.get(installationId);
     if (pending) return pending.then((result) => ({ ...result, requestsUsed: 0 }));
-    const refreshing = this.refreshCompleteInstallation(installationId, now, requestBudget)
+    const refreshing = this.refreshCompleteInstallation(installationId, now, requestBudget, shouldContinue)
       .finally(() => this.refreshing.delete(installationId));
     this.refreshing.set(installationId, refreshing);
     return refreshing;
   }
 
-  private async refreshCompleteInstallation(installationId: number, now: number, requestBudget: number): Promise<InstallationRefreshResult> {
+  private async refreshCompleteInstallation(installationId: number, now: number, requestBudget: number, shouldContinue: () => boolean): Promise<InstallationRefreshResult> {
     const budget = Number.isFinite(requestBudget) ? Math.max(0, Math.min(25, Math.floor(requestBudget))) : 0;
     let requestsUsed = 0;
     const installation = this.acceptedInstallation(installationId);
     if (!installation) return { ok: false, reason: "installation-removed", requestsUsed };
-    if (budget < 2) return { ok: false, reason: "continuation", requestsUsed };
+    if (!shouldContinue() || budget < 2) return { ok: false, reason: "continuation", requestsUsed };
     // Reserving a mint slot even for a memory-cached token keeps the caller's
     // invocation-wide allowance safe without exposing credential internals.
     requestsUsed++;
     const authorization = await this.tokens.get(installationId, now);
-    if (!authorization.ok) return { ok: false, reason: "github-unavailable", requestsUsed };
+    if (!authorization.ok) return { ok: false, reason: authorization.reason === "rate-limited" || authorization.reason === "installation-suspended" || authorization.reason === "installation-removed" ? authorization.reason : "github-unavailable", requestsUsed };
     const state = this.context.discovery.get(installationId);
     const progress: RepositoryDiscoveryProgress = state.progress ?? {
       phase: "listing", total: null, pages: [], repositories: [],
@@ -54,7 +54,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
       if (this.acceptedInstallation(installationId)) this.context.discovery.save(installationId, { ...state, progress });
       else this.context.discovery.forget(installationId);
     };
-    while (progress.phase === "listing" && requestsUsed < budget) {
+    while (progress.phase === "listing" && requestsUsed < budget && shouldContinue()) {
       const index = progress.pages.length;
       requestsUsed++;
       const read = await this.github.readPage(authorization.token, index + 1, state.cachedPages[index]);
@@ -81,13 +81,14 @@ export class RepositorySelection implements RepositorySelectionOperations {
     }
     if (progress.phase === "permissions") {
       const needsPermission = progress.repositories.some((repository) => repository.ownerAccountId !== this.context.ownerId);
-      if (needsPermission && !progress.ownerLogin && requestsUsed < budget) {
+      if (needsPermission && !progress.ownerLogin && requestsUsed < budget && shouldContinue()) {
         requestsUsed++;
-        progress.ownerLogin = await this.github.ownerLogin(authorization.token, this.context.ownerId);
-        if (!progress.ownerLogin) { saveProgress(); return { ok: false, reason: "github-unavailable", requestsUsed }; }
+        const login = await this.github.readOwnerLogin(authorization.token, this.context.ownerId);
+        if (!login.ok) { saveProgress(); return { ok: false, reason: login.reason, requestsUsed }; }
+        progress.ownerLogin = login.login;
       }
       const priorRepositories = new Map(state.cachedPages.flatMap((page) => page.repositories).map((repository) => [repository.id, repository]));
-      while (progress.permissionIndex < progress.repositories.length) {
+      while (progress.permissionIndex < progress.repositories.length && shouldContinue()) {
         const repository = progress.repositories[progress.permissionIndex]!;
         if (repository.ownerAccountId === this.context.ownerId) progress.permissions.push([repository.id, "admin"]);
         else {
@@ -95,7 +96,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
           requestsUsed++;
           const previous = priorRepositories.get(repository.id)?.fullName === repository.fullName ? state.permissionCache[repository.id] ?? null : null;
           const read = await this.github.readOwnerPermission(authorization.token, repository, this.context.ownerId, progress.ownerLogin, previous);
-          if (!read.ok || !read.entry) { saveProgress(); return { ok: false, reason: "github-unavailable", requestsUsed }; }
+          if (!read.ok || !read.entry) { saveProgress(); return { ok: false, reason: read.reason ?? "github-unavailable", requestsUsed }; }
           progress.permissions.push([repository.id, read.entry.permission]);
           progress.permissionCache[repository.id] = read.entry;
         }
@@ -106,7 +107,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
       this.context.discovery.forget(installationId);
       return { ok: false, reason: "installation-removed", requestsUsed };
     }
-    if (progress.phase !== "permissions" || progress.permissionIndex < progress.repositories.length) {
+    if (!shouldContinue() || progress.phase !== "permissions" || progress.permissionIndex < progress.repositories.length) {
       saveProgress();
       return { ok: false, reason: "continuation", requestsUsed };
     }
@@ -119,7 +120,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
       .map((listed): RepositoryRecord => {
         const repository = {
           ...listed, installationId, ownerPermission: permissions.get(listed.id)!,
-          monitorOverride: this.context.discovery.monitoringOverride(listed.id) ?? before.get(listed.id)?.monitorOverride ?? null, listedAt: now,
+          monitorOverride: this.context.discovery.monitoringOverride(listed.id) ?? before.get(listed.id)?.monitorOverride ?? null, listedAt: now, visibilityReportedAt: now,
         };
         return { ...repository, monitored: monitoredRepository(repository, this.context.ownerId, installation.accountType === "Organization") };
       });
@@ -131,6 +132,12 @@ export class RepositorySelection implements RepositorySelectionOperations {
     });
     if (changed) await this.context.publish(now);
     return { ok: true, changed, repositoryIds: repositories.filter((repository) => repository.monitored).map((repository) => repository.id), requestsUsed };
+  }
+
+  /** A cancelled visible sweep starts discovery afresh when it returns. */
+  discardRefreshProgress(installationId: number): void {
+    const state = this.context.discovery.get(installationId);
+    if (state.progress) this.context.discovery.save(installationId, { ...state, progress: null });
   }
 
   async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {

@@ -82,7 +82,7 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 - [PRODUCT] `build-pr-overview` — **Run the assembled PR overview against a real GitHub App and complete the acceptance checks that need the whole of it.** The other parts each demonstrate their own checks; this records the rest and confirms the deliverable is done.
   - Source: TODO.md triage, 2026-10-14
-  - Depends on: `render-pr-overview`, `sync-and-live-updates`
+  - Depends on: `render-pr-overview`
   - Starting point: [Acceptance checks](docs/DELIVERABLE.md#acceptance-checks). Gate: check 9 (no paid Cloudflare service and no LLM key) and check 10 (a recorded manual review that the overview is readable on a phone and that no wording implies local evidence was inspected), with a note in the PR naming where each other check was demonstrated.
   - Verify the assembled page through the real browser, Worker and Durable Object, including the owner session, snapshot, socket updates, visibility-driven catch-up and monitoring changes. Stub GitHub for repeatable timing and failure scenarios; record real-App evidence separately. Component checks against fake sockets alone do not complete the deliverable.
   - Run on a local instance with the local App from PR #20, which has no webhook GitHub can reach, so live webhooks need a tunnel or a deployed instance; either needs the owner's word at the time.
@@ -168,19 +168,6 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 ### P0 Critical
 
 ### P1 High
-
-- [GITHUB] `sync-and-live-updates` — **Keep the stored PRs current from webhooks and sweeps, and push every change to open pages.** This is the change detection design, and what makes the overview live.
-  - Source: split of `build-pr-overview`, 2026-10-17
-  - Split from: `build-pr-overview`
-  - Starting point: [Recommended design](docs/specs/2026-10-14-change-detection.md#recommended-design) in the change detection design, within its [decision](docs/DECISIONS.md#2026-10-15--change-detection).
-  - Covers reducing deliveries to marks and the facts a re-read must show, with the webhook path doing no GitHub reads; dropping deliveries from installations that are not accepted, and running the installation guard and listing refresh on `installation` and `installation_repositories` deliveries (formerly `guard-installation-webhooks`; the sign-in PR runs the guard only from the setup page); repository deliveries triggering the listing refresh; holding unmatched CI SHAs for a minute; re-reads with their 5, 15 and 30 second retries; mergeability checks; the one alarm and its re-arming; sweeps every 2 minutes only while a page has a current visible report, the catch-up sweep, dormancy, the retry before failure, the slower interval when the GraphQL budget is low and continuation across invocations; recording sync status; and pushing changes to sockets.
-  - Updates each repository's visibility, and when it was last reported, from every read that stores its PRs and from every delivery's `repository` object, including `privatized`, `publicized`, `transferred` and `deleted` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
-  - Test the design's [not verified](docs/specs/2026-10-14-change-detection.md#not-verified) point about mergeability after a conflicting push to a base branch, and add its REST fallback if GitHub leaves the old value.
-  - Gate: acceptance checks 5 and 6, and the end-to-end halves of check 3 (every open PR on a monitored repository appears exactly once) and check 8 (the stale flag from GitHub's activity data), by automated tests with GitHub stubbed.
-  - The existing webhook only verifies signatures and acknowledges deliveries.
-    Guard accepted installations before processing their data; retain the
-    Worker path's no-GitHub-read boundary by running guard reads in the
-    object after reduction and handoff.
 
 - [PRODUCT] `render-pr-overview` — **Build the overview page: buckets and rows from the snapshot, live changes, the sync status states and the visibility reports that drive sweeps.** The page can be built against fixture snapshots and a fake socket while sync is built.
   - Source: split of `build-pr-overview`, 2026-10-17

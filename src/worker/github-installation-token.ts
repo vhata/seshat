@@ -1,10 +1,10 @@
 import { signAppJwt } from "../shared/app-jwt";
 import type { AppConfig } from "../shared/config";
-import { githubRequest, record, responseJson } from "./github-http";
+import { githubRequest, rateLimited, record, responseJson } from "./github-http";
 
 export type InstallationTokenResult =
   | { readonly ok: true; readonly token: string; readonly expiresAt: number }
-  | { readonly ok: false; readonly reason: "invalid-installation" | "signing-failed" | "github-failed" };
+  | { readonly ok: false; readonly reason: "invalid-installation" | "signing-failed" | "github-failed" | "rate-limited" | "installation-suspended" | "installation-removed" };
 
 /** Memory-only, per-App cache. Construct once per object; never serialize it. */
 export class InstallationTokens {
@@ -42,6 +42,9 @@ export class InstallationTokens {
     }
     const response = await githubRequest(jwt, `/app/installations/${installationId}/access_tokens`, { method: "POST" });
     const body = record(await responseJson(response));
+    if (response?.status === 401 || response?.status === 404) return { ok: false, reason: "installation-removed" };
+    if (rateLimited(response)) return { ok: false, reason: "rate-limited" };
+    if (response?.status === 403 && typeof body?.message === "string" && body.message.toLowerCase().includes("suspend")) return { ok: false, reason: "installation-suspended" };
     const expiresAt = typeof body?.expires_at === "string" ? Date.parse(body.expires_at) : NaN;
     if (response?.status !== 201 || typeof body?.token !== "string" || !body.token || expiresAt <= now + 180_000 || !Number.isFinite(expiresAt)) {
       return { ok: false, reason: "github-failed" };

@@ -1,3 +1,5 @@
+import { reduceDelivery } from "../shared/overview/webhook-marks";
+import { instanceStub } from "./instance-stub";
 import { verifyWebhookSignature } from "../shared/webhook";
 import { jsonResponse, type RouteContext } from "./context";
 
@@ -37,9 +39,8 @@ export async function readCapped(
 
 /**
  * `POST /api/github/webhook`: the App's webhook. Deliveries are verified
- * against the webhook secret and acknowledged. Acting on them belongs to
- * change detection, which is not built yet, so a verified delivery is
- * dropped after the check.
+ * against the webhook secret, reduced to marks, and acknowledged only after
+ * the object persists those marks. This path never reads GitHub.
  */
 export async function receiveWebhook(context: RouteContext): Promise<Response> {
   const { config, request } = context;
@@ -56,5 +57,13 @@ export async function receiveWebhook(context: RouteContext): Promise<Response> {
     request.headers.get("x-hub-signature-256"),
   );
   if (!valid) return jsonResponse({ error: "invalid signature" }, 401);
+  let payload: unknown;
+  try { payload = JSON.parse(new TextDecoder().decode(body)); }
+  catch { return jsonResponse({ error: "invalid payload" }, 400); }
+  const delivery = reduceDelivery(request.headers.get("x-github-event") ?? "", payload, context.now);
+  if (delivery) {
+    try { await instanceStub(context.env).receiveDelivery(delivery, context.now); }
+    catch { return jsonResponse({ error: "delivery not stored" }, 503); }
+  }
   return new Response(null, { status: 202 });
 }
