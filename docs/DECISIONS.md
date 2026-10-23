@@ -746,3 +746,18 @@ approval flow.
 
 Rejected: a second-language parser, a transpilation/build prerequisite for
 local use, and an npm release before a packaged distribution is needed.
+
+## 2026-10-23 — Organization acceptance for the initial release
+
+Automated organization coverage is sufficient for acceptance check 2 of the
+[PR overview](DELIVERABLE.md#acceptance-checks) in the initial release. The
+instance owner controls no organizations, so a live organization installation
+is unavailable for this scenario. Workers-runtime and browser tests exercise
+organization acceptance and refusal, owner permissions and repository opt-in.
+
+Live organization installation and opt-in remain unverified. Record that
+verification when a suitable authorized organization becomes available; it
+is deferred work rather than a prerequisite for this release. Personal
+installation reads have separate real-App evidence. The remaining overview
+acceptance requirements and the authorization rules for App visibility
+changes and deployment continue to apply.
