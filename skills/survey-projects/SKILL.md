@@ -20,6 +20,12 @@ read `INDEX_FORMAT.md` from two directories above it, in full, before you read
 or edit the index. If it is not there, stop and tell the owner the skill must
 be installed from a Seshat checkout; see [README.md](README.md).
 
+The [Seshat CLI](../../docs/CLI.md) must be installed: require
+`command -v seshat` and `seshat survey --help` to succeed before starting.
+If either fails, stop and point the owner to its installation instructions.
+Use its shared format check and survey signals rather than collecting a
+second version of them with ad hoc commands.
+
 ## Modes
 
 - **Interactive**, the default. The owner is present. You show the diff, and
@@ -40,7 +46,7 @@ interactive mode and cannot get an answer from the owner, push nothing.
    `find`, `grep`, `sed`, `awk`, `sort`, `head`, `wc`, `tr`, `paste`,
    `printf`, `date`, `mktemp`, `hostname`). Assume nothing about where any
    repository is hosted. The exceptions are `gh`, only in an unattended run
-   with `index.pullRequests = gh`, and the `seshat` CLI once it exists (see
+   with `index.pullRequests = gh`, and the `seshat` CLI (see
    [Signals](#signals)).
 2. **Surveyed checkouts are read-only.** Run only the commands given in
    [step 3](#3-find-checkouts) and [Signals](#signals) in them, and read no
@@ -96,6 +102,11 @@ git config -f "$conf" --includes --type=path --get survey.root
 git config -f "$conf" --includes --type=path --get index.clone
 git config -f "$conf" --includes --get-all survey.exclude
 ```
+
+Resolve relative `survey.root` and `index.clone` values against the selected
+configuration file's directory, as the CLI does. `index.file` is relative
+to the clone. CLI `--root` and `--file` flags are relative to the command's
+working directory instead.
 
 A missing key makes `git config` exit 1; use the default below. If the file
 is missing, interactive runs offer to write one from the owner's answers and
@@ -156,6 +167,10 @@ because a failed run can leave the worktree dirty, and is allowed only for
 this scratch worktree, which the run created and nothing else uses; never
 use it on any other worktree.
 
+In the following steps, `work` is the clone for an interactive run or this
+scratch worktree for an unattended run. `file` remains the relative
+`index.file` value.
+
 ### 2. Read the index
 
 Read the file by [INDEX_FORMAT.md](../../docs/INDEX_FORMAT.md). For each
@@ -163,9 +178,8 @@ entry note its name, section, line, `Remote`, `Path`, `Surveyed`, which
 defined fields it has and where each field's item starts and ends.
 
 - If `Format` is not `1`, stop and report it.
-- Look for the problems in the [Errors](../../docs/INDEX_FORMAT.md#errors)
-  table. If `seshat check` is available (see [Signals](#signals)), run it
-  instead and use its result. Errors already in the file block the push:
+- Run `seshat check --file "$work/$file" --root "$root" --json` and use
+  its parsed fields and problems. Errors already in the file block the push:
   interactive runs report them and offer to fix them (for an unmigrated file,
   offer [Migration](#migration)); unattended runs stop and report.
 - Note any entry with a `duplicate-field` or `misplaced-field` problem on a
@@ -302,8 +316,9 @@ is no PR.
 
 ### 7. Check
 
-Before committing, run `seshat check "$file"` if it is available and require
-exit status 0. Until it exists, check the result yourself:
+Before committing, run
+`seshat check --file "$work/$file" --root "$root"` and require exit status
+0. Also review the diff for ownership of the changes:
 
 - Read `git -C "$work" diff --unified=0 -- "$file"`, where `work` is the
   clone, or the scratch worktree in an unattended run. Every removed or
@@ -317,8 +332,8 @@ exit status 0. Until it exists, check the result yourself:
 - No edit created a `duplicate-field`, `duplicate-remote`, `duplicate-path`,
   `missing-key` or `entry-outside-section` error.
 
-Until the shared check exists, this self-check and the owner's review of the
-diff together stand in for it. Say so in your report.
+The shared check validates the format and disk coverage; reviewing the diff
+also verifies that edits preserved content outside the permitted fields.
 
 ### 8. Interactive: review and push
 
@@ -437,17 +452,23 @@ The PR body (or commit body) lists the refreshed and added entries by name,
 the proposals from Steps, step 6, the problems found in Steps, step 2, any
 commits from step 3 of this list that were not carried forward, and how many
 new checkouts and directories were skipped. It names no excluded directory.
-It says that the owner's review stands in for the shared format check until
-that exists.
+It records that the shared format and disk check ran, and any warnings.
 
 ## Signals
 
-When the Seshat CLI is installed (`command -v seshat` succeeds and
-`seshat survey --help` exits 0), run `seshat survey --json` with the survey
-root and take every signal from its output, which its documentation defines.
-Use the commands below only when it is not installed, and do not mix the two
-in one run. Likewise use `seshat check` for [Steps, step 7](#7-check) when
-it exists.
+Run `seshat survey --root "$root" --file "$work/$file" --json` and take
+every signal from its output. [CLI output](../../docs/CLI.md#survey) defines
+the JSON schema; `signals.stack`, `started`, `lastCommit`, `checkedOut`,
+`branches`, `unpushed` and `uncommitted` map to the fields below, and the
+report's `surveyed` dates them. Missing signal properties are not reported,
+so remove their old observations when refreshing an entry. Use the
+project's `remoteStatus` and optional `remote` for join-key proposals;
+`unsupported` leaves the existing `Remote` alone. Surface its warnings in
+the report. Non-checkouts have empty signals and get no survey date.
+
+The commands below document how the CLI derives the observations, rather
+than a fallback collection path. Use `seshat check` for
+[Steps, step 7](#7-check).
 
 In the commands, `d` is the checkout directory.
 
@@ -659,6 +680,5 @@ session's output):
   excluded entries and remotes format 1 cannot record.
 - How many directories were excluded or skipped, as counts only.
 - Problems found in the file, with line numbers.
-- Whether `seshat survey` and `seshat check` were used or the commands in this
-  skill, and that the owner's review stands in for the format check until it
-  exists.
+- The results of `seshat survey` and `seshat check`, including their
+  warnings; the owner's diff review also checks that other content survived.

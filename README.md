@@ -28,6 +28,11 @@ defined, and an optional agent skill,
 and updates it. See the [project brief](docs/BRIEF.md) for requirements and
 design questions.
 
+The local [Seshat CLI](docs/CLI.md) lists index entries by classification,
+runs commands across their paths, checks the format and disk coverage, and
+surveys local Git signals. Run `./bin/seshat --help` after setup; it needs
+no hosted instance or credential and shares the survey skill's settings.
+
 ## Development workflow
 
 Read [AGENTS.md](AGENTS.md) and the [Docket contract](docket/CONTRACT.md).

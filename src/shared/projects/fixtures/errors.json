@@ -1,0 +1,438 @@
+{
+  "format": 1,
+  "preamble": "# Projects\n\n### orphan\n\nTop-level setext\n===============",
+  "fields": [
+    {
+      "label": "Format",
+      "kind": "file",
+      "value": "2",
+      "line": 3
+    },
+    {
+      "label": "Format",
+      "kind": "file",
+      "value": "1",
+      "line": 4
+    },
+    {
+      "label": "Strange",
+      "kind": "unknown",
+      "value": "kept",
+      "line": 5
+    }
+  ],
+  "sections": [
+    {
+      "name": "",
+      "line": 12,
+      "notes": "",
+      "entries": [
+        {
+          "name": "",
+          "line": 14,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "other-host.invalid/owner/name",
+              "line": 16
+            },
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "../outside",
+              "line": 17
+            },
+            {
+              "label": "Surveyed",
+              "kind": "survey-date",
+              "value": "2025-02-29",
+              "line": 18
+            }
+          ],
+          "summary": ""
+        },
+        {
+          "name": "repeated",
+          "line": 20,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "Owner/Repo",
+              "line": 22
+            },
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "owner/other",
+              "line": 23
+            },
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "same",
+              "line": 24
+            },
+            {
+              "label": "Stack",
+              "kind": "laptop",
+              "value": "TypeScript",
+              "line": 25
+            },
+            {
+              "label": "Unknown",
+              "kind": "unknown",
+              "value": "first",
+              "line": 26
+            },
+            {
+              "label": "Unknown",
+              "kind": "unknown",
+              "value": "second",
+              "line": 27
+            }
+          ],
+          "summary": "",
+          "key": "remote:owner/repo"
+        }
+      ]
+    },
+    {
+      "name": "Active",
+      "line": 29,
+      "notes": "",
+      "entries": [
+        {
+          "name": "repeated",
+          "line": 31,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "OWNER/REPO",
+              "line": 33
+            },
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "same",
+              "line": 34
+            },
+            {
+              "label": "Surveyed",
+              "kind": "survey-date",
+              "value": "2026-13-01",
+              "line": 35
+            }
+          ],
+          "summary": "# Stray title",
+          "key": "remote:owner/repo"
+        },
+        {
+          "name": "bad path",
+          "line": 39,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "NONE",
+              "line": 41
+            },
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "folder\\child",
+              "line": 42
+            }
+          ],
+          "summary": ""
+        },
+        {
+          "name": "no key",
+          "line": 44,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "none",
+              "line": 46
+            }
+          ],
+          "summary": ""
+        }
+      ]
+    },
+    {
+      "name": "Active",
+      "line": 48,
+      "notes": "Section with no entries.",
+      "entries": []
+    },
+    {
+      "name": "Other",
+      "line": 52,
+      "notes": "",
+      "entries": [
+        {
+          "name": "invalid dots",
+          "line": 54,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "owner/..",
+              "line": 56
+            },
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "/absolute",
+              "line": 57
+            }
+          ],
+          "summary": ""
+        },
+        {
+          "name": "invalid remote commentary",
+          "line": 59,
+          "fields": [
+            {
+              "label": "Remote",
+              "kind": "key",
+              "value": "owner/repo with commentary",
+              "line": 61
+            },
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "valid",
+              "line": 62
+            }
+          ],
+          "summary": "",
+          "key": "path:valid"
+        },
+        {
+          "name": "constructor test",
+          "line": 64,
+          "fields": [
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "constructor",
+              "line": 66
+            },
+            {
+              "label": "constructor",
+              "kind": "unknown",
+              "value": "a harmless unknown label",
+              "line": 67
+            }
+          ],
+          "summary": "",
+          "key": "path:constructor"
+        }
+      ]
+    }
+  ],
+  "problems": [
+    {
+      "code": "unsupported-format",
+      "severity": "error",
+      "line": 3,
+      "message": "Unsupported format 2."
+    },
+    {
+      "code": "duplicate-field",
+      "severity": "error",
+      "line": 4,
+      "message": "Format appears more than once."
+    },
+    {
+      "code": "unknown-field",
+      "severity": "warning",
+      "line": 5,
+      "message": "Unrecognised field Strange."
+    },
+    {
+      "code": "entry-outside-section",
+      "severity": "error",
+      "line": 7,
+      "entry": "orphan",
+      "message": "Entry appears before any section."
+    },
+    {
+      "code": "setext-heading",
+      "severity": "error",
+      "line": 9,
+      "message": "Use ATX headings with # markers."
+    },
+    {
+      "code": "empty-heading",
+      "severity": "error",
+      "line": 12,
+      "message": "Section heading is empty."
+    },
+    {
+      "code": "empty-heading",
+      "severity": "error",
+      "line": 14,
+      "entry": "",
+      "message": "Entry heading is empty."
+    },
+    {
+      "code": "missing-key",
+      "severity": "error",
+      "line": 14,
+      "entry": "",
+      "message": "Entry needs a repository Remote or a Path."
+    },
+    {
+      "code": "invalid-remote",
+      "severity": "error",
+      "line": 16,
+      "entry": "",
+      "message": "Remote must be exactly owner/name or none."
+    },
+    {
+      "code": "invalid-path",
+      "severity": "error",
+      "line": 17,
+      "entry": "",
+      "message": "Path must be relative and use forward slashes without dot segments."
+    },
+    {
+      "code": "invalid-survey-date",
+      "severity": "error",
+      "line": 18,
+      "entry": "",
+      "message": "Surveyed must be a real YYYY-MM-DD date."
+    },
+    {
+      "code": "missing-survey-date",
+      "severity": "warning",
+      "line": 20,
+      "entry": "repeated",
+      "message": "Entry has laptop observations without Surveyed."
+    },
+    {
+      "code": "duplicate-field",
+      "severity": "error",
+      "line": 23,
+      "entry": "repeated",
+      "message": "Remote appears more than once."
+    },
+    {
+      "code": "unknown-field",
+      "severity": "warning",
+      "line": 26,
+      "entry": "repeated",
+      "message": "Unrecognised field Unknown."
+    },
+    {
+      "code": "unknown-field",
+      "severity": "warning",
+      "line": 27,
+      "entry": "repeated",
+      "message": "Unrecognised field Unknown."
+    },
+    {
+      "code": "duplicate-name",
+      "severity": "warning",
+      "line": 31,
+      "entry": "repeated",
+      "message": "Entry repeated appears more than once."
+    },
+    {
+      "code": "duplicate-remote",
+      "severity": "error",
+      "line": 33,
+      "entry": "repeated",
+      "message": "Repository OWNER/REPO appears more than once."
+    },
+    {
+      "code": "duplicate-path",
+      "severity": "error",
+      "line": 34,
+      "entry": "repeated",
+      "message": "Path same appears more than once."
+    },
+    {
+      "code": "invalid-survey-date",
+      "severity": "error",
+      "line": 35,
+      "entry": "repeated",
+      "message": "Surveyed must be a real YYYY-MM-DD date."
+    },
+    {
+      "code": "stray-title",
+      "severity": "warning",
+      "line": 37,
+      "entry": "repeated",
+      "message": "First-level heading appears after the preamble."
+    },
+    {
+      "code": "missing-key",
+      "severity": "error",
+      "line": 39,
+      "entry": "bad path",
+      "message": "Entry needs a repository Remote or a Path."
+    },
+    {
+      "code": "invalid-path",
+      "severity": "error",
+      "line": 42,
+      "entry": "bad path",
+      "message": "Path must be relative and use forward slashes without dot segments."
+    },
+    {
+      "code": "missing-key",
+      "severity": "error",
+      "line": 44,
+      "entry": "no key",
+      "message": "Entry needs a repository Remote or a Path."
+    },
+    {
+      "code": "duplicate-section",
+      "severity": "warning",
+      "line": 48,
+      "message": "Section Active appears more than once."
+    },
+    {
+      "code": "missing-key",
+      "severity": "error",
+      "line": 54,
+      "entry": "invalid dots",
+      "message": "Entry needs a repository Remote or a Path."
+    },
+    {
+      "code": "invalid-remote",
+      "severity": "error",
+      "line": 56,
+      "entry": "invalid dots",
+      "message": "Remote must be exactly owner/name or none."
+    },
+    {
+      "code": "invalid-path",
+      "severity": "error",
+      "line": 57,
+      "entry": "invalid dots",
+      "message": "Path must be relative and use forward slashes without dot segments."
+    },
+    {
+      "code": "invalid-remote",
+      "severity": "error",
+      "line": 61,
+      "entry": "invalid remote commentary",
+      "message": "Remote must be exactly owner/name or none."
+    },
+    {
+      "code": "unknown-field",
+      "severity": "warning",
+      "line": 67,
+      "entry": "constructor test",
+      "message": "Unrecognised field constructor."
+    }
+  ]
+}

@@ -15,6 +15,14 @@ export default defineConfig({
   test: {
     projects: [
       {
+        test: {
+          name: "cli",
+          include: ["src/cli/**/*.test.ts"],
+          environment: "node",
+          setupFiles: ["./src/test/fetch-guard.ts"],
+        },
+      },
+      {
         // Pure logic shared by the Worker, the object and the frontend; runs
         // in Node with no Workers runtime.
         test: {

@@ -116,7 +116,7 @@ other machine's unmerged survey on it stops rather than replace it, and
 says so. Interactive runs push the default branch directly, so they need
 no per-machine setting beyond `survey.machine`.
 
-Until the Seshat CLI exists, the skill collects signals with the git commands
-in SKILL.md and checks the file itself, and your review of the diff stands
-in for the shared format check. Once `seshat survey` and `seshat check` are
-installed, it uses those instead.
+Install the [Seshat CLI](../../docs/CLI.md#install-from-a-checkout) alongside
+the skill. It uses `seshat survey --json` for local signals and `seshat
+check` for the shared format and disk checks, with the same survey settings.
+Your review of the diff still checks that other content was preserved.

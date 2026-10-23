@@ -135,7 +135,7 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Needs Contents read added to the GitHub App chosen for the integration ([decision](docs/DECISIONS.md#2026-10-12--github-integration)): for the index repository, and across monitored repositories if it shows branch and commit evidence rather than limiting GitHub evidence to Metadata and PR signals. Adding Contents applies to every repository in the installation and prompts every installation to approve.
   - Ingestion reads the index at a given commit through an interface that does not assume GitHub; the first implementation reads it from GitHub. The index stays on GitHub for now ([decision](docs/DECISIONS.md#2026-10-13--project-index-stays-on-github)).
   - Requirements are in the model and evidence-boundary sections of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md): per-field provenance and survey dates, "not reported" rather than "none", rename-safe joins, last good parse kept on errors, and a warning when the index repository is public.
-  - Parses the index with the shared parser and check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building that module and its conformance fixtures if `ship-projects-cli` has not ([implementation](docs/INDEX_FORMAT.md#implementation)).
+  - Parses the index with the shared `parseProjectIndex` module and conformance fixtures in `src/shared/projects/`, following [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md#implementation).
   - Serves nothing from the index on an unauthenticated route; publishing entries is `publish-index-entries` ([public view constraints](docs/specs/2026-10-15-public-view.md#constraints-for-current-work)).
 
   - From the [classifications decision](docs/DECISIONS.md#2026-10-15--project-classifications): sections are shown in the file's order with unknown names as written; laptop observations that change day to day (`Last commit`, `Checked out`, `Branches`, `Unpushed`, `Uncommitted`) carry a warning when their survey is more than 30 days old, and a survey date after today is flagged ([laptop evidence age](docs/specs/2026-10-15-project-classifications.md#laptop-evidence-age)); an Upstream entry whose repository is outside the installation is described as not visible to the GitHub App. Suggestions themselves are `suggest-classifications`.
@@ -247,14 +247,5 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
     Worker; setting `run_worker_first: true` would defeat that constraint.
 
 ### P3 Low
-
-- [PRODUCT] `ship-projects-cli` — **Ship a Seshat command-line tool for working with the project index locally.** Power users want to list projects by classification, run commands across them and check the index against disk without the hosted app.
-  - Source: replace-projects-index decision, branch todo/replace-projects-index, 2026-10-12
-  - Commands from the decision: list by classification (paths or JSON), run a command across projects in given classifications, check the file against the format and the directories on disk, and `survey`, which prints the local-only signals (checked-out branch, uncommitted and untracked files, unpushed commits, local-only branches and repositories) in a stable table and JSON form. See the Seshat CLI section of [docs/specs/2026-10-12-projects-index.md](docs/specs/2026-10-12-projects-index.md).
-  - Its PR chooses the language and distribution; the hosted app's stack ([decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack)) does not settle the CLI's. A TypeScript CLI can share the app's [toolchain](docs/DECISIONS.md#2026-10-15--toolchain) and the [shared parser module](docs/INDEX_FORMAT.md#implementation). Commit counts must count named branches only, not hidden refs that tools create.
-  - Uses only git, with no GitHub assumption; the index repository's remote is configuration.
-  - The laptop survey skill, [skills/survey-projects/SKILL.md](skills/survey-projects/SKILL.md), switches to `seshat survey --json` and `seshat check` once they exist. Its signal commands and its settings file (survey root, exclusions) are the starting point for both, so the CLI should read the same settings rather than define new ones.
-  - `check` runs the shared format check and the disk check defined in [docs/INDEX_FORMAT.md](docs/INDEX_FORMAT.md), building the shared module and its conformance fixtures if `show-project-index` has not.
-  - Low because the owner's existing local tool already parses the index until this replaces it ([spec](docs/specs/2026-10-12-projects-index.md#follow-up-work)).
 
 ### Unprioritized

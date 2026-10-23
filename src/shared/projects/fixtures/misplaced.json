@@ -1,0 +1,155 @@
+{
+  "format": 1,
+  "preamble": "# Projects\n\n- Ordinary preamble list\n- Stack: misplaced in an ordinary list\n\n- Format: 1",
+  "fields": [],
+  "sections": [
+    {
+      "name": "Active",
+      "line": 8,
+      "notes": "- Path: not-an-entry-field\n- **Next:** still section notes",
+      "entries": [
+        {
+          "name": "one",
+          "line": 13,
+          "fields": [
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "one",
+              "line": 15
+            },
+            {
+              "label": "Started",
+              "kind": "laptop",
+              "value": "2026-10-01; **Last commit:** 2026-10-02 on main",
+              "line": 16
+            },
+            {
+              "label": "Note",
+              "kind": "owner",
+              "value": "**Stack**: nested on the next line\nand **Not-defined:** is ordinary Markdown.",
+              "line": 17
+            },
+            {
+              "label": "Branches",
+              "kind": "laptop",
+              "value": "- feature/one\n- feature/two",
+              "line": 20
+            }
+          ],
+          "summary": "Prose between lists.\n\n1. **Surveyed:** 2026-10-01\n2. Path: another",
+          "key": "path:one"
+        },
+        {
+          "name": "two",
+          "line": 29,
+          "fields": [
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "two",
+              "line": 31
+            }
+          ],
+          "summary": "> ## Quoted section\n>\n> ### Quoted entry\n\n    ## Indented code section",
+          "key": "path:two"
+        },
+        {
+          "name": "three",
+          "line": 42,
+          "fields": [
+            {
+              "label": "Path",
+              "kind": "key",
+              "value": "three",
+              "line": 44
+            },
+            {
+              "label": "Surveyed",
+              "kind": "survey-date",
+              "value": "1900-02-29",
+              "line": 45
+            }
+          ],
+          "summary": "Setext inside an entry\n---------------------",
+          "key": "path:three"
+        }
+      ]
+    }
+  ],
+  "problems": [
+    {
+      "code": "misplaced-field",
+      "severity": "warning",
+      "line": 4,
+      "message": "Stack appears outside the field list."
+    },
+    {
+      "code": "misplaced-field",
+      "severity": "warning",
+      "line": 6,
+      "message": "Format appears outside the field list."
+    },
+    {
+      "code": "misplaced-field",
+      "severity": "warning",
+      "line": 10,
+      "message": "Path appears outside the field list."
+    },
+    {
+      "code": "misplaced-field",
+      "severity": "warning",
+      "line": 11,
+      "message": "Next appears outside the field list."
+    },
+    {
+      "code": "missing-survey-date",
+      "severity": "warning",
+      "line": 13,
+      "entry": "one",
+      "message": "Entry has laptop observations without Surveyed."
+    },
+    {
+      "code": "misplaced-field",
+      "severity": "warning",
+      "line": 16,
+      "entry": "one",
+      "message": "Last commit appears inside another field's value."
+    },
+    {
+      "code": "misplaced-field",
+      "severity": "warning",
+      "line": 18,
+      "entry": "one",
+      "message": "Stack appears inside another field's value."
+    },
+    {
+      "code": "misplaced-field",
+      "severity": "warning",
+      "line": 26,
+      "entry": "one",
+      "message": "Surveyed appears outside the field list."
+    },
+    {
+      "code": "misplaced-field",
+      "severity": "warning",
+      "line": 27,
+      "entry": "one",
+      "message": "Path appears outside the field list."
+    },
+    {
+      "code": "invalid-survey-date",
+      "severity": "error",
+      "line": 45,
+      "entry": "three",
+      "message": "Surveyed must be a real YYYY-MM-DD date."
+    },
+    {
+      "code": "setext-heading",
+      "severity": "error",
+      "line": 47,
+      "entry": "three",
+      "message": "Use ATX headings with # markers."
+    }
+  ]
+}

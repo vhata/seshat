@@ -30,7 +30,7 @@ called from any working directory, and runs in order:
    missing or older than `package-lock.json`.
 3. `wrangler types`, regenerating `worker-configuration.d.ts`, then the type
    check (`tsc --build` over the frontend, Worker, test and configuration
-   projects).
+   projects, plus the Node-only CLI project).
 4. The tests (`vitest run`): the `shared` project runs pure logic under
    `src/shared/` in Node, and the `workers` project runs Worker and Durable
    Object tests in the Workers runtime with the bindings from
@@ -40,7 +40,11 @@ called from any working directory, and runs in order:
    `src/test/fetch-guard.ts`, replaces `fetch` before every test with a
    guard that refuses the request, and fails the test afterwards if any
    request was made that the test's own stub of GitHub did not answer, so
-   no test reaches the network. Vitest fails when it finds no test files.
+   no test reaches the network. The `cli` project runs command and survey
+   tests in Node against temporary directories and Git repositories;
+   conformance fixture tests run in `shared` and are type-checked with the
+   Node-only CLI project. They use synthetic data and make no remote Git
+   calls. Vitest fails when it finds no test files.
 5. The production build (`vite build`) of the frontend and the Worker.
 
 `bash scripts/check.sh --quick` stops after step 3. Wrangler's usage metrics
@@ -85,7 +89,7 @@ resources; deploying needs the owner's word each time
 - Exercise hooks in a disposable repository with valid content, a broken link
   and a malformed queue entry; verify rejection without changing production Git history.
 - Inspect runtime documentation against actual scripts, hook configuration and CI.
-- Review source paths: `src scripts .githooks .github docs skills` and the
+- Review source paths: `src bin scripts .githooks .github docs skills` and the
   root configuration files; include `AGENTS.md`, `TODO.md`, `README.md` and
   the review index in documentation review.
 - Expected tracked content: Markdown, LICENSE, .gitignore, shell scripts,
