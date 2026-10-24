@@ -107,7 +107,8 @@ resources; deploying needs the owner's word each time
 
 ## Review and schedules
 
-The empty review index means no whole-codebase review has been recorded.
+Whole-codebase review snapshots are indexed in
+[review/README.md](../review/README.md).
 Independent PR review is separate and belongs in a PR comment. Builds and
 application tests run in every check. Scheduled extended validation and
 automated browser checks remain outside the default gate. The assembled
