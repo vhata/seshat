@@ -43,11 +43,11 @@ describe("callback exchange limit", () => {
   it("allows plain HTTP loopback development without a trusted header", async () => {
     const github = stubGitHub(signInRoutes({ id: OWNER_ID, login: "owner" }));
     const base = "http://localhost:5173";
-    const start = await exports.default.fetch(`${base}/auth/sign-in`);
+    const start = await exports.default.fetch(`${base}/auth/sign-in`, { redirect: "manual" });
     const state = new URL(start.headers.get("location")!).searchParams.get("state");
     const cookie = setCookie(start, "seshat-sign-in")!;
     const response = await exports.default.fetch(`${base}/auth/callback?code=a&state=${state}`, {
-      headers: { cookie: `seshat-sign-in=${cookie.value}` },
+      headers: { cookie: `seshat-sign-in=${cookie.value}` }, redirect: "manual",
     });
     expect(response.status).toBe(303);
     expect(github.called("POST", "https://github.com/login/oauth/access_token")).toHaveLength(1);
