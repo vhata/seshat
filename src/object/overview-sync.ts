@@ -146,7 +146,7 @@ export class OverviewSync {
   }
 
   /** Drop cached work before it can restrict scheduling to missing/stale marks. */
-  private normalizeReread(): void {
+  private normalizeReread(): boolean {
     const progress = this.state.reread;
     if (progress && (!this.accepted(progress.installationId)
       || progress.generation !== this.generation(progress.installationId)
@@ -154,7 +154,9 @@ export class OverviewSync {
       || progress.ids.some((id) => !this.state.marks.some((mark) => mark.nodeId === id
         && mark.installationId === progress.installationId)))) {
       this.state.reread = null;
+      return true;
     }
+    return false;
   }
 
   private mark(mark: PrMark, due: number, mergeability = false): void {
@@ -184,6 +186,7 @@ export class OverviewSync {
 
   /** Every inbound request calls this. Existing earlier alarms incur no write. */
   async rearm(now: number): Promise<void> {
+    if (this.normalizeReread()) this.save();
     const active = this.context.visible(now);
     if (!active && (this.state.sweep !== null || this.state.nextSweep !== null)) {
       // A resumed sweep must not replay cached facts from a quiet interval.
