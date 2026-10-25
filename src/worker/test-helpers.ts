@@ -117,9 +117,9 @@ export async function beginSignIn(returnTo?: string) {
 }
 
 /** Completes sign-in at the callback with the browser's cookie. */
-export async function callback(cookieHeader: string | null, query: string): Promise<Response> {
+export async function callback(cookieHeader: string | null, query: string, ip = "192.0.2.1"): Promise<Response> {
   return exports.default.fetch(`${BASE}/auth/callback?${query}`, {
-    headers: cookieHeader ? { cookie: cookieHeader } : {},
+    headers: { ...(cookieHeader ? { cookie: cookieHeader } : {}), "cf-connecting-ip": ip },
     redirect: "manual",
   });
 }
@@ -127,7 +127,7 @@ export async function callback(cookieHeader: string | null, query: string): Prom
 /** Gives the test an owner session directly, as a cookie header. */
 export async function ownerSession(): Promise<string> {
   const token = randomToken(32);
-  await instanceStub(env).createSession(await sessionKey(token), Date.now());
+  await instanceStub(env).createSession(await sessionKey(token), Date.now(), OWNER_ID);
   return `${SESSION_COOKIE_NAME}=${token}`;
 }
 

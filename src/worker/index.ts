@@ -12,7 +12,8 @@ export default {
     const url = new URL(request.url);
     const secure = url.protocol === "https:";
     const now = Date.now();
-    const session = await findSession(request, env, secure, now);
+    const config = readConfig(env as unknown as Record<string, unknown>);
+    const session = await findSession(request, env, secure, now, config.ownerId);
     if (session === null && !isPublic(url.pathname)) {
       return unauthenticated(url, request.method);
     }
@@ -20,7 +21,7 @@ export default {
       request,
       env,
       url,
-      config: readConfig(env as unknown as Record<string, unknown>),
+      config,
       secure,
       session,
       now,

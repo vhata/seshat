@@ -60,4 +60,12 @@ export const MIGRATIONS: readonly Migration[] = [
       ) STRICT`,
     ],
   },
+  {
+    version: 4,
+    statements: [
+      // Legacy sessions cannot prove which owner signed in. Keep the new
+      // identity nullable so those rows fail closed until pruned/sign-out.
+      "ALTER TABLE sessions ADD COLUMN owner_id INTEGER",
+    ],
+  },
 ];

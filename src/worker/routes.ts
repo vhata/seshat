@@ -70,7 +70,7 @@ const CROSS_SITE_ALLOWED: ReadonlySet<string> = new Set([PATHS.webhook]);
 
 async function session(context: RouteContext): Promise<Response> {
   // The gate has already required the session.
-  return jsonResponse({ signedIn: true, expiresAt: context.session?.expiresAt ?? null });
+  return jsonResponse({ signedIn: true, expiresAt: context.session?.expiresAt ?? null, serverTime: context.now });
 }
 
 export function isPublic(path: string): boolean {

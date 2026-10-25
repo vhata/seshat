@@ -350,8 +350,8 @@ describe("sessions", () => {
   it("are pruned when expired as the next one starts", async () => {
     const stub = instanceStub(env);
     const now = Date.now();
-    await stub.createSession("a".repeat(64), now - SESSION_SECONDS * 1000 - 1);
-    await stub.createSession("b".repeat(64), now);
+    await stub.createSession("a".repeat(64), now - SESSION_SECONDS * 1000 - 1, OWNER_ID);
+    await stub.createSession("b".repeat(64), now, OWNER_ID);
     const rows = await storedRows();
     expect((rows.sessions as { key: string }[]).map((row) => row.key)).toEqual(["b".repeat(64)]);
   });

@@ -145,7 +145,7 @@ const bundle = await build({
           if (command.now !== undefined) now = command.now;
           const instance = this.env.INSTANCE.getByName("instance");
           if (command.op === "seed") {
-            await instance.createSession(command.key, now);
+            await instance.createSession(command.key, now, Number(this.env.OWNER_ID));
             await instance.checkInstallations(now);
           } else if (command.op === "alarm") {
             for (let i = 0; i < (command.count ?? 1); i++) { now++; await instance.runAcceptanceAlarm(); }
