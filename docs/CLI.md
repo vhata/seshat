@@ -119,7 +119,8 @@ The command inherits standard input, output and error. Progress goes to
 standard error, leaving command output on standard output. Entries without
 a local `Path` are skipped with a message. Path and remote exclusions also
 apply; excluded entries produce no name or command invocation. Both indexed
-parents and nested entries are visited when selected. All selected local
+parents and nested entries are visited when selected. Ordinary directories
+inside a checkout inherit its remote exclusions. All selected local
 paths are checked before the first command, and a missing path stops the
 run. A failing command does not prevent later selected projects from
 running, but makes the final status 1. An interrupt stops the run.

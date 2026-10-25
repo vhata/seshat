@@ -172,6 +172,29 @@ describe("source-checkout command line", () => {
       .toEqual(["remote-mismatch"]);
   });
 
+  it.each(["fetch", "push"])("skips ordinary subdirectories excluded by an enclosing %s URL", async kind => {
+    await mkdir(join(root, "alpha", "private-component"));
+    await git(join(root, "alpha"), "remote", "add", "secondary", "https://public.invalid/team/repo.git");
+    await git(join(root, "alpha"), "remote", "set-url", ...(kind === "push" ? ["--push"] : []),
+      "secondary", "https://credential@company.invalid/private/repo.git");
+    await configure(["config", "--file", config, "survey.excludeRemote", "*company.invalid*"]);
+    const allowed = join(root, "allowed");
+    await mkdir(join(allowed, "component"), { recursive: true });
+    await git(allowed, "init", "--initial-branch=main");
+    await git(allowed, "remote", "add", "origin", "https://github.com/example/allowed.git");
+    await mkdir(join(root, "plain"));
+    await writeFile(index, "## Active\n### excluded-secret\n- Path: alpha/private-component\n### allowed\n- Path: allowed/component\n### plain\n- Path: plain\n");
+    // A calling hook must not redirect the enclosing-repository lookup.
+    env.GIT_DIR = join(allowed, ".git");
+    env.GIT_WORK_TREE = allowed;
+    env.GIT_CONFIG_COUNT = "1";
+    env.GIT_CONFIG_KEY_0 = "remote.secondary.url";
+    env.GIT_CONFIG_VALUE_0 = "https://public.invalid/override.git";
+    const result = await run(["each", "--", process.execPath, "-e", "console.log(process.env.SESHAT_PATH)"]);
+    expect(result).toMatchObject({ code: 0, stdout: "allowed/component\nplain\n" });
+    expect(result.stdout + result.stderr).not.toMatch(/excluded-secret|alpha|private-component|company|credential/);
+  });
+
   it("prints a stable survey schema and table, with no raw URLs or modified filenames", async () => {
     await writeFile(join(root, "alpha", "sensitive-file-name.txt"), "not read");
     const result = await run(["survey", "--json"]);
