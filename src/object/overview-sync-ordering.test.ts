@@ -84,8 +84,9 @@ describe("overview sync observation ordering", () => {
     let newer = false;
     const repositoryRead = GithubPrReader.prototype.readRepositories;
     const reread = GithubPrReader.prototype.rereadPrs;
-    // Lower the invocation budget so both real reader paths must persist
-    // and replay progress with a small, readable GitHub response fixture.
+    // Both readers need continuation-only GraphQL pages before reaching
+    // immutable head dates. Restarting them alternately cannot accumulate
+    // progress through the shared head-date cache and hide a scheduler loop.
     const sweeps = vi.spyOn(GithubPrReader.prototype, "readRepositories").mockImplementation(function (this: GithubPrReader, ids) {
       Object.defineProperty(this, "requestLimit", { value: 2 });
       return repositoryRead.call(this, ids);
@@ -97,12 +98,24 @@ describe("overview sync observation ordering", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
       const address = String(url);
       if (address.endsWith("/graphql")) {
-        const { query, variables } = JSON.parse(String(init?.body)) as { query: string; variables: { ids: string[] } };
-        const rows = [1, 2, 3].map((number) => rawPr(number, newer ? `new-${number}` : `old-${number}`));
+        const { query, variables } = JSON.parse(String(init?.body)) as { query: string; variables: { ids: string[]; id: string; after: string } };
+        const check = (prId: string, index: number) => ({ __typename: "StatusContext", id: `${prId}-check-${index}`, context: `CI ${index}`, state: "SUCCESS" });
+        const checkPage = (prId: string, index: number) => ({ nodes: [check(prId, index)], totalCount: 3,
+          pageInfo: { hasNextPage: index < 2, endCursor: index < 2 ? `checks-${index + 1}` : null } });
+        const rows = [1, 2, 3].map((number) => {
+          const pr = rawPr(number, newer ? `new-${number}` : `old-${number}`);
+          return { ...pr, statusCheckRollup: { contexts: checkPage(pr.id, 0) } };
+        });
+        const rateLimit = { cost: 1, remaining: 4900, limit: 5000, resetAt: new Date(NOW + 3_600_000).toISOString() };
+        if (query.includes("SeshatCheckPage")) {
+          const pr = rows.find((pr) => pr.id === variables.id)!;
+          return Response.json({ data: { node: { id: pr.id, headRefOid: pr.headRefOid,
+            statusCheckRollup: { contexts: checkPage(pr.id, Number(variables.after.slice(-1))) } }, rateLimit } });
+        }
         const nodes = query.includes("SeshatPrCounts") ? [{ ...repository, pullRequests: { totalCount: 3 } }]
           : query.includes("SeshatRepositoryPrs") ? [{ ...repository, pullRequests: connection(rows) }]
           : variables.ids.map((id) => rows.find((pr) => pr.id === id));
-        return Response.json({ data: { nodes, rateLimit: { cost: 1, remaining: 4900, limit: 5000, resetAt: new Date(NOW + 3_600_000).toISOString() } } });
+        return Response.json({ data: { nodes, rateLimit } });
       }
       const number = Number(address.match(/\/pulls\/(\d+)/)?.[1]);
       const head = newer ? `new-${number}` : `old-${number}`;
