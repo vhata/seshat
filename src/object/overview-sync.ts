@@ -11,8 +11,9 @@ const MINUTE = 60_000;
 const RETRIES = [5_000, 15_000, 30_000] as const;
 interface PendingMark extends PrMark { due: number; firstRead: number | null; retry: number; revision: number; mergeability: boolean }
 interface PendingSha { installationId: number; repositoryId: number; sha: string; facts: DeliveryFact[]; expires: number }
-interface ReadProgress { ids: string[]; revisions: [string, number][]; continuation: ReaderContinuation | null }
+interface ReadProgress { installationId: number; generation: number; ids: string[]; revisions: [string, number][]; continuation: ReaderContinuation | null }
 interface Sweep {
+  generation: number;
   startedAt: number;
   retry: number;
   installations: number[];
@@ -28,6 +29,7 @@ interface State {
   shas: PendingSha[];
   refresh: { id: number; due: number; revision: number }[];
   refreshGenerations: Record<number, number>;
+  observationGenerations: Record<number, number>;
   guard: number | null;
   nextSweep: number | null;
   lastCatchup: number | null;
@@ -54,7 +56,7 @@ function readFailure(meta: ReadMeta): SyncFailureReason {
   return meta.issues.some((issue) => issue.reason === "rate-limited") ? "rate-limited" : "github-unavailable";
 }
 function initial(): State {
-  return { marks: [], shas: [], refresh: [], refreshGenerations: {}, guard: null, nextSweep: null, lastCatchup: null, sweep: null, reread: null, permissions: [], headDates: [], rates: [] };
+  return { marks: [], shas: [], refresh: [], refreshGenerations: {}, observationGenerations: {}, guard: null, nextSweep: null, lastCatchup: null, sweep: null, reread: null, permissions: [], headDates: [], rates: [] };
 }
 
 /** All scheduling progress is JSON-safe private data; credentials stay in selection.tokens. */
@@ -66,6 +68,7 @@ export class OverviewSync {
     const row = context.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", KEY).toArray()[0];
     this.state = row ? JSON.parse(row.value) as State : initial();
     this.state.refreshGenerations ??= {};
+    this.state.observationGenerations ??= {};
   }
 
   private save(): void {
@@ -84,6 +87,7 @@ export class OverviewSync {
       await this.rearm(now);
       return false;
     }
+    this.invalidateReads(delivery.installationId);
     const metadata = delivery.repository;
     if (metadata) {
       const previous = this.context.store.repositories().find((repo) => repo.id === metadata.id && repo.installationId === delivery.installationId);
@@ -119,12 +123,14 @@ export class OverviewSync {
     this.save();
   }
   discoveryChanged(id: number, now: number): void {
+    this.invalidateReads(id);
     for (const repository of this.context.store.repositories(id)) if (repository.monitored) this.queueRepositoryRead(repository, now);
     this.save();
   }
 
   /** Repository/settings changes schedule discovery without making a hidden page visible. */
   refresh(id: number, now: number, invalidate = true): void {
+    this.invalidateReads(id);
     if (invalidate) this.context.selection?.discardRefreshProgress(id);
     const revision = (this.state.refreshGenerations[id] ?? 0) + 1;
     this.state.refreshGenerations[id] = revision;
@@ -132,6 +138,25 @@ export class OverviewSync {
     if (existing) { existing.due = Math.min(existing.due, now); existing.revision = revision; }
     else this.state.refresh.push({ id, due: now, revision });
     this.save();
+  }
+
+  private generation(id: number): number { return this.state.observationGenerations[id] ?? 0; }
+  private invalidateReads(id: number): void {
+    this.state.observationGenerations[id] = this.generation(id) + 1;
+  }
+
+  /** Drop cached work before it can restrict scheduling to missing/stale marks. */
+  private normalizeReread(): boolean {
+    const progress = this.state.reread;
+    if (progress && (!this.accepted(progress.installationId)
+      || progress.generation !== this.generation(progress.installationId)
+      || progress.ids.length === 0
+      || progress.ids.some((id) => !this.state.marks.some((mark) => mark.nodeId === id
+        && mark.installationId === progress.installationId)))) {
+      this.state.reread = null;
+      return true;
+    }
+    return false;
   }
 
   private mark(mark: PrMark, due: number, mergeability = false): void {
@@ -161,6 +186,7 @@ export class OverviewSync {
 
   /** Every inbound request calls this. Existing earlier alarms incur no write. */
   async rearm(now: number): Promise<void> {
+    if (this.normalizeReread()) this.save();
     const active = this.context.visible(now);
     if (!active && (this.state.sweep !== null || this.state.nextSweep !== null)) {
       // A resumed sweep must not replay cached facts from a quiet interval.
@@ -185,7 +211,7 @@ export class OverviewSync {
       }
     }
     const times = [this.state.guard, ...this.state.refresh.map((job) => job.due), ...this.state.marks.map((mark) => mark.due), ...this.state.shas.map((sha) => sha.expires)];
-    if (active) {
+    if (active && !this.state.reread) {
       if (this.state.sweep) times.push(this.state.nextSweep ?? now);
       else times.push(this.state.nextSweep);
     }
@@ -206,6 +232,7 @@ export class OverviewSync {
     try {
       this.state.shas = this.state.shas.filter((sha) => sha.expires > now && this.accepted(sha.installationId));
       this.state.marks = this.state.marks.filter((mark) => this.accepted(mark.installationId));
+      this.normalizeReread();
       const earliestRefresh = this.state.refresh.reduce<{ id: number; due: number; revision: number } | null>((first, job) => first === null || job.due < first.due ? job : first, null);
       const readMarks = this.state.reread ? this.state.marks.filter((mark) => this.state.reread!.ids.includes(mark.nodeId)) : this.state.marks;
       const rereadDue = Math.min(...readMarks.map((mark) => mark.due));
@@ -213,7 +240,9 @@ export class OverviewSync {
         { kind: "guard", due: this.state.guard ?? Infinity },
         { kind: "refresh", due: earliestRefresh?.due ?? Infinity },
         { kind: "reread", due: rereadDue },
-        { kind: "sweep", due: this.context.visible(now) ? this.state.nextSweep ?? Infinity : Infinity },
+        // Finish a continued event read before starting another reader that
+        // would invalidate it. Ordinary marks retain oldest-deadline fairness.
+        { kind: "sweep", due: !this.state.reread && this.context.visible(now) ? this.state.nextSweep ?? Infinity : Infinity },
       ].sort((left, right) => left.due - right.due);
       const job = jobs[0]!;
       if (job.due <= now) {
@@ -320,20 +349,29 @@ export class OverviewSync {
       : this.state.marks.filter((mark) => mark.installationId === first.installationId && mark.due <= now && mark.nodeId.startsWith("repository:") === repositoryRead).slice(0, 10);
     if (selected.length === 0) { this.state.reread = null; return; }
     const revisions = new Map(this.state.reread?.revisions ?? selected.map((mark): [string, number] => [mark.nodeId, mark.revision]));
+    const installationId = first.installationId;
+    // A queued event may only become due after an older sweep has begun.
+    // Starting its fresh read also supersedes those earlier observations.
+    if (!this.state.reread) this.invalidateReads(installationId);
+    const generation = this.generation(installationId);
+    const current = () => this.accepted(installationId) && this.generation(installationId) === generation;
     let reader: GithubPrReader | null;
-    try { reader = await this.reader(first.installationId, now, this.state.reread?.continuation ?? null, false); }
+    try { reader = await this.reader(installationId, now, this.state.reread?.continuation ?? null, false, current); }
     catch (error) {
+      if (!current()) { this.state.reread = null; return; }
       if (!(error instanceof SyncReadError)) throw error;
       for (const mark of selected) this.retryMark(mark, now);
       this.state.reread = null;
       return;
     }
+    if (!current()) { this.state.reread = null; return; }
     if (!reader) { for (const mark of selected) this.retryMark(mark, now); this.state.reread = null; return; }
     if (repositoryRead) {
       const result = await reader.readRepositories(selected.map((mark) => mark.nodeId.slice("repository:".length)));
+      if (!current()) { this.state.reread = null; return; }
       this.updateMeta(first.installationId, result, now);
       for (const repository of result.repositories) this.applyRepository(repository, first.installationId, now);
-      if (result.continuation) this.state.reread = { ids: selected.map((mark) => mark.nodeId), revisions: [...revisions], continuation: result.continuation };
+      if (result.continuation) this.state.reread = { installationId, generation, ids: selected.map((mark) => mark.nodeId), revisions: [...revisions], continuation: result.continuation };
       else {
         this.state.reread = null;
         for (const mark of selected) {
@@ -343,8 +381,9 @@ export class OverviewSync {
       }
     } else {
       const result = await reader.rereadPrs(selected.map((mark) => mark.nodeId));
+      if (!current()) { this.state.reread = null; return; }
       this.updateMeta(first.installationId, result, now);
-      if (result.continuation) this.state.reread = { ids: selected.map((mark) => mark.nodeId), revisions: [...revisions], continuation: result.continuation };
+      if (result.continuation) this.state.reread = { installationId, generation, ids: selected.map((mark) => mark.nodeId), revisions: [...revisions], continuation: result.continuation };
       else this.state.reread = null;
       for (const mark of selected) {
         const node = result.nodes.find((node) => (node.kind === "open" ? node.pr.nodeId : node.nodeId) === mark.nodeId);
@@ -401,7 +440,7 @@ export class OverviewSync {
   private async sweep(now: number): Promise<void> {
     if (!this.context.selection) return;
     if (!this.state.sweep) {
-      this.state.sweep = { startedAt: now, retry: 0, installations: this.context.installations().filter((entry) => entry.status === "accepted").map((entry) => entry.id), installationIndex: 0, stage: "listing", ids: [], continuation: null, unreadable: [], reason: "github-unavailable" };
+      this.state.sweep = { generation: 0, startedAt: now, retry: 0, installations: this.context.installations().filter((entry) => entry.status === "accepted").map((entry) => entry.id), installationIndex: 0, stage: "listing", ids: [], continuation: null, unreadable: [], reason: "github-unavailable" };
       const firstInstallation = this.state.sweep.installations[0];
       if (firstInstallation !== undefined) this.context.selection.discardRefreshProgress(firstInstallation);
       const sync = this.context.store.syncStatus();
@@ -440,14 +479,37 @@ export class OverviewSync {
       }
       sweep.ids = this.context.store.repositories(id).filter((repo) => repo.monitored).map((repo) => repo.nodeId);
       sweep.stage = "count";
+      sweep.generation = this.generation(id);
       sweep.continuation = null;
     } else {
-      const reader = await this.reader(id, now, sweep.continuation, true, () => this.state.sweep === sweep && this.context.visible(Date.now()));
+      // Replaying a logical read after an event can regress PRs, visibility,
+      // or membership (including a cached zero count). Restart this phase
+      // with every monitored repository, including ones the old count omitted.
+      if (sweep.generation !== this.generation(id)) {
+        sweep.continuation = null;
+        sweep.ids = this.context.store.repositories(id).filter((repo) => repo.monitored).map((repo) => repo.nodeId);
+        sweep.generation = this.generation(id);
+      }
+      if (!sweep.continuation) {
+        this.invalidateReads(id);
+        sweep.generation = this.generation(id);
+      }
+      const generation = sweep.generation;
+      const current = () => this.state.sweep === sweep && this.context.visible(Date.now()) && this.accepted(id) && this.generation(id) === generation;
+      let reader: GithubPrReader | null;
+      try { reader = await this.reader(id, now, sweep.continuation, true, current); }
+      catch (error) {
+        if (!this.currentSweep(sweep)) return;
+        if (!current()) { this.state.nextSweep = now + 1; return; }
+        throw error;
+      }
       if (!this.currentSweep(sweep)) return;
+      if (!current()) { this.state.nextSweep = now + 1; return; }
       if (!reader) { await this.failSweep(now, "github-unavailable", this.context.store.repositories(id).filter((repo) => repo.monitored).map((repo) => repo.id)); return; }
       if (sweep.stage === "count") {
         const result = await reader.countOpenPrs(sweep.ids);
         if (!this.currentSweep(sweep)) return;
+        if (!current()) { this.state.nextSweep = now + 1; return; }
         this.updateMeta(id, result, now);
         if (result.continuation) sweep.continuation = result.continuation;
         else {
@@ -469,6 +531,7 @@ export class OverviewSync {
       } else {
         const result = await reader.readRepositories(sweep.ids);
         if (!this.currentSweep(sweep)) return;
+        if (!current()) { this.state.nextSweep = now + 1; return; }
         this.updateMeta(id, result, now);
         for (const repository of result.repositories) this.applyRepository(repository, id, now);
         if (result.continuation) sweep.continuation = result.continuation;

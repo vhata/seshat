@@ -12,18 +12,6 @@ Only work promoted from whole-codebase reviews belongs here. Every entry is read
 
 ## Unprioritized
 
-- [GITHUB] `repair-overview-reread-lifecycle` — **Discard orphan reread progress so later events continue to sync.** Removing an installation during a continued read can otherwise block all later event reads and repeatedly rearm due alarms.
-  - Source: [full review](2026-10-24-0255-full.md), 2026-10-24
-  - Findings: `orphan-reread-continuation-blocks-events`
-  - Starting point: `OverviewSync.alarm` in `src/object/overview-sync.ts`; normalize continuation identity and surviving marks before job selection.
-  - Verify: yield a continued read, remove its installation, deliver a mark for a surviving installation and confirm it runs; restart the object and confirm no orphan alarm loop remains.
-
-- [GITHUB] `protect-overview-read-ordering` — **Prevent older continued reads from replacing newer observed GitHub changes.** A cached sweep can currently overwrite an event reread and report success with no repair mark left.
-  - Source: [full review](2026-10-24-0255-full.md), 2026-10-24
-  - Findings: `sweep-continuation-regresses-event-state`
-  - Starting point: `OverviewSync.sweep`, `applyPr` and `applyRepository` in `src/object/overview-sync.ts`, with the reader's replayed response cache.
-  - Verify: interleave new-head, close/open and repository-change deliveries with a partial sweep or repository reread; resuming cached work must preserve newer facts and authoritative membership, or schedule repair within the notified-change bound.
-
 - [GITHUB] `bind-sessions-to-configured-owner` — **Invalidate sessions when the configured numeric owner changes or becomes invalid.** Session records currently carry only a token hash and lifetime, so an old owner retains access until expiry.
   - Source: [full review](2026-10-24-0255-full.md), 2026-10-24
   - Findings: `sessions-survive-owner-change`

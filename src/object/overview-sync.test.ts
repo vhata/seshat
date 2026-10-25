@@ -243,6 +243,59 @@ describe("durable overview reconciliation", () => {
     expect(graphQueries).toHaveLength(3); // Count, PR page and final PR page; no replayed HTTP.
   }, 20_000);
 
+  it("refetches a real reader continuation after a newer event read and eviction", async () => {
+    let head = "old-head";
+    const many = () => Array.from({ length: 22 }, (_, index) => pr({ id: index === 0 ? "PR_example" : `P${index + 1}`, databaseId: index + 1, number: index + 1, headRefOid: index === 0 ? head : `head${index + 1}` }));
+    const calls = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const address = String(url);
+      if (address.endsWith("/graphql")) {
+        const { query } = JSON.parse(String(init?.body)) as { query: string };
+        const data = query.includes("SeshatPrCounts") ? { nodes: [{ ...repository, pullRequests: { totalCount: 22 } }] }
+          : query.includes("SeshatPrPage") ? { node: { ...repository, pullRequests: { ...connection(many().slice(20)), totalCount: 22 } } }
+          : query.includes("SeshatRepositoryPrs") ? { nodes: [{ ...repository, pullRequests: { nodes: many().slice(0, 20), totalCount: 22, pageInfo: { hasNextPage: true, endCursor: "after20" } } }] }
+          : { nodes: [many()[0]] };
+        return Response.json({ data });
+      }
+      const number = Number(address.match(/\/pulls\/(\d+)/)?.[1]);
+      const sha = number === 1 ? head : `head${number}`;
+      if (address.includes("/commits?")) return Response.json([{ sha, commit: { committer: { date: WHEN } } }]);
+      if (/\/pulls\/\d+$/.test(address)) return Response.json({ mergeable: true, head: { sha } });
+      throw new Error(address);
+    });
+    const stub = await object("continued-sweep-new-event");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY);
+      const sync = new OverviewSync({ storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => true, guard: async () => true, publish: async () => {} });
+      await sync.visibility(NOW, false);
+      for (let index = 0; index < 3; index++) await sync.alarm(NOW + index);
+      const saved = JSON.parse(state.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key='overview-sync-work-v1'").toArray()[0]!.value);
+      expect(saved.sweep.continuation).not.toBeNull();
+      head = "new-head";
+      // The event is already due before the sweep's next phase.
+      await sync.receive(delivery("synchronize", { head: { sha: head } }), NOW - 3000);
+      await sync.alarm(NOW + 3);
+      expect(store.pullRequests().find((row) => row.nodeId === "PR_example")?.headSha).toBe(head);
+      const pending = JSON.parse(state.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key='overview-sync-work-v1'").toArray()[0]!.value);
+      expect(pending.marks).toEqual([]);
+    });
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage);
+      const sync = new OverviewSync({ storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => true, guard: async () => true, publish: async () => {} });
+      for (let index = 4; index < 9; index++) {
+        const before = calls.mock.calls.length;
+        await sync.alarm(NOW + index);
+        expect(calls.mock.calls.length - before).toBeLessThanOrEqual(40);
+        expect(store.pullRequests().find((row) => row.nodeId === "PR_example")?.headSha).toBe("new-head");
+      }
+      expect(store.syncStatus().latestAttempt?.result).toBe("success");
+      expect(store.syncStatus().lastSuccessfulSweepAt).toBe(NOW);
+      expect(store.pullRequests()).toHaveLength(22);
+    });
+    const lists = calls.mock.calls.filter(([url, init]) => String(url).endsWith("/graphql") && String(init?.body).includes("SeshatRepositoryPrs"));
+    expect(lists).toHaveLength(2); // The stale first page was fetched again.
+  }, 20_000);
+
   it("discards a partial sweep when hidden and starts a fresh read when visible again", async () => {
     const calls = github(() => pr()); const stub = await object("pause-no-stale-cache");
     await runInDurableObject(stub, async (_instance, state) => {
