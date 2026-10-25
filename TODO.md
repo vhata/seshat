@@ -150,21 +150,6 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
   - From the [classifications decision](docs/DECISIONS.md#2026-10-15--project-classifications): sections are shown in the file's order with unknown names as written; laptop observations that change day to day (`Last commit`, `Checked out`, `Branches`, `Unpushed`, `Uncommitted`) carry a warning when their survey is more than 30 days old, and a survey date after today is flagged ([laptop evidence age](docs/specs/2026-10-15-project-classifications.md#laptop-evidence-age)); an Upstream entry whose repository is outside the installation is described as not visible to the GitHub App. Suggestions themselves are `suggest-classifications`.
 
-- [GITHUB] `rate-limit-sign-in-callback` — **Limit sign-in callback token exchanges to reduce abuse of the App's OAuth token budget.** GitHub allows 2,000 OAuth token requests an hour per app, and every refused sign-in spends one, which could lock the owner out.
-  - Source: owner-sign-in, branch todo/owner-sign-in (PR #19), 2026-10-16
-  - Starting point: `finishSignIn` in `src/worker/auth.ts`. Check a
-    per-client attempt limit, using trusted `CF-Connecting-IP`, after state
-    validation and before `exchangeCode`; limiting only after refusal has
-    already spent the token request. A single instance-wide cap could let
-    one stranger lock the owner out. State validation already stops callbacks
-    without a valid cookie, but anyone can get one from `/auth/sign-in`.
-  - Verify that an over-limit callback makes no GitHub call, another client
-    can still sign in, and counters expire and stay bounded. Preserve the
-    sign-in decision's boundary against durable rows for anonymous attempts
-    or stored refused-account credentials. Per-client limits mitigate abuse;
-    they do not guarantee an app-wide budget against distributed clients.
-  - The [rate limits](docs/specs/2026-10-12-github-integration.md#rate-limits) section already asks implementation to rate-limit; the sign-in PR does not. Any limiter has to live in the Durable Object or a Workers binding within the [stack decision](docs/DECISIONS.md#2026-10-13--cloudflare-stack).
-
 - [TOOLING] `check-worker-first-paths` — **Test that every route the Worker serves is covered by `run_worker_first` in `wrangler.jsonc`.** The Workers tests call the Worker directly, so a route missing from that list passes the tests and is then served as the static page.
   - Source: owner-sign-in, branch todo/owner-sign-in (PR #19), 2026-10-16
   - The route table is in `src/worker/routes.ts`; `run_worker_first` currently

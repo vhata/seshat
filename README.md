@@ -75,7 +75,10 @@ deployed instance. Each secret write deploys a new version.
 Sessions last seven days and are bound to the configured numeric owner.
 Changing, removing or invalidating `OWNER_ID` rejects the old owner's HTTP
 requests and sockets before further private messages. Upgrading from
-sessions without an owner identity requires signing in again.
+sessions without an owner identity requires signing in again. The browser
+returns to an explanatory sign-in screen when a session ends, including
+quiet expiry and rejected reconnects; ordinary network outages still
+reconnect automatically.
 
 After valid OAuth state, callbacks allow ten token exchanges per client
 per ten-minute window, using Cloudflare's trusted `CF-Connecting-IP`.

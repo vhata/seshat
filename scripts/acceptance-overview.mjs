@@ -417,8 +417,15 @@ try {
   assert.equal(denied.status(), 401);
   assert.ok(!(await denied.text()).includes("observatory"));
   await command("end-session", { key: sessionKey });
-  await page.getByText("Disconnected — reconnecting to the instance").waitFor();
-  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation disconnects"] };
+  await page.getByText("Your session has ended. Sign in again to continue.").waitFor();
+  await page.getByRole("link", { name: "Sign in with GitHub" }).waitFor();
+  assert.equal(await page.locator(".pr-row").count(), 0);
+  assert.equal(await page.getByText("Disconnected — reconnecting to the instance").count(), 0);
+  const endedSockets = sockets.length;
+  await page.waitForTimeout(1500);
+  assert.equal(sockets.length, endedSockets, "Ended sessions must stop reconnecting");
+  await page.screenshot({ path: path.join(evidence, "session-ended.png") });
+  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in"] };
   await writeFile(path.join(evidence, "results.json"), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary));
   }
