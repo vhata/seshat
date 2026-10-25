@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   fixtureSnapshot,
+  fixturePr,
   FIXTURE_NOW,
+  FIXTURE_OWNER_ID,
+  FIXTURE_REPOSITORY,
   SYNC_FIXTURES,
 } from "../shared/overview/fixtures";
+import { buildSnapshot, type OverviewSnapshot } from "../shared/overview/protocol";
 import {
   startOverviewClient,
   type ClientEnvironment,
@@ -102,6 +106,86 @@ function messages(h: ReturnType<typeof harness>) {
     .map((s) => JSON.parse(s) as { type: string; visible: boolean });
 }
 describe("overview socket lifecycle", () => {
+  it.each(["snapshot", "pr-changes"] as const)(
+    "updates the seven-day stale flag without a GitHub notice or flash via %s",
+    (type) => {
+      const h = harness();
+      h.socket.onopen?.();
+      const pr = fixturePr();
+      const threshold = pr.activity.lastCommitAt! + 7 * 86_400_000;
+      const build = (now: number, input = pr) =>
+        buildSnapshot(
+          [FIXTURE_REPOSITORY],
+          [input],
+          SYNC_FIXTURES.live,
+          FIXTURE_OWNER_ID,
+          now,
+        );
+      const deliver = (next: OverviewSnapshot) => {
+        if (type === "snapshot") snapshot(h, next);
+        else
+          h.socket.onmessage?.({
+            data: JSON.stringify({
+              type,
+              buckets: next.buckets,
+              removed: [],
+              serverTime: next.serverTime,
+            }),
+          });
+      };
+      const row = () => h.state.snapshot!.buckets.flatMap((b) => b.rows)[0]!;
+      snapshot(h, build(threshold - 1));
+      expect(row().stale).toBe(false);
+      deliver(build(threshold));
+      expect(row().stale).toBe(true);
+      expect(h.state.changes.size).toBe(0);
+
+      // A source edit at the same threshold still receives a notice.
+      const edited = { ...pr, title: "Changed on GitHub" };
+      deliver(build(threshold + 1, edited));
+      expect(h.state.changes.get(pr.nodeId)).toEqual({
+        at: threshold + 1,
+        text: "Updated on GitHub",
+      });
+
+      // A clock correction must neither replace nor extend that notice.
+      deliver(build(threshold - 1, edited));
+      expect(row().stale).toBe(false);
+      expect(h.state.changes.get(pr.nodeId)).toEqual({
+        at: threshold + 1,
+        text: "Updated on GitHub",
+      });
+      h.client.stop();
+    },
+  );
+  it("keeps CI and bucket movement notices when a PR also becomes stale", () => {
+    const h = harness();
+    h.socket.onopen?.();
+    const pr = fixturePr();
+    const threshold = pr.activity.lastCommitAt! + 7 * 86_400_000;
+    const build = (now: number, input = pr) =>
+      buildSnapshot(
+        [FIXTURE_REPOSITORY],
+        [input],
+        SYNC_FIXTURES.live,
+        FIXTURE_OWNER_ID,
+        now,
+      );
+    snapshot(h, build(threshold - 1));
+    snapshot(h, build(threshold, {
+      ...pr,
+      ci: [{ kind: "check_run", status: "completed", conclusion: "failure" }],
+    }));
+    expect(h.state.snapshot!.buckets.find((b) => b.rows.length)?.bucket.id).toBe(
+      "broken",
+    );
+    expect(h.state.snapshot!.buckets.flatMap((b) => b.rows)[0]!.stale).toBe(true);
+    expect(h.state.changes.get(pr.nodeId)).toEqual({
+      at: threshold,
+      text: "CI failing · moved from Ready to land",
+    });
+    h.client.stop();
+  });
   it("keeps failure details through new attempts and reconnect snapshots until success", () => {
     const h = harness();
     h.socket.onopen?.();

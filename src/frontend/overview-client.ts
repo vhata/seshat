@@ -7,6 +7,7 @@ import {
   type ClientMessage,
   type OverviewSnapshot,
   type OverviewBucketDto,
+  type OverviewRowDto,
   type SyncStatus,
 } from "../shared/overview/protocol";
 import { isOverdue, MINUTE } from "./freshness";
@@ -46,6 +47,10 @@ function rows(buckets: readonly OverviewBucketDto[]) {
     ),
   );
 }
+/** Elapsed time changes the stale flag without changing the source facts. */
+function sourceFacts({ pr, facts, lastActivityAt }: OverviewRowDto) {
+  return { pr, facts, lastActivityAt };
+}
 function changesBetween(
   old: readonly OverviewBucketDto[],
   next: readonly OverviewBucketDto[],
@@ -59,7 +64,8 @@ function changesBetween(
     const prior = before.get(id);
     if (!prior) changes.set(id, { at: now, text: "Added to overview" });
     else if (
-      JSON.stringify(prior.row) !== JSON.stringify(item.row) ||
+      JSON.stringify(sourceFacts(prior.row)) !==
+        JSON.stringify(sourceFacts(item.row)) ||
       prior.bucket.id !== item.bucket.id
     ) {
       const detail =
