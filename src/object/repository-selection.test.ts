@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixturePr } from "../shared/overview/fixtures";
 import { OverviewSync } from "./overview-sync";
 import { OverviewStore } from "./overview-store";
+import { reduceDelivery } from "../shared/overview/webhook-marks";
 import { instanceStub } from "../worker/instance-stub";
 import { BASE, json, OWNER_ID, ownerSession, storedRows, stubGitHub } from "../worker/test-helpers";
 
@@ -70,6 +71,97 @@ describe("repository selection in the instance", () => {
     listed = []; await stub.refreshInstallation(10, NOW + 4);
     listed = [repository(1)]; await stub.refreshInstallation(10, NOW + 5);
     expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 1, monitored: true, monitorOverride: null }]);
+  });
+  it.each([true, false])("keeps choice %s across a same-owner omission and object restart", async (override) => {
+    let listed = [repository(1, { fork: true })];
+    stubGitHub(githubRoutes(() => listed));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    await stub.setMonitoringOverride(1, override, NOW);
+    listed = []; await stub.refreshInstallation(10, NOW + 1);
+    await evictDurableObject(stub);
+    listed = [repository(1, { fork: true, full_name: "owner/renamed" })];
+    await stub.refreshInstallation(10, NOW + 2);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 1, monitored: override, monitorOverride: override }]);
+  }, 15_000);
+  it.each(["transfer delivery", "owner-change delivery", "missed delivery", "old listing omitted", "old installation removed", "no permission after transfer", "delayed transfer delivery", "delayed transfer with absent row", "delayed transfer without owner"]
+    .flatMap((scenario) => [true, false].map((override) => [scenario, override] as const)))("resets an organization choice after transfer: %s (override %s)", async (scenario, override) => {
+    const other = { id: 30, account: { id: 4004, login: "other", type: "Organization" }, repository_selection: "all" };
+    let installations = [ORG, other];
+    let listed = [repository(5, { full_name: "org/repo-5", owner: { id: 3003, login: "org" } })];
+    stubGitHub({
+      ...githubRoutes(() => listed, () => installations),
+      "POST https://api.github.com/app/installations/30/access_tokens": () => json({ token: "other-secret", expires_at: new Date(NOW + 3_600_000).toISOString() }, 201),
+      "GET https://api.github.com/repos/org/repo-5/collaborators/owner/permission": () => json({ permission: "read", user: { id: OWNER_ID } }),
+      "GET https://api.github.com/repos/other/repo-5/collaborators/owner/permission": () => json({ permission: scenario === "no permission after transfer" ? "none" : "read", user: { id: OWNER_ID } }),
+    });
+    const stub = instanceStub(env); await stub.checkInstallations(NOW);
+    await stub.decideOrganization(20, true, NOW); await stub.decideOrganization(30, true, NOW);
+    await stub.refreshInstallation(20, NOW); await stub.setMonitoringOverride(5, override, NOW);
+    if (scenario === "transfer delivery" || scenario === "owner-change delivery") {
+      await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 20 }, action: scenario === "transfer delivery" ? "transferred" : "edited",
+        repository: { id: 5, visibility: "private", owner: { id: 4004 } } }, NOW + 1)!, NOW + 1);
+      expect((await storedRows()).settings).not.toContainEqual(expect.objectContaining({ key: "repository-monitoring:5" }));
+    } else if (scenario === "old listing omitted") {
+      listed = []; await stub.refreshInstallation(20, NOW + 1);
+    } else if (scenario === "old installation removed") {
+      installations = [other]; await stub.checkInstallations(NOW + 1);
+    }
+    listed = [repository(5, { full_name: "other/repo-5", owner: { id: 4004, login: "other" } })];
+    expect(await stub.refreshInstallation(30, NOW + 2)).toMatchObject({ ok: true, changed: true });
+    expect((await stub.repositorySettings()).repositories).toMatchObject(scenario === "no permission after transfer" ? [] : [{ id: 5, ownerAccountId: 4004, monitored: false, monitorOverride: null }]);
+    expect((await storedRows()).settings).not.toContainEqual(expect.objectContaining({ key: "repository-monitoring:5" }));
+    if (scenario.startsWith("delayed transfer")) {
+      const destination = listed;
+      await stub.setMonitoringOverride(5, override, NOW + 3);
+      if (scenario === "delayed transfer with absent row") { listed = []; await stub.refreshInstallation(30, NOW + 4); }
+      await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 20 }, action: "transferred",
+        repository: { id: 5, visibility: "private", ...(scenario === "delayed transfer without owner" ? {} : { owner: { id: 4004 } }) } }, NOW + 5)!, NOW + 5);
+      listed = []; await stub.refreshInstallation(30, NOW + 6);
+      listed = destination; await stub.refreshInstallation(30, NOW + 7);
+      expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 5, monitored: override, monitorOverride: override }]);
+    }
+    // A later return to the original owner must not resurrect its old choice.
+    listed = [repository(5, { full_name: "org/repo-5", owner: { id: 3003, login: "org" } })];
+    if (scenario !== "old installation removed") {
+      await stub.refreshInstallation(20, NOW + 8);
+      expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 5, monitored: false, monitorOverride: null }]);
+    }
+  });
+  it.each([3003, null])("clears an absent repository's choice when transfer to %s is observed before a transfer back", async (destinationOwnerId) => {
+    let listed = [repository(1, { fork: true })];
+    stubGitHub(githubRoutes(() => listed, () => [PERSONAL, ORG]));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.decideOrganization(20, true, NOW);
+    await stub.refreshInstallation(10, NOW); await stub.setMonitoringOverride(1, true, NOW);
+    listed = []; await stub.refreshInstallation(10, NOW + 1);
+    await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 10 }, action: "transferred",
+      repository: { id: 1, ...(destinationOwnerId === null ? {} : { owner: { id: destinationOwnerId } }) } }, NOW + 2)!, NOW + 2);
+    await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 20 }, action: "transferred", repository: { id: 1, owner: { id: OWNER_ID } } }, NOW + 3)!, NOW + 3);
+    listed = [repository(1, { fork: true })]; await stub.refreshInstallation(10, NOW + 4);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 1, monitored: false, monitorOverride: null }]);
+  });
+  it.each(["current row", "omitted row", "installation removed", "reset row", "unknown owner"])("handles a legacy choice with %s", async (scenario) => {
+    let listed = [repository(1, { fork: true })];
+    let installations = [PERSONAL];
+    stubGitHub(githubRoutes(() => listed, () => installations));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    await stub.setMonitoringOverride(1, true, NOW);
+    await runInDurableObject(stub, (_instance, state) => {
+      state.storage.sql.exec("UPDATE settings SET value = 'true' WHERE key = 'repository-monitoring:1'");
+      // Model a row lost before owner-scoped choices were introduced.
+      if (scenario === "unknown owner") state.storage.sql.exec("DELETE FROM repositories WHERE id = 1");
+      if (scenario === "reset row") {
+        const store = new OverviewStore(state.storage);
+        store.putRepository({ ...store.repositories()[0]!, monitorOverride: null, monitored: false });
+      }
+    });
+    if (scenario === "omitted row") { listed = []; await stub.refreshInstallation(10, NOW + 1); }
+    if (scenario === "installation removed") {
+      installations = []; await stub.checkInstallations(NOW + 1);
+      installations = [PERSONAL]; await stub.checkInstallations(NOW + 2);
+    }
+    listed = [repository(1, { fork: true })]; await stub.refreshInstallation(10, NOW + 2);
+    const expected = scenario === "unknown owner" || scenario === "reset row" ? null : true;
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 1, monitored: expected ?? false, monitorOverride: expected }]);
   });
   it("turning monitoring off deletes stored PRs and publishes a new snapshot", async () => {
     stubGitHub(githubRoutes(() => [repository(12)]));

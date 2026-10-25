@@ -18,12 +18,6 @@ Only work promoted from whole-codebase reviews belongs here. Every entry is read
   - Starting point: `findSession` in `src/worker/auth.ts`, session schema/storage and the socket authorization checks in `src/object/instance.ts`.
   - Verify: sign in as A, change OWNER_ID to B or remove it, and confirm A's HTTP requests and existing socket stop receiving instance data; B's valid session still works. Cover upgrade handling for existing unbound sessions.
 
-- [GITHUB] `reset-monitoring-overrides-on-transfer` — **Reset durable monitoring choices when repository ownership changes.** Clearing only the repository record lets discovery restore an old opt-in in a different organization.
-  - Source: [full review](2026-10-24-0255-full.md), 2026-10-24
-  - Findings: `transfers-preserve-durable-monitor-override`
-  - Starting point: transfer handling in `src/object/overview-sync.ts`, `RepositoryDiscoveryStore` and override restoration in `src/object/repository-selection.ts`.
-  - Verify: opt into a repository, transfer it between accepted organizations and refresh discovery; require a new opt-in, including when the transfer delivery is missed. Preserve overrides across same-owner disappearance/reappearance.
-
 - [PRODUCT] `recover-overview-after-session-expiry` — **Return the overview to sign-in when its session ends.** Expired or revoked sessions currently retry permanently as a transport outage until the owner reloads or signs out.
   - Source: [full review](2026-10-24-0255-full.md), 2026-10-24
   - Findings: `expired-session-reconnect-loop`
