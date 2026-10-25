@@ -28,7 +28,7 @@ export interface SocketLike {
   send(data: string): void;
   close(): void;
   onopen: (() => void) | null;
-  onclose: (() => void) | null;
+  onclose: ((event: { code: number; reason: string }) => void) | null;
   onerror: (() => void) | null;
   onmessage: ((event: { data: unknown }) => void) | null;
 }
@@ -36,6 +36,7 @@ export interface ClientEnvironment {
   clock(): number;
   visible(): boolean;
   socket(): SocketLike;
+  session(signal: AbortSignal): Promise<"signed-in" | "signed-out">;
   interval(callback: () => void, delay: number): () => void;
   later(callback: () => void, delay: number): () => void;
   onVisibility(callback: () => void): () => void;
@@ -110,11 +111,13 @@ function retainUnresolvedFailure(
 export function startOverviewClient(
   env: ClientEnvironment,
   emit: (state: OverviewState) => void,
+  onSessionEnded: () => void,
 ) {
   let stopped = false;
   let connection: SocketLike | null = null;
   let cancelReconnect = () => {};
   let reconnectAttempt = 0;
+  let sessionCheck: AbortController | null = null;
   let receivedAt = env.clock();
   let offset = 0;
   let lastTick = env.clock();
@@ -143,6 +146,7 @@ export function startOverviewClient(
     send("visibility");
   };
   const becameVisible = () => {
+    if (stopped) return;
     if (env.visible()) {
       state.visibleSince = env.clock() + offset;
       overdueSent = false;
@@ -152,6 +156,10 @@ export function startOverviewClient(
   };
   const connect = () => {
     if (stopped) return;
+    // A manual retry can replace a connection that has not opened yet.
+    const previous = connection;
+    connection = null;
+    previous?.close();
     const socket = env.socket();
     connection = socket;
     socket.onopen = () => {
@@ -209,18 +217,38 @@ export function startOverviewClient(
       }
       publish();
     };
-    socket.onclose = () => {
+    socket.onclose = ({ code, reason }) => {
       if (stopped || connection !== socket) return;
+      connection = null;
       state.connected = false;
       publish();
-      cancelReconnect = env.later(
-        connect,
-        Math.min(30_000, 1000 * 2 ** reconnectAttempt++),
-      );
+      if (code === 1008 && reason === "session ended") {
+        endSession();
+        return;
+      }
+      // Browsers hide a rejected upgrade's HTTP status behind close code
+      // 1006, so confirm authorization before treating it as an outage.
+      const controller = new AbortController();
+      sessionCheck = controller;
+      void env.session(controller.signal)
+        .catch(() => "unavailable" as const)
+        .then((session) => {
+          if (stopped || sessionCheck !== controller) return;
+          sessionCheck = null;
+          if (session === "signed-out") endSession();
+          else
+            cancelReconnect = env.later(
+              connect,
+              Math.min(30_000, 1000 * 2 ** reconnectAttempt++),
+            );
+        });
     };
-    socket.onerror = () => socket.close();
+    socket.onerror = () => {
+      if (!stopped && connection === socket) socket.close();
+    };
   };
   const cancelInterval = env.interval(() => {
+    if (stopped) return;
     const localNow = env.clock();
     if (localNow - lastTick > MINUTE) becameVisible();
     lastTick = localNow;
@@ -246,23 +274,41 @@ export function startOverviewClient(
     publish();
   }, 15_000);
   const cancelVisibility = env.onVisibility(becameVisible);
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    cancelInterval();
+    cancelVisibility();
+    cancelReconnect();
+    sessionCheck?.abort();
+    sessionCheck = null;
+    connection?.close();
+    connection = null;
+  }
+  function endSession() {
+    stop();
+    state = {
+      ...state,
+      connected: false,
+      snapshot: null,
+      lastMessageAt: null,
+      changes: new Map(),
+    };
+    publish();
+    onSessionEnded();
+  }
   connect();
   publish();
   return {
     retry() {
+      if (stopped || sessionCheck) return;
       if (state.connected) send("retry-now");
       else {
         cancelReconnect();
         connect();
       }
     },
-    stop() {
-      stopped = true;
-      cancelInterval();
-      cancelVisibility();
-      cancelReconnect();
-      connection?.close();
-    },
+    stop,
   };
 }
 export function browserEnvironment(): ClientEnvironment {
@@ -282,10 +328,20 @@ export function browserEnvironment(): ClientEnvironment {
         onmessage: null,
       };
       ws.onopen = () => adapter.onopen?.();
-      ws.onclose = () => adapter.onclose?.();
+      ws.onclose = (event) =>
+        adapter.onclose?.({ code: event.code, reason: event.reason });
       ws.onerror = () => adapter.onerror?.();
       ws.onmessage = (event) => adapter.onmessage?.({ data: event.data });
       return adapter;
+    },
+    session: async (signal) => {
+      const response = await fetch("/api/session", {
+        // A stalled authorization request must not strand outage recovery.
+        signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+      });
+      if (response.status === 401) return "signed-out";
+      if (response.ok) return "signed-in";
+      throw new Error("Could not check the session");
     },
     interval: (fn, delay) => {
       const id = window.setInterval(fn, delay);

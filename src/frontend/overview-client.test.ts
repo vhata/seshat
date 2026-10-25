@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   fixtureSnapshot,
   fixturePr,
@@ -10,6 +10,7 @@ import {
 import { buildSnapshot, type OverviewSnapshot } from "../shared/overview/protocol";
 import {
   startOverviewClient,
+  browserEnvironment,
   type ClientEnvironment,
   type OverviewState,
   type SocketLike,
@@ -23,11 +24,15 @@ function harness() {
   let reconnect = () => {};
   let cancelled = 0;
   let closed = 0;
+  let ended = 0;
+  const session = vi.fn<ClientEnvironment["session"]>(async () => "signed-in");
+  const delays: number[] = [];
   let state: OverviewState | undefined;
   const sockets: (SocketLike & { sent: string[] })[] = [];
   const env: ClientEnvironment = {
     clock: () => now,
     visible: () => visible,
+    session,
     socket() {
       const s = {
         sent: [] as string[],
@@ -51,7 +56,8 @@ function harness() {
         cancelled++;
       };
     },
-    later(fn) {
+    later(fn, delay) {
+      delays.push(delay);
       reconnect = fn;
       return () => {
         cancelled++;
@@ -66,10 +72,13 @@ function harness() {
   };
   const client = startOverviewClient(env, (value) => {
     state = value;
-  });
+  }, () => { ended++; });
   return {
     client,
     sockets,
+    session,
+    delays,
+    get ended() { return ended; },
     get state() {
       return state!;
     },
@@ -104,6 +113,10 @@ function messages(h: ReturnType<typeof harness>) {
   return h.socket.sent
     .filter((s) => s !== "ping")
     .map((s) => JSON.parse(s) as { type: string; visible: boolean });
+}
+async function settleSessionCheck() {
+  await Promise.resolve();
+  await Promise.resolve();
 }
 describe("overview socket lifecycle", () => {
   it.each(["snapshot", "pr-changes"] as const)(
@@ -186,7 +199,93 @@ describe("overview socket lifecycle", () => {
     });
     h.client.stop();
   });
-  it("keeps failure details through new attempts and reconnect snapshots until success", () => {
+  it("clears private data and stops all retries on an explicit session-ended close", () => {
+    const h = harness();
+    h.socket.onopen?.();
+    snapshot(h);
+    const old = h.socket;
+    old.onclose?.({ code: 1008, reason: "session ended" });
+    expect(h.ended).toBe(1);
+    expect(h.state.snapshot).toBeNull();
+    expect(h.state.changes.size).toBe(0);
+    expect(h.state.lastMessageAt).toBeNull();
+    expect(h.session).not.toHaveBeenCalled();
+    expect(h.cancelled).toBe(2);
+    h.client.retry();
+    h.reconnect();
+    old.onopen?.();
+    old.onmessage?.({ data: JSON.stringify({ type: "snapshot", snapshot: fixtureSnapshot() }) });
+    old.onclose?.({ code: 1008, reason: "session ended" });
+    expect(h.sockets).toHaveLength(1);
+    expect(h.state.snapshot).toBeNull();
+    expect(h.ended).toBe(1);
+  });
+  it.each([false, true])("returns to sign-in after an opaque unauthorized close (previous snapshot: %s)", async (loaded) => {
+    const h = harness();
+    if (loaded) {
+      h.socket.onopen?.();
+      snapshot(h);
+    }
+    h.session.mockResolvedValue("signed-out");
+    h.socket.onclose?.({ code: 1006, reason: "" });
+    await settleSessionCheck();
+    expect(h.session).toHaveBeenCalledOnce();
+    expect(h.ended).toBe(1);
+    expect(h.state.snapshot).toBeNull();
+    h.client.retry();
+    h.reconnect();
+    expect(h.sockets).toHaveLength(1);
+    expect(h.delays).toEqual([]);
+  });
+  it("keeps outage backoff and the snapshot when session checks are unavailable or authorized", async () => {
+    const h = harness();
+    h.socket.onopen?.();
+    snapshot(h);
+    h.session.mockRejectedValueOnce(new Error("offline"));
+    h.socket.onclose?.({ code: 1006, reason: "" });
+    await settleSessionCheck();
+    expect(h.state.snapshot).not.toBeNull();
+    expect(h.delays).toEqual([1000]);
+    h.reconnect();
+    h.socket.onclose?.({ code: 1011, reason: "server restarting" });
+    await settleSessionCheck();
+    expect(h.delays).toEqual([1000, 2000]);
+    expect(h.ended).toBe(0);
+    h.reconnect();
+    h.socket.onopen?.();
+    expect(h.state.connected).toBe(true);
+  });
+  it("waits for one authorization check and ignores its late result after stopping", async () => {
+    const h = harness();
+    let resolve!: (value: "signed-out") => void;
+    h.session.mockImplementation(() => new Promise((done) => { resolve = done; }));
+    const old = h.socket;
+    old.onclose?.({ code: 1006, reason: "" });
+    h.client.retry();
+    old.onclose?.({ code: 1006, reason: "" });
+    expect(h.session).toHaveBeenCalledOnce();
+    expect(h.sockets).toHaveLength(1);
+    const signal = h.session.mock.calls[0]![0];
+    h.client.stop();
+    expect(signal.aborted).toBe(true);
+    resolve("signed-out");
+    await settleSessionCheck();
+    expect(h.ended).toBe(0);
+    expect(h.delays).toEqual([]);
+  });
+  it("ignores session-ended events from a replaced connecting socket", () => {
+    const h = harness();
+    const old = h.socket;
+    h.client.retry();
+    expect(h.closed).toBe(1);
+    old.onclose?.({ code: 1008, reason: "session ended" });
+    h.socket.onopen?.();
+    snapshot(h);
+    expect(h.ended).toBe(0);
+    expect(h.state.connected).toBe(true);
+    expect(h.state.snapshot).not.toBeNull();
+  });
+  it("keeps failure details through new attempts and reconnect snapshots until success", async () => {
     const h = harness();
     h.socket.onopen?.();
     snapshot(h);
@@ -224,7 +323,8 @@ describe("overview socket lifecycle", () => {
     expect(freshness({ ...h.state, sync: h.state.snapshot!.sync })).toBe(
       "Sync failed",
     );
-    h.socket.onclose?.();
+    h.socket.onclose?.({ code: 1006, reason: "" });
+    await settleSessionCheck();
     h.reconnect();
     h.socket.onopen?.();
     snapshot(h, {
@@ -343,7 +443,7 @@ describe("overview socket lifecycle", () => {
     h.client.stop();
     expect(h.cancelled).toBe(2);
   });
-  it("sends one overdue message, forwards retry, reconnects and refreshes snapshot", () => {
+  it("sends one overdue message, forwards retry, reconnects and refreshes snapshot", async () => {
     const h = harness();
     h.socket.onopen?.();
     snapshot(h, fixtureSnapshot(SYNC_FIXTURES.overdue));
@@ -351,7 +451,8 @@ describe("overview socket lifecycle", () => {
     expect(messages(h).filter((m) => m.type === "overdue")).toHaveLength(1);
     h.client.retry();
     expect(messages(h).at(-1)?.type).toBe("retry-now");
-    h.socket.onclose?.();
+    h.socket.onclose?.({ code: 1006, reason: "" });
+    await settleSessionCheck();
     expect(h.state.connected).toBe(false);
     h.reconnect();
     expect(h.sockets).toHaveLength(2);
@@ -401,5 +502,33 @@ describe("overview socket lifecycle", () => {
     expect(h.state.snapshot?.buckets.every((b) => b.rows.length === 0)).toBe(
       true,
     );
+  });
+});
+describe("browser overview adapter", () => {
+  it("preserves close information and classifies only HTTP 401 as signed out", async () => {
+    const raw = { onclose: null as SocketLike["onclose"], close() {}, send() {} };
+    vi.stubGlobal("WebSocket", function () { return raw; });
+    vi.stubGlobal("location", { protocol: "https:", host: "example.test" });
+    try {
+      const env = browserEnvironment();
+      const socket = env.socket();
+      socket.onclose = vi.fn();
+      raw.onclose?.({ code: 1008, reason: "session ended" });
+      expect(socket.onclose).toHaveBeenCalledWith({ code: 1008, reason: "session ended" });
+      const fetch = vi.spyOn(globalThis, "fetch");
+      const controller = new AbortController();
+      fetch.mockResolvedValueOnce(new Response(null, { status: 401 }));
+      await expect(env.session(controller.signal)).resolves.toBe("signed-out");
+      expect(fetch).toHaveBeenLastCalledWith("/api/session", { signal: expect.any(AbortSignal) });
+      const requestSignal = fetch.mock.calls.at(-1)![1]!.signal!;
+      fetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+      await expect(env.session(controller.signal)).resolves.toBe("signed-in");
+      fetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
+      await expect(env.session(controller.signal)).rejects.toThrow();
+      controller.abort();
+      expect(requestSignal.aborted).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
