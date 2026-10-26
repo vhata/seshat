@@ -35,9 +35,3 @@ Only work promoted from whole-codebase reviews belongs here. Every entry is read
   - Findings: `expired-session-reconnect-loop`
   - Starting point: `SocketLike` and the browser adapter in `src/frontend/overview-client.ts`, plus session state in `src/frontend/App.tsx`.
   - Verify: expire or revoke a session while the overview is open, confirm it explains that sign-in is required and stops unsuccessful retries, and retain automatic recovery after an ordinary network outage.
-
-- [PRODUCT] `distinguish-stale-flags-from-github-updates` — **Describe stale-threshold changes without claiming a GitHub update.** Comparing complete rows currently emits an update notice when only elapsed time changed the stale flag.
-  - Source: [full review](2026-10-24-0255-full.md), 2026-10-24
-  - Findings: `time-only-stale-change-note`
-  - Starting point: `changesBetween` in `src/frontend/overview-client.ts`.
-  - Verify: send snapshots of an identical PR immediately before and at seven quiet days; show the stale flag without an inaccurate source-change notice, while actual GitHub changes still receive accurate notes.
