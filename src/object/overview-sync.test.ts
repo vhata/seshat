@@ -314,6 +314,7 @@ describe("durable overview reconciliation", () => {
     const stub = await object("repository-withdrawal");
     await runInDurableObject(stub, async (_instance, state) => {
       const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY); store.putPullRequest(fixturePr());
+      const discovery = new RepositoryDiscoveryStore(state.storage); discovery.saveMonitoringOverride(12, FIXTURE_REPOSITORY.ownerAccountId, true);
       const sync = new OverviewSync({ storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => false, guard: async () => true, publish: async () => {} });
       await sync.receive(reduceDelivery("repository", { installation: { id: 9 }, action: "privatized", repository: { id: 12 } }, NOW)!, NOW);
       expect(store.repositories()[0]).toMatchObject({ visibility: "private", listedAt: FIXTURE_REPOSITORY.listedAt, visibilityReportedAt: NOW });
@@ -321,8 +322,24 @@ describe("durable overview reconciliation", () => {
       expect(store.repositories()[0]?.listedAt).toBe(FIXTURE_REPOSITORY.listedAt);
       await sync.receive(reduceDelivery("repository", { installation: { id: 9 }, action: "transferred", repository: { id: 12, visibility: "public", owner: { id: 4 } } }, NOW + 1)!, NOW + 1);
       expect(store.pullRequests()).toEqual([]); expect(store.repositories()[0]).toMatchObject({ monitored: false, monitorOverride: null, ownerAccountId: 4 });
+      expect(discovery.monitoringOverride(12, FIXTURE_REPOSITORY.ownerAccountId)).toBeNull();
       await sync.receive(reduceDelivery("repository", { installation: { id: 9 }, action: "deleted", repository: { id: 12 } }, NOW + 2)!, NOW + 2);
       expect(store.repositories()).toEqual([]);
+    });
+  });
+
+  it("clears durable choices when a PR read detects a missed transfer", async () => {
+    github(() => pr({ repository: { ...repository, nameWithOwner: "other/observatory", owner: { ...owner, databaseId: 4004, login: "other", __typename: "Organization" } } }));
+    const stub = await object("pr-read-transfer");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY); store.putPullRequest(fixturePr());
+      const discovery = new RepositoryDiscoveryStore(state.storage); discovery.saveMonitoringOverride(12, FIXTURE_REPOSITORY.ownerAccountId, true);
+      const sync = new OverviewSync({ storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => false, guard: async () => true, publish: async () => {} });
+      await sync.receive(delivery(), NOW);
+      await sync.alarm(NOW + 2000);
+      expect(store.pullRequests()).toEqual([]);
+      expect(store.repositories()[0]).toMatchObject({ monitored: false, monitorOverride: null, ownerAccountId: 4004 });
+      expect(discovery.monitoringOverride(12, FIXTURE_REPOSITORY.ownerAccountId)).toBeNull();
     });
   });
 

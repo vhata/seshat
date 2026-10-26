@@ -38,19 +38,38 @@ export class RepositoryDiscoveryStore {
       this.storage.sql.exec("DELETE FROM settings WHERE key = ?", key);
     }
   }
-  monitoringOverride(repositoryId: number): boolean | null {
+  monitoringOverride(repositoryId: number, ownerAccountId: number): boolean | null {
     const row = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", `repository-monitoring:${repositoryId}`).toArray()[0];
-    return row?.value === "true" ? true : row?.value === "false" ? false : null;
+    if (!row) return null;
+    const value = JSON.parse(row.value) as { ownerAccountId?: number; override?: boolean } | boolean;
+    if (typeof value === "object" && value !== null && value.ownerAccountId === ownerAccountId && typeof value.override === "boolean") return value.override;
+    // Unknown legacy ownership and a different owner both require a new choice.
+    this.forgetMonitoringOverride(repositoryId);
+    return null;
   }
-  saveMonitoringOverride(repositoryId: number, override: boolean | null): void {
+  /** Existing rows establish the owner of choices saved before owner scoping. */
+  migrateMonitoringOverride(repositoryId: number, ownerAccountId: number, override: boolean | null): void {
+    const row = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", `repository-monitoring:${repositoryId}`).toArray()[0];
+    if (row?.value === "true" || row?.value === "false") {
+      // A reset record cannot establish that a legacy choice belongs to its
+      // current owner: a transfer may already have cleared only that record.
+      this.saveMonitoringOverride(repositoryId, ownerAccountId, override !== null && String(override) === row.value ? override : null);
+    }
+  }
+  saveMonitoringOverride(repositoryId: number, ownerAccountId: number, override: boolean | null): void {
+    if (override === null) { this.forgetMonitoringOverride(repositoryId); return; }
     const key = `repository-monitoring:${repositoryId}`;
     const old = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", key).toArray()[0];
-    if (override === null) {
-      if (old) this.storage.sql.exec("DELETE FROM settings WHERE key = ?", key);
-      return;
-    }
-    const value = String(override);
+    const value = JSON.stringify({ ownerAccountId, override });
     if (old?.value !== value) this.storage.sql.exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", key, value);
+  }
+  forgetMonitoringOverride(repositoryId: number, ownerAccountId?: number): void {
+    const key = `repository-monitoring:${repositoryId}`;
+    const row = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", key).toArray()[0];
+    if (!row) return;
+    const value = JSON.parse(row.value) as { ownerAccountId?: number } | boolean;
+    if (ownerAccountId !== undefined && typeof value === "object" && value !== null && value.ownerAccountId !== ownerAccountId) return;
+    this.storage.sql.exec("DELETE FROM settings WHERE key = ?", key);
   }
   private key(installationId: number): string { return `repository-discovery:${installationId}`; }
 }

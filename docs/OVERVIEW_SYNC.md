@@ -26,7 +26,12 @@ visible. Every accepted repository payload updates visibility and its
 advances `listedAt`, the visibility confirmation used by a future public
 view. A public delivery alone cannot extend that confirmation. Transfers clear the
 monitoring override and withdraw stored PRs until discovery applies the
-monitoring rules again. Deletion removes the repository and its PRs.
+monitoring rules again. Durable choices are scoped to the repository owner's
+numeric ID; discovery also discards them when ownership changes without a
+delivery. Same-owner renames, listing omissions and installation removal
+preserve those choices. Legacy choices acquire an owner from an existing
+repository record before it is removed; without that evidence they reset to
+the defaults. Deletion removes the repository and its PRs.
 
 ## Visibility and one alarm
 

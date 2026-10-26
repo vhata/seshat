@@ -2,6 +2,7 @@ import {
   fromPrDto, INITIAL_SYNC, isPrDto, toPrDto,
   type PullRequestRecord, type RepositoryRecord, type SyncStatus,
 } from "../shared/overview/protocol";
+import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 
 /** Typed persistence boundary. The caller brings the schema up to date. */
 export class OverviewStore {
@@ -32,9 +33,12 @@ export class OverviewStore {
   }
 
   removeRepository(repositoryId: number): boolean {
-    const exists = this.storage.sql.exec("SELECT 1 FROM repositories WHERE id = ?", repositoryId).toArray().length > 0;
-    if (!exists) return false;
+    const before = this.storage.sql.exec<{ data: string }>("SELECT data FROM repositories WHERE id = ?", repositoryId).toArray()[0];
+    if (!before) return false;
     this.storage.transactionSync(() => {
+      // Preserve the last known owner before an omission or uninstall removes it.
+      const repository = JSON.parse(before.data) as RepositoryRecord;
+      new RepositoryDiscoveryStore(this.storage).migrateMonitoringOverride(repositoryId, repository.ownerAccountId, repository.monitorOverride);
       this.removeRepositoryPrs(repositoryId);
       this.storage.sql.exec("DELETE FROM repositories WHERE id = ?", repositoryId);
     });

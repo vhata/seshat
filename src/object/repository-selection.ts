@@ -116,16 +116,24 @@ export class RepositorySelection implements RepositorySelectionOperations {
     const previous = this.context.store.repositories();
     const before = new Map(previous.map((repository) => [repository.id, repository]));
     const permissions = new Map(progress.permissions);
-    const repositories = progress.repositories.filter((listed) => permissions.get(listed.id) !== "none")
-      .map((listed): RepositoryRecord => {
+    let removedTransfer = false;
+    const repositories = progress.repositories.map((listed): RepositoryRecord => {
+        const prior = before.get(listed.id);
+        if (prior) this.context.discovery.migrateMonitoringOverride(prior.id, prior.ownerAccountId, prior.monitorOverride);
         const repository = {
           ...listed, installationId, ownerPermission: permissions.get(listed.id)!,
-          monitorOverride: this.context.discovery.monitoringOverride(listed.id) ?? before.get(listed.id)?.monitorOverride ?? null, listedAt: now, visibilityReportedAt: now,
+          monitorOverride: this.context.discovery.monitoringOverride(listed.id, listed.ownerAccountId)
+            ?? (prior?.ownerAccountId === listed.ownerAccountId ? prior.monitorOverride : null) ?? null,
+          listedAt: now, visibilityReportedAt: now,
         };
+        // A new owner without permission must also withdraw the old owner's row.
+        if (prior && prior.ownerAccountId !== listed.ownerAccountId && repository.ownerPermission === "none") {
+          removedTransfer = this.context.store.removeRepository(listed.id) || removedTransfer;
+        }
         return { ...repository, monitored: monitoredRepository(repository, this.context.ownerId, installation.accountType === "Organization") };
-      });
+      }).filter((repository) => repository.ownerPermission !== "none");
     const old = previous.filter((repository) => repository.installationId === installationId);
-    const changed = JSON.stringify(old) !== JSON.stringify(repositories);
+    const changed = removedTransfer || JSON.stringify(old) !== JSON.stringify(repositories);
     this.context.store.replaceInstallationRepositories(installationId, repositories);
     this.context.discovery.save(installationId, {
       cachedPages: progress.pages, permissionCache: progress.permissionCache, progress: null,
@@ -161,7 +169,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
       return { ok: false, reason: "not-allowed" };
     }
     const result = { ...updated, monitored: monitoredRepository(updated, this.context.ownerId, organization) };
-    this.context.discovery.saveMonitoringOverride(repositoryId, override);
+    this.context.discovery.saveMonitoringOverride(repositoryId, repository.ownerAccountId, override);
     if (this.context.store.putRepository(result)) await this.context.publish(now);
     return { ok: true, repository: result };
   }

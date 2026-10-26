@@ -5,6 +5,7 @@ import { GithubPrReader, type HeadCommitDate, type RateLimit, type ReadMeta, typ
 import type { PermissionCacheEntry } from "../worker/github-permissions";
 import type { OverviewStore } from "./overview-store";
 import type { RepositorySelection } from "./repository-selection";
+import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 
 const KEY = "overview-sync-work-v1";
 const MINUTE = 60_000;
@@ -91,6 +92,15 @@ export class OverviewSync {
     const metadata = delivery.repository;
     if (metadata) {
       const previous = this.context.store.repositories().find((repo) => repo.id === metadata.id && repo.installationId === delivery.installationId);
+      const discovery = new RepositoryDiscoveryStore(this.context.storage);
+      if (previous && (metadata.transferred || metadata.ownerId !== null && metadata.ownerId !== previous.ownerAccountId)) {
+        discovery.forgetMonitoringOverride(metadata.id);
+      } else if (metadata.transferred) {
+        // A delayed old-installation delivery must preserve a choice already
+        // made for the destination owner, even if its row is currently absent.
+        if (metadata.ownerId !== null) discovery.monitoringOverride(metadata.id, metadata.ownerId);
+        else discovery.forgetMonitoringOverride(metadata.id, this.context.installations().find((installation) => installation.id === delivery.installationId)!.accountId);
+      }
       if (!previous && !metadata.deleted && !delivery.refresh) this.refresh(delivery.installationId, now);
       if (previous) {
         if (metadata.deleted) this.context.store.removeRepository(previous.id);
@@ -416,6 +426,7 @@ export class OverviewSync {
     const repository = this.context.store.repositories(installationId).find((repo) => repo.id === pr.repositoryId);
     if (!repository || !repository.monitored) return;
     if (repository.ownerAccountId !== pr.repository.ownerAccountId) {
+      new RepositoryDiscoveryStore(this.context.storage).forgetMonitoringOverride(repository.id);
       this.context.store.putRepository({ ...repository, monitored: false, monitorOverride: null, ownerAccountId: pr.repository.ownerAccountId, visibility, listedAt: now, visibilityReportedAt: now });
       this.refresh(installationId, now);
       return;
