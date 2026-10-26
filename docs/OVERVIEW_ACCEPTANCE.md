@@ -243,8 +243,9 @@ the page was not refreshed to obtain it.
 
 For the hidden case, only one overview was open. Browser focus emulation
 was disabled and the dedicated window was minimized; the browser reported
-`hidden` and its production socket sent `visible: false`. A new unsubscribed
-comment remained unobserved for the 150.944-second hidden interval.
+`hidden` and its production socket sent `visible: false`.
+During a 150.944-second hidden interval, a new unsubscribed comment remained
+unobserved.
 Restoring the window and visibility produced the DOM update in 25.267
 seconds from restoration starting (24.592 seconds from the browser's visible
 event), within the three-minute bound. Neither catch-up measurement
