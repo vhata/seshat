@@ -38,6 +38,10 @@ function github(current: () => Record<string, unknown>, options: { count?: () =>
       return Response.json({ data: { nodes, rateLimit: { cost: 1, remaining: options.remaining ?? 4900, limit: options.limit ?? 5000, resetAt: new Date(options.resetAt ?? NOW + 3_600_000).toISOString() } } });
     }
     if (String(url).includes("/collaborators/") && options.permission) return options.permission();
+    if (String(url).includes("/reviews?")) {
+      const reviews = current().reviews as { nodes: { databaseId: number; id: string; commit: { oid: string } | null }[] };
+      return Response.json(reviews.nodes.map((review) => ({ id: review.databaseId, node_id: review.id, commit_id: review.commit?.oid ?? null })));
+    }
     if (String(url).includes("/commits?")) return Response.json([{ sha: String(current().headRefOid), commit: { committer: { date: WHEN } } }]);
     if (String(url).endsWith("/pulls/1")) return Response.json({ mergeable: current().mergeable === "UNKNOWN" ? null : true, head: { sha: current().headRefOid } });
     throw new Error(`Unexpected ${String(url)}`);

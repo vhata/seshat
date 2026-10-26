@@ -118,6 +118,7 @@ async function github(request) {
   }
   const number = Number(url.pathname.match(/\/pulls\/(\d+)/)?.[1]);
   const current = prs.find((p) => p.number === number);
+  if (request.method === "GET" && current && url.pathname.endsWith("/reviews")) return Response.json(current.reviews.nodes.map((review) => ({ id: review.databaseId, node_id: review.id, commit_id: review.commit?.oid ?? null })));
   if (request.method === "GET" && current && url.pathname.endsWith("/commits")) return Response.json([{ sha: current.headRefOid, commit: { committer: { date: iso(began - 8 * 86_400_000) } } }]);
   if (request.method === "GET" && current && url.pathname.endsWith(`/pulls/${number}`)) return Response.json({ mergeable: current.mergeable === "UNKNOWN" ? null : current.mergeable === "MERGEABLE", head: { sha: current.headRefOid } });
   unexpected.push(route);
