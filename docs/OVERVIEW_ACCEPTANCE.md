@@ -172,3 +172,114 @@ content and screenshots remain outside version control.
 Real GitHub webhook timing is outside this local check: GitHub cannot reach
 the local instance without a tunnel or deployment. Signed local deliveries
 and controlled GitHub replies exercise that path in the repeatable scenario.
+
+## Hosted verification, 2026-10-26
+
+The owner-authorized instance at <https://seshat.vhata.workers.dev> uses a
+Worker, static frontend assets and a SQLite Durable Object. Its separate
+GitHub App is installed on the owner's personal account with All repositories.
+Its active, TLS-verified webhook points to `/api/github/webhook` on that
+origin and subscribes to the seven events in the production manifest.
+Owner and App credentials were uploaded as Worker secrets; no credential
+or private repository content is included in this record.
+
+The initial deployment exposed a private-review permission boundary that
+the earlier local real-App sample, which had no private submitted reviews,
+had not demonstrated. GitHub accepted the review webhook with HTTP 202,
+but `PullRequestReview.commit` returned a GraphQL integration-access error.
+The review was not reflected within 60 seconds, and a subsequent closure
+also timed out in a 45-second browser observation. That shorter closure
+observation does not establish its 60-second result. Successful webhook
+acknowledgement alone did not establish that the page was current.
+
+The reader now obtains review commit identities through the REST review
+listing with the same Pull requests read permission. It retains strict
+GraphQL error handling, identity validation, pagination and request limits.
+The corrected application was deployed from
+`a0fcc3df9dbc786bf7a091fb7996372617d6eb2c`, Worker version
+`fd8b7f83-176c-477f-a30a-1c0447c3c050`. The [reader documentation](GITHUB_READER.md)
+describes the API and continuation boundary.
+
+### Real browser and notified changes
+
+An ordinary browser completed GitHub authorization through the hosted
+`/auth/callback` (HTTP 303), then received an authenticated `/api/session`
+response (HTTP 200). No session was seeded or injected. The overview used
+the production WebSocket and GitHub API, with no stubbed responses or
+test-only server routes.
+
+A private fixture repository exercised the following fresh changes after
+the correction was deployed. Each timing starts before sending the real
+GitHub mutation and ends when the existing page's DOM reflects its result.
+This conservatively includes the API request time before GitHub reports
+the change. No document navigation or manual reload occurred during any
+measurement. All results meet the 60-second bound.
+
+| GitHub change | Observed on the page |
+| --- | --- |
+| PR opened | 26.720 s |
+| PR closed, with submitted private reviews | 5.074 s |
+| PR reopened | 5.682 s |
+| PR merged, fixture content only | 10.163 s |
+| Draft to ready | 8.370 s |
+| Ready to draft | 4.871 s |
+| Push to the PR | 7.435 s |
+| Comment review submitted | 7.917 s |
+| Head commit status pending | 4.057 s |
+| Head commit status failing | 4.078 s |
+| Head commit status passing | 3.885 s |
+
+The review appeared with its real submitted time and commit identity. A
+subsequent push changed the stored and socket-delivered head while preserving
+the older reviews' commit SHAs. GitHub's delivery records independently
+confirmed HTTP 202 responses for the corresponding real events.
+
+### Automatic catch-up and access boundary
+
+A top-level comment, which the App does not subscribe to, reached the
+visible page in 21.559 seconds, within the five-minute catch-up bound.
+A passive DOM observer recorded the first matching activity timestamp;
+the page was not refreshed to obtain it.
+
+For the hidden case, only one overview was open. Browser focus emulation
+was disabled and the dedicated window was minimized; the browser reported
+`hidden` and its production socket sent `visible: false`. A new unsubscribed
+comment remained unobserved for the 150.944-second hidden interval.
+Restoring the window and visibility produced the DOM update in 25.267
+seconds from restoration starting (24.592 seconds from the browser's visible
+event), within the three-minute bound. Neither catch-up measurement
+navigated or reloaded the overview.
+
+The public health endpoint returned HTTP 200. Anonymous overview, session
+and socket requests returned HTTP 401 with no instance data; `/setup`
+returned HTTP 404 after configuration. An unsigned webhook returned HTTP
+401. Independent checks also confirmed `Cache-Control: no-store` on those
+responses. GitHub's initial registration ping arrived before App secrets
+were uploaded and returned HTTP 503; the configured installation and
+measured change deliveries succeeded.
+
+Signing out through the production endpoint returned HTTP 303 and closed
+the already-open socket without navigating its page. Replaying the former
+browser session cookie against `/api/session` returned HTTP 401, confirming
+server-side revocation rather than only cookie removal. A fresh ordinary
+GitHub authorization then restored the owner's authenticated overview.
+
+### Validation scope
+
+The corrected source passed `bash scripts/check.sh`: 621 tests, type checks
+and production build. The assembled browser scenario also passed all seven
+buckets, thirteen signed transitions, missed-event and visibility handling,
+failure/retry, reconnect, session revocation and 390/320 px viewport checks,
+with no browser errors or unexpected outbound requests. That scenario still
+uses local controlled timing; the table above is separate hosted evidence.
+
+The live review case was a comment review, and CI used real commit statuses.
+Approval/changes-requested bucketing and check-run payloads retain their
+automated coverage. No additional GitHub identity, live organization
+installation or physical phone was exercised. This deployment used the
+owner's existing Cloudflare account with explicit billing authorization;
+it does not establish operation under a Workers Free subscription or prove
+account-wide quota capacity. Private raw evidence and browser profiles
+remain ignored under `.context/hosted/` and `.context/hosted-browser/`.
+The private fixture's PRs were closed and its repository archived after
+verification; no repository was deleted.
