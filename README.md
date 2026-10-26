@@ -72,6 +72,25 @@ deployed instance. Each secret write deploys a new version.
 | `GITHUB_PRIVATE_KEY` | setup | The App's private key, the PEM exactly as GitHub issued it |
 | `GITHUB_WEBHOOK_SECRET` | setup | The App's webhook secret |
 
+Sessions last seven days and are bound to the configured numeric owner.
+Changing, removing or invalidating `OWNER_ID` rejects the old owner's HTTP
+requests and sockets before further private messages. Upgrading from
+sessions without an owner identity requires signing in again. The browser
+returns to an explanatory sign-in screen when a session ends, including
+quiet expiry and rejected reconnects; ordinary network outages still
+reconnect automatically.
+
+After valid OAuth state, callbacks allow ten token exchanges per client
+per ten-minute window, using Cloudflare's trusted `CF-Connecting-IP`.
+Blocked callbacks return 429 with `Retry-After`, without calling GitHub.
+The instance object keeps at most 4,096 hashed client counters in memory;
+no anonymous attempt writes database rows. A full map temporarily refuses
+new clients until a slot expires, while existing clients keep their own
+allowance. Eviction or restart resets counters; distributed clients can
+still spend the App's shared OAuth budget. Hosted callbacks without the
+trusted IP fail before exchange; plain HTTP loopback development uses a
+shared local counter instead.
+
 To try sign-in locally:
 
 1. Put `OWNER_ID` and `SETUP_SECRET` in `.dev.vars` and run

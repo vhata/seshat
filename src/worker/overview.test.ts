@@ -72,7 +72,7 @@ describe("owner overview boundary", () => {
       if (origin) headers.origin = origin;
       expect((await exports.default.fetch(`${BASE}${SOCKET_PATH}`, { headers })).status).toBe(403);
     }
-    expect((await fetchWithConfig({}, SOCKET_PATH, { method: "HEAD", headers: { cookie, origin: BASE, upgrade: "websocket" } })).status).toBe(405);
+    expect((await fetchWithConfig({ OWNER_ID: "1001" }, SOCKET_PATH, { method: "HEAD", headers: { cookie, origin: BASE, upgrade: "websocket" } })).status).toBe(405);
     expect((await exports.default.fetch(`${BASE}${SOCKET_PATH}`, { headers: { cookie, origin: BASE } })).status).toBe(426);
   });
   it("does not permit direct object fetch without a persisted session", async () => {

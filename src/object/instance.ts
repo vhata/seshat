@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { signAppJwt } from "../shared/app-jwt";
+import { CallbackLimiter } from "./callback-limiter";
 import { SESSION_SECONDS } from "../shared/auth";
 import { readConfig } from "../shared/config";
 import {
@@ -64,6 +65,7 @@ export class InstanceObject extends DurableObject<Env> {
   private schemaVersion: number | undefined;
   private selection: RepositorySelection | undefined;
   private sync: OverviewSync | undefined;
+  private readonly callbackLimiter = new CallbackLimiter();
   private readonly installationDecisions = new Set<number>();
 
   /** Reports that the object is reachable and its schema is current. */
@@ -79,7 +81,10 @@ export class InstanceObject extends DurableObject<Env> {
    * are pruned here, so the table stays bounded without writes on reads.
    * Returns the expiry time in milliseconds.
    */
-  async createSession(key: string, nowMs: number): Promise<number> {
+  async createSession(key: string, nowMs: number, ownerId: number): Promise<number> {
+    if (ownerId !== this.configuredOwner() || !Number.isSafeInteger(ownerId) || ownerId <= 0) {
+      throw new Error("Session owner no longer configured");
+    }
     this.ensureSchema();
     await this.syncScheduler().rearm(nowMs);
     const expiresAt = nowMs + SESSION_SECONDS * 1000;
@@ -87,27 +92,39 @@ export class InstanceObject extends DurableObject<Env> {
     this.ctx.storage.transactionSync(() => {
       sql.exec("DELETE FROM sessions WHERE expires_at <= ?", nowMs);
       sql.exec(
-        "INSERT INTO sessions (key, created_at, expires_at) VALUES (?, ?, ?)",
+        "INSERT INTO sessions (key, created_at, expires_at, owner_id) VALUES (?, ?, ?, ?)",
         key,
         nowMs,
         expiresAt,
+        ownerId,
       );
     });
     return expiresAt;
   }
 
   /** The session's expiry if it exists and has not expired; reads only. */
-  async sessionExpiry(key: string, nowMs: number): Promise<number | null> {
+  async sessionExpiry(key: string, nowMs: number, ownerId = this.configuredOwner()): Promise<number | null> {
+    if (ownerId === null || ownerId !== this.configuredOwner()) return null;
     this.ensureSchema();
     await this.syncScheduler().rearm(nowMs);
     const [row] = this.ctx.storage.sql
       .exec<{ expires_at: number }>(
-        "SELECT expires_at FROM sessions WHERE key = ? AND expires_at > ?",
+        "SELECT expires_at FROM sessions WHERE key = ? AND expires_at > ? AND owner_id = ?",
         key,
         nowMs,
+        ownerId,
       )
       .toArray();
     return row?.expires_at ?? null;
+  }
+
+  private configuredOwner(): number | null {
+    return readConfig(this.env as unknown as Record<string, unknown>).ownerId;
+  }
+
+  /** Anonymous attempts use bounded volatile counters, never database rows. */
+  signInAllowance(client: string, now: number): number {
+    return this.callbackLimiter.attempt(client, now);
   }
 
   /** Ends a session. Writes only if the session exists. */
@@ -308,7 +325,7 @@ export class InstanceObject extends DurableObject<Env> {
         const attachment = this.socketAttachment(socket);
         if (!attachment || socket.readyState !== WebSocket.OPEN || attachment.expiresAt <= now
           || !attachment.visibility?.visible || now - attachment.visibility.reportedAt >= 900_000) return false;
-        return this.ctx.storage.sql.exec("SELECT 1 FROM sessions WHERE key = ? AND expires_at > ?", attachment.sessionKey, now).toArray().length > 0;
+        return this.ctx.storage.sql.exec("SELECT 1 FROM sessions WHERE key = ? AND expires_at > ? AND owner_id = ?", attachment.sessionKey, now, this.configuredOwner()).toArray().length > 0;
       }),
       guard: async (now) => {
         const result = await this.checkInstallations(now);

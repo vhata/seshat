@@ -163,7 +163,7 @@ describe("the installation guard", () => {
 describe("session storage", () => {
   it("checks a session without writing", async () => {
     const stub = instanceStub(env);
-    await stub.createSession("c".repeat(64), NOW);
+    await stub.createSession("c".repeat(64), NOW, OWNER_ID);
     const statements = await runInDurableObject(stub, async (instance, state) => {
       const exec = vi.spyOn(state.storage.sql, "exec");
       expect(await instance.sessionExpiry("c".repeat(64), NOW + 1)).not.toBeNull();

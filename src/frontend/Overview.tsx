@@ -528,7 +528,7 @@ function SnapshotContent({
     </>
   );
 }
-export function Overview() {
+export function Overview({ onSessionEnded }: { onSessionEnded: () => void }) {
   const [state, setState] = useState<OverviewState>({
     snapshot: null,
     connected: false,
@@ -539,11 +539,15 @@ export function Overview() {
   });
   const client = useRef<ReturnType<typeof startOverviewClient> | null>(null);
   useEffect(() => {
-    client.current = startOverviewClient(browserEnvironment(), setState);
+    client.current = startOverviewClient(
+      browserEnvironment(),
+      setState,
+      onSessionEnded,
+    );
     return () => {
       client.current?.stop();
       client.current = null;
     };
-  }, []);
+  }, [onSessionEnded]);
   return <OverviewPage state={state} onRetry={() => client.current?.retry()} />;
 }

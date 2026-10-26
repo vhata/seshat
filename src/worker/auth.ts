@@ -33,7 +33,7 @@ import {
 } from "../shared/auth";
 import { signInReady } from "../shared/config";
 import { clearCookie, readCookie, serializeCookie } from "../shared/cookies";
-import { randomToken, secretsEqual } from "../shared/encoding";
+import { hex, sha256, utf8, randomToken, secretsEqual } from "../shared/encoding";
 import { PATHS } from "../shared/manifest";
 import { redirect, type RouteContext } from "./context";
 import { instanceStub } from "./instance-stub";
@@ -97,6 +97,20 @@ export async function finishSignIn(context: RouteContext): Promise<Response> {
     return respond(signInFailedPage("GitHub did not authorize the sign-in."));
   }
 
+  // Cloudflare supplies this header at ingress. Do not accept forwarded IP
+  // alternatives or a browser cookie as the rate-limit identity.
+  const local = !secure && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  const ip = request.headers.get("cf-connecting-ip") ?? (local ? "local-development" : null);
+  if (!ip || ip.length > 64) {
+    return respond(signInFailedPage("The instance could not identify this sign-in client. Try again through its Cloudflare address.", 503));
+  }
+  const retryAfter = await instanceStub(env).signInAllowance(hex(await sha256(utf8(ip))), now);
+  if (retryAfter > 0) {
+    const response = signInFailedPage("Too many sign-in attempts. Wait a few minutes before starting again.", 429);
+    response.headers.set("retry-after", String(retryAfter));
+    return respond(response);
+  }
+
   const token = await exchangeCode(app, code, callbackUrl(url), stored.verifier);
   if (token === null) {
     return respond(signInFailedPage("GitHub did not accept the sign-in. Try again.", 502));
@@ -127,7 +141,7 @@ export async function finishSignIn(context: RouteContext): Promise<Response> {
     }
 
     const sessionToken = randomToken(32);
-    await instanceStub(env).createSession(await sessionKey(sessionToken), now);
+    await instanceStub(env).createSession(await sessionKey(sessionToken), now, ownerId);
     return respond(
       redirect(stored.returnTo, [
         serializeCookie(SESSION_COOKIE, sessionToken, { secure, maxAge: SESSION_SECONDS }),
@@ -156,10 +170,12 @@ export async function findSession(
   env: Env,
   secure: boolean,
   now: number,
+  ownerId: number | null,
 ): Promise<{ key: string; expiresAt: number } | null> {
+  if (ownerId === null) return null;
   const token = readCookie(request.headers.get("cookie"), SESSION_COOKIE, secure);
   if (!isSessionToken(token)) return null;
   const key = await sessionKey(token);
-  const expiresAt = await instanceStub(env).sessionExpiry(key, now);
+  const expiresAt = await instanceStub(env).sessionExpiry(key, now, ownerId);
   return expiresAt === null ? null : { key, expiresAt };
 }
