@@ -12,6 +12,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return { ...actual, readFile: vi.fn(actual.readFile) };
 });
 
+vi.mock("./git.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./git.ts")>();
+  return { ...actual, git: vi.fn(actual.git) };
+});
+
 let temporary: string;
 let root: string;
 const run = (directory: string, ...args: string[]): string => {
@@ -134,6 +139,23 @@ describe("shell exclusions and discovery", () => {
     run(root, "init", "--initial-branch=main");
     await mkdir(join(root, "inside"));
     expect((await discoverDirectories(options())).directories.find((d) => d.path === "inside")?.checkout).toBe(false);
+  });
+
+  it("checks enclosing remotes before collecting any signals from an indexed ordinary directory", async () => {
+    const parent = await repo("private-parent");
+    const nested = join(parent, "component");
+    await mkdir(nested);
+    await writeFile(join(nested, "package.json"), '{"dependencies":{"react":"*"}}');
+    run(parent, "config", "url.https://private.invalid/.insteadOf", "short:");
+    run(parent, "remote", "add", "secondary", "short:team/project.git");
+    const report = await survey(options({ paths: ["private-parent/component"], excludeRemote: ["*private.invalid*"] }));
+    expect(report).toMatchObject({ projects: [], excluded: 1 });
+    expect(JSON.stringify(report)).not.toMatch(/private|component|react/);
+    expect(vi.mocked(readFile)).not.toHaveBeenCalled();
+    expect(vi.mocked(git).mock.calls.length).toBeGreaterThan(0);
+    for (const [, args] of vi.mocked(git).mock.calls) {
+      expect(["rev-parse", "remote"]).toContain(args[0]);
+    }
   });
 
   it("includes explicitly indexed parent checkouts only when requested and still excludes their remotes", async () => {

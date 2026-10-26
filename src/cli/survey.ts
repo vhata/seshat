@@ -104,8 +104,9 @@ export async function discoverDirectories(options: SurveyOptions): Promise<{ dir
     const physical = await realpath(absolutePath);
     const top = (await git(absolutePath, ["rev-parse", "--show-toplevel"], [0, 128])).trimEnd();
     const checkout = top !== "" && top === physical;
-    if (!checkout) { directories.push({ path, absolutePath, checkout, remoteStatus: "none" }); continue; }
-    const remotes = lines(await git(absolutePath, ["remote"]));
+    // Ordinary directories inside a checkout share its remote exclusions,
+    // even though they must not receive that checkout's survey signals.
+    const remotes = top !== "" ? lines(await git(absolutePath, ["remote"])) : [];
     let remoteExcluded = false;
     for (const remote of remotes) {
       const urls = [
@@ -118,6 +119,7 @@ export async function discoverDirectories(options: SurveyOptions): Promise<{ dir
       if (remoteExcluded) break;
     }
     if (remoteExcluded) { excluded++; continue; }
+    if (!checkout) { directories.push({ path, absolutePath, checkout, remoteStatus: "none" }); continue; }
     if (remotes.length === 0) {
       directories.push({ path, absolutePath, checkout, remote: "none", remoteStatus: "none" });
     } else {
