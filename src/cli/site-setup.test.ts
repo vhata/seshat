@@ -205,6 +205,23 @@ describe("guided site setup", () => {
     expect(vi.mocked(f.runtime.wrangler).mock.calls.some(([args]) => args[0] === "secret")).toBe(false);
   });
 
+  it("refuses an owner-only existing bootstrap without creating an App or replacing its owner", async () => {
+    const f = fixture(config); f.setSecrets(["OWNER_ID"]);
+    await expect(setupSite(f.runtime, true)).rejects.toThrow("will not replace its owner");
+    expect(registerGithubApp).not.toHaveBeenCalled();
+    expect(vi.mocked(f.runtime.wrangler).mock.calls.some(([args]) => args[0] === "secret")).toBe(false);
+  });
+
+  it("does not overwrite an owner secret added during browser registration", async () => {
+    const f = fixture(config);
+    vi.mocked(registerGithubApp).mockImplementationOnce(async () => {
+      f.privateFiles.set("credentials.json", credentials); f.setSecrets(["OWNER_ID"]); return credentials;
+    });
+    await expect(setupSite(f.runtime, true)).rejects.toThrow("credentials appeared");
+    expect(f.privateFiles.has("credentials.json")).toBe(true);
+    expect(vi.mocked(f.runtime.wrangler).mock.calls.some(([args]) => args[0] === "secret")).toBe(false);
+  });
+
   it("refuses an organization App owner", async () => {
     const f = fixture(config); f.privateFiles.set("credentials.json", { ...credentials, ownerType: "Organization" });
     await expect(setupSite(f.runtime, true)).rejects.toThrow("organization");

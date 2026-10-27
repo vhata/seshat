@@ -123,6 +123,7 @@ export async function setupSite(runtime: SiteRuntime, yes: boolean): Promise<voi
       process.stdout.write("This instance is already configured. Use seshat site update to deploy this checkout, or seshat site open to sign in.\n");
       return;
     }
+    if (secrets.has("OWNER_ID")) throw new CliError("The unconfigured Worker already has an owner secret. Setup will not replace its owner; finish the existing registration using the advanced runbook.");
     if (exists && config.stage === "selected" && !partialSecrets(secrets)) {
       await runtime.confirm(`Worker ${config.workerName} now exists at the saved target. Adopt this unconfigured bootstrap and preserve its state?`, false);
       await verifySite(runtime, config, false);
@@ -187,7 +188,7 @@ export async function setupSite(runtime: SiteRuntime, yes: boolean): Promise<voi
   const target = await inspectWorkerTarget(runtime, config);
   config = { ...config, namespaceId: target.namespaceId };
   const secrets = await remoteSecrets(api, config);
-  if (partialSecrets(secrets)) {
+  if (secrets.has("OWNER_ID") || partialSecrets(secrets)) {
     throw new CliError("App credentials appeared on the Worker during setup. Pending credentials were retained; setup will not replace the configured App.");
   }
   if (config.stage !== "credentials") {
