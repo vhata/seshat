@@ -246,6 +246,9 @@ describe("overview presentation", () => {
     expect(render(fixtureSnapshot(SYNC_FIXTURES.failed))).toContain(
       "Could not read: example/observatory",
     );
+    expect(render(fixtureSnapshot(SYNC_FIXTURES.failed))).toContain(
+      "GitHub data could not be read.",
+    );
     expect(
       render(fixtureSnapshot(SYNC_FIXTURES.failed), { visibleSince: now }),
     ).toContain("Checking with GitHub");

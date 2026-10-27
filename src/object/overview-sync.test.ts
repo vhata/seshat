@@ -177,6 +177,7 @@ describe("durable overview reconciliation", () => {
   });
 
   it("keeps known PRs after errors, retries once after 15 seconds, and latches failure through recovery", async () => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     let failing = true; github(() => pr(), { failure: () => failing });
     const stub = await object("failure-retry");
     await runInDurableObject(stub, async (_instance, state) => {
@@ -188,11 +189,34 @@ describe("durable overview reconciliation", () => {
       await sync.alarm(NOW + 15_001); await sync.alarm(NOW + 15_002);
       expect(store.syncStatus().latestAttempt).toMatchObject({ result: "failed", unreadableRepositoryIds: [12] });
       expect(store.pullRequests()).toHaveLength(1);
+      expect(warnings.mock.calls.filter(([, detail]) => detail?.operation === "sync-count")).toEqual([
+        ["seshat.github.failure", { operation: "sync-count", reason: "github-unavailable", attempt: 1 }],
+        ["seshat.github.failure", { operation: "sync-count", reason: "github-unavailable", attempt: 2 }],
+      ]);
       failing = false;
       await sync.visibility(NOW + 60_000, true); await sync.alarm(NOW + 60_000);
       expect(store.syncStatus().latestAttempt?.result).toBe("failed");
       for (let i = 1; i < 4; i++) await sync.alarm(NOW + 60_000 + i);
       expect(store.syncStatus().latestAttempt?.result).toBe("success");
+    });
+  });
+
+  it("reports unexpected scheduler failures without exception text or repository facts", async () => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const selected = selection();
+    vi.mocked(selected.refreshInstallation).mockRejectedValue(new Error("private-token-and-repository"));
+    const stub = await object("unexpected-diagnostics");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY); store.putPullRequest(fixturePr());
+      const sync = new OverviewSync({ storage: state.storage, store, selection: selected, installations: () => INSTALLATIONS, visible: () => true, guard: async () => true, publish: async () => {} });
+      await sync.visibility(NOW, true);
+      await sync.alarm(NOW);
+      expect(warnings.mock.calls).toEqual([
+        ["seshat.github.failure", { operation: "sync-unexpected", reason: "unexpected" }],
+        ["seshat.github.failure", { operation: "sync-listing", reason: "github-unavailable", attempt: 1 }],
+      ]);
+      expect(JSON.stringify(warnings.mock.calls)).not.toContain("private-token-and-repository");
+      expect(store.pullRequests()).toHaveLength(1);
     });
   });
 

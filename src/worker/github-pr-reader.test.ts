@@ -53,6 +53,74 @@ function github(handler: (query: string, variables: Record<string, unknown>) => 
   });
 }
 
+describe("reader failure diagnostics", () => {
+  it("collapses a failed count batch into one category without upstream or repository data", async () => {
+    const secret = "private-token-repository-query-upstream-message";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    github(() => Response.json({ errors: [{ message: secret, path: [secret], extensions: { secret } }] }));
+    const ids = Array.from({ length: 14 }, (_, i) => `${secret}-${i}`);
+    const result = await new GithubPrReader(secret).countOpenPrs(ids);
+    expect(result.status).toBe("failed");
+    expect(result.repositories).toEqual([]);
+    expect(result.issues).toEqual(ids.map((nodeId) => ({ nodeId, reason: "graphql-errors" })));
+    expect(warn.mock.calls).toEqual([["seshat.github.failure", { operation: "pr-count", reason: "graphql-errors" }]]);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(secret);
+  });
+
+  it("summarizes unavailable and malformed count facts separately", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    github(() => ({ nodes: [null, null, { ...repo("R3"), pullRequests: { totalCount: "private-data" } }] }));
+    const result = await new GithubPrReader("private-token").countOpenPrs(["R1", "R2", "R3"]);
+    expect(result.issues.map((issue) => issue.reason)).toEqual(["unavailable", "unavailable", "malformed"]);
+    expect(warn.mock.calls).toEqual([
+      ["seshat.github.failure", { operation: "pr-count", reason: "unavailable" }],
+      ["seshat.github.failure", { operation: "pr-count", reason: "malformed" }],
+    ]);
+  });
+
+  it("identifies the logical read for HTTP failures and preserves rate-limit reasons", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    github(() => Response.json({ message: "private-upstream-message" }, { status: 503 }));
+    expect((await new GithubPrReader("private-token").countOpenPrs(["R1"])).issues[0]?.reason).toBe("github-failed");
+    expect(warn.mock.calls).toEqual([
+      ["seshat.github.failure", { operation: "transport", reason: "http", status: 503 }],
+      ["seshat.github.failure", { operation: "pr-count", reason: "github-failed" }],
+    ]);
+    warn.mockClear();
+    github(() => new Response(null, { status: 429 }));
+    expect((await new GithubPrReader("private-token").rereadPrs(["P1"])).issues[0]?.reason).toBe("rate-limited");
+    expect(warn.mock.calls).toEqual([
+      ["seshat.github.failure", { operation: "transport", reason: "http", status: 429 }],
+      ["seshat.github.failure", { operation: "pr-reread", reason: "rate-limited" }],
+    ]);
+  });
+
+  it("reports repository changes and failed permissions with their read operation", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    github(() => ({ nodes: [{ ...repo(), pullRequests: connection([], 1) }] }));
+    const listing = await new GithubPrReader("private-token").readRepositories(["R1"]);
+    expect(listing.issues).toEqual([{ nodeId: "R1", reason: "changed-during-read" }]);
+    expect(warn.mock.calls).toEqual([["seshat.github.failure", { operation: "pr-list", reason: "changed-during-read" }]]);
+    warn.mockClear();
+    github(() => ({ nodes: [pr("P1", { reviews: connection([review(1, "APPROVED")]) })] }), () => Response.json({}, { status: 503 }));
+    const reread = await new GithubPrReader("private-token").rereadPrs(["P1"]);
+    expect(reread.issues).toEqual([{ nodeId: "P1", reason: "permission-failed" }]);
+    expect(warn.mock.calls).toEqual([
+      ["seshat.github.failure", { operation: "transport", reason: "http", status: 503 }],
+      ["seshat.github.failure", { operation: "pr-reread", reason: "permission-failed" }],
+    ]);
+  });
+
+  it("keeps successful reads and normal budget or cancellation controls quiet", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    github(() => ({ nodes: [{ ...repo(), pullRequests: { totalCount: 0 } }] }));
+    expect((await new GithubPrReader("token").countOpenPrs(["R1"])).status).toBe("complete");
+    expect((await new GithubPrReader("token", { requestLimit: 0 }).countOpenPrs(["R1"])).issues[0]?.reason).toBe("request-limit");
+    expect((await new GithubPrReader("token", { shouldContinue: () => false }).countOpenPrs(["R1"])).issues[0]?.reason).toBe("interrupted");
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe("PR counts", () => {
   it("counts by repository node ID, reports visibility and batches at 100", async () => {
     const calls = github((query, variables) => {

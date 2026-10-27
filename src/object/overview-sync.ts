@@ -7,6 +7,7 @@ import type { OverviewStore } from "./overview-store";
 import type { RepositorySelection } from "./repository-selection";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 import type { MonitoringStatus } from "../shared/monitoring";
+import { reportGithubFailure } from "../worker/github-http";
 
 const KEY = "overview-sync-work-v1";
 const MINUTE = 60_000;
@@ -319,6 +320,7 @@ export class OverviewSync {
         else await this.sweep(now);
       }
     } catch (error) {
+      if (!(error instanceof SyncReadError)) reportGithubFailure("sync-unexpected", "unexpected");
       if (this.state.sweep) await this.failSweep(now, error instanceof SyncReadError ? error.reason : "github-unavailable", []);
       for (const mark of this.state.marks) if (mark.due <= now) this.retryMark(mark, now);
       for (const job of this.state.refresh) if (job.due <= now) job.due = now + 15_000;
@@ -627,6 +629,8 @@ export class OverviewSync {
   private async failSweep(now: number, reason: SyncFailureReason, unreadable: readonly number[]): Promise<void> {
     const sweep = this.state.sweep;
     if (!sweep) return;
+    reportGithubFailure(sweep.stage === "listing" ? "sync-listing" : sweep.stage === "count" ? "sync-count" : "sync-read",
+      reason, undefined, { attempt: sweep.retry === 0 ? 1 : 2 });
     if (sweep.retry === 0) {
       this.state.sweep = { ...sweep, retry: 1, installationIndex: 0, stage: "listing", ids: [], continuation: null, unreadable: [], reason };
       this.state.nextSweep = now + 15_000;

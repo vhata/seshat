@@ -38,7 +38,7 @@ const GLYPHS: Record<BucketId, string> = {
   draft: "◇",
 };
 const REASONS: Record<SyncFailureReason, string> = {
-  "github-unavailable": "GitHub could not be reached.",
+  "github-unavailable": "GitHub data could not be read.",
   "rate-limited": "The GitHub App has reached its rate limit.",
   "installation-suspended": "The GitHub App installation is suspended.",
   "installation-removed": "The GitHub App installation was removed.",
