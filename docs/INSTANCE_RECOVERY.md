@@ -33,11 +33,13 @@ roll forward with reviewed code.
 
 Checked on 2026-10-26 with Wrangler 4.151.0: existing OAuth authentication
 allowed account identification, but a read-only subscriptions request returned
-HTTP 403, Cloudflare error 10000. The billing plan remains unverified; do not
-infer Free from the project's intended stack. Account identifiers and billing
-payloads are intentionally omitted here. An authorized operator can inspect
-the dashboard or use the [subscriptions API][subscriptions] with Billing Read.
-No new credential or subscription was created for this check.
+HTTP 403, Cloudflare error 10000. The owner subsequently confirmed that this
+account uses Workers Free. That confirmation establishes the plan for this
+experiment; it was not verified through the billing API. Account identifiers
+and billing payloads are intentionally omitted here. An authorized operator
+can inspect the dashboard or use the [subscriptions API][subscriptions] with
+Billing Read for a later plan check. No new credential or subscription was
+created for this check.
 
 Wrangler 4.151.0 has no Durable Object restore/export command. D1 time-travel
 commands do not operate on this database. [Data Studio][studio] can query live
@@ -131,8 +133,9 @@ The proof is separate from the ordinary gate and makes no CI/hook changes.
 
 ## Hosted acceptance procedure awaiting authorization
 
-The original `prove-instance-data-recovery` entry stays open until account
-verification and a disposable hosted experiment establish the missing evidence.
+The original `prove-instance-data-recovery` entry stays open until a disposable
+hosted experiment establishes the missing evidence. The owner has confirmed
+Workers Free; recheck the target account and plan before provisioning.
 Prepare and review a temporary harness before requesting deployment approval:
 
 1. Confirm the exact account, billing plan, new Worker name and SQLite class

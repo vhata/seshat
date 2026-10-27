@@ -80,8 +80,9 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Local proof: [instance recovery](docs/INSTANCE_RECOVERY.md) and
     `node scripts/acceptance-recovery.mjs` demonstrate stopped-runtime
     backup/restore, code replacement, schema refusal and session invalidation
-    with synthetic state. Hosted PITR, published rollback and account-plan
-    verification remain outstanding; keep this proof-of-concept entry open.
+    with synthetic state. The owner confirmed Workers Free. Hosted PITR and
+    published rollback remain outstanding; keep this proof-of-concept entry
+    open.
 
 ## Waiting
 
