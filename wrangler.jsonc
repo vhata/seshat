@@ -5,6 +5,7 @@
   "name": "seshat",
   "main": "./src/worker/index.ts",
   "compatibility_date": "2026-10-12",
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "assets": {
     // The Vite plugin supplies the built frontend as the asset directory.
     "not_found_handling": "single-page-application",
