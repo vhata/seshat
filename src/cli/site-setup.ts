@@ -187,7 +187,7 @@ export async function setupSite(runtime: SiteRuntime, yes: boolean): Promise<voi
   const target = await inspectWorkerTarget(runtime, config);
   config = { ...config, namespaceId: target.namespaceId };
   const secrets = await remoteSecrets(api, config);
-  if (partialSecrets(secrets) && config.stage !== "credentials") {
+  if (partialSecrets(secrets)) {
     throw new CliError("App credentials appeared on the Worker during setup. Pending credentials were retained; setup will not replace the configured App.");
   }
   if (config.stage !== "credentials") {

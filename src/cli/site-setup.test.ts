@@ -178,6 +178,33 @@ describe("guided site setup", () => {
     expect(vi.mocked(f.runtime.wrangler).mock.calls.some(([args]) => args[0] === "secret")).toBe(false);
   });
 
+  it("refuses pending credentials created for another origin", async () => {
+    const f = fixture(config); f.privateFiles.set("credentials.json", { ...credentials, origin: "https://other.example" });
+    await expect(setupSite(f.runtime, true)).rejects.toThrow("another instance origin");
+    expect(f.privateFiles.has("credentials.json")).toBe(true);
+    expect(vi.mocked(f.runtime.wrangler).mock.calls.some(([args]) => args[0] === "secret")).toBe(false);
+  });
+
+  it("preserves credentials if another registration configures the Worker during the browser flow", async () => {
+    const f = fixture(config);
+    vi.mocked(registerGithubApp).mockImplementationOnce(async () => {
+      f.privateFiles.set("credentials.json", credentials);
+      f.setSecrets(configured);
+      return credentials;
+    });
+    await expect(setupSite(f.runtime, true)).rejects.toThrow("credentials appeared");
+    expect(f.privateFiles.has("credentials.json")).toBe(true);
+    expect(vi.mocked(f.runtime.wrangler).mock.calls.some(([args]) => args[0] === "secret")).toBe(false);
+  });
+
+  it("does not replace partial credentials found when resuming an attempted upload", async () => {
+    const f = fixture({ ...config, stage: "credentials" }); f.privateFiles.set("credentials.json", credentials);
+    f.setSecrets(["GITHUB_CLIENT_ID"]);
+    await expect(setupSite(f.runtime, true)).rejects.toThrow("credentials appeared");
+    expect(f.privateFiles.has("credentials.json")).toBe(true);
+    expect(vi.mocked(f.runtime.wrangler).mock.calls.some(([args]) => args[0] === "secret")).toBe(false);
+  });
+
   it("refuses an organization App owner", async () => {
     const f = fixture(config); f.privateFiles.set("credentials.json", { ...credentials, ownerType: "Organization" });
     await expect(setupSite(f.runtime, true)).rejects.toThrow("organization");
