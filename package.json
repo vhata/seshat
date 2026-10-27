@@ -10,10 +10,12 @@
     "cli": "node src/cli/main.ts",
     "dev": "vite dev",
     "build": "vite build",
+    "build:release": "SESHAT_RELEASE_BUILD=1 vite build",
     "preview": "vite preview",
+    "inspect:revision": "node scripts/inspect-revision.mjs",
     "typegen": "wrangler types",
     "typecheck": "tsc --build",
-    "test": "vitest run"
+    "test": "vitest run && node --test scripts/*.test.mjs"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.64.0",

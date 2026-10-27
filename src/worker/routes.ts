@@ -43,7 +43,7 @@ export const ROUTES: Readonly<Record<string, Readonly<Record<string, Handler>>>>
 /**
  * The only routes that answer without the owner's session.
  *
- * - Health reports the schema version and nothing else.
+ * - Health reports schema, build commit/dirty state and serving version ID.
  * - Sign-in, its callback and sign-out are how a session starts and ends.
  * - Setup and its registration callback work only while the App is not yet
  *   configured, and only with the setup secret.

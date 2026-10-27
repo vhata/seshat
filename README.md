@@ -52,6 +52,8 @@ npm run dev             # serve the app locally at the printed URL
 `npm run dev` runs the Worker, the Durable Object and the page in the local
 Workers runtime; try `/` and `/api/health`. Local state lives in `.wrangler/`.
 There is no deploy script, and deploying needs the owner's word each time.
+Build and runtime version inspection are described in
+[running revision](docs/RUNNING_REVISION.md).
 
 ## Configuration and sign-in
 
@@ -125,8 +127,10 @@ its sign-in callback alone does not enable hosted synchronization.
    intended Cloudflare account and its billing plan with
    `npx wrangler whoami` and the Cloudflare dashboard before provisioning.
 2. Save `OWNER_ID` and a random `SETUP_SECRET` in a JSON file outside the
-   repository, readable only by you. Deploy the built application with
-   `npx wrangler deploy --secrets-file /path/to/bootstrap.json`. The build
+   repository, readable only by you. Build the committed, clean checkout
+   with `npm run build:release`, then use the tagged upload command in
+   [running revision](docs/RUNNING_REVISION.md#build-and-tag-an-upload),
+   adding `--secrets-file /path/to/bootstrap.json`. The build
    supplies the Worker, frontend assets and SQLite Durable Object migration;
    the same upload sets the two initial secrets.
 3. Open `/setup` at the deployed address and register a separate App there.
