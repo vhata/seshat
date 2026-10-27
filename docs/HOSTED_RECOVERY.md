@@ -60,7 +60,8 @@ any upload. Record the starting namespace inventory privately.
    ```sh
    WRANGLER_SEND_METRICS=false node_modules/.bin/wrangler deploy \
      --config "$recovery_run/wrangler.current.json" \
-     --secrets-file "$recovery_run/secrets.json"
+     --secrets-file "$recovery_run/secrets.json" \
+     --durable-objects-code-update-mode immediate
    ```
 
    Read back the deployed Worker's settings and namespace inventory. Confirm
@@ -75,7 +76,13 @@ any upload. Record the starting namespace inventory privately.
      --directory "$recovery_run" --url "$recovery_url" --op status
    ```
 
-   Save the published version ID and object ID from the status evidence.
+   Inspect the saved status response and save its published version and object
+   IDs. After every upload/rollback, poll status until that same object reports
+   the intended mode and exact version ID in consecutive responses. Bound the
+   wait and stop if it fails. Wrangler 4.151.0 defaults to deferred object code
+   updates with a 300-second maximum delay. This run also observed stale object
+   code after requesting immediate updates; the flag and a successful CLI
+   response do not prove which code the object is executing.
    Run `seed` before `health` on a new fixture, then `inspect`, `health` and
    `bookmark`. Save the exact baseline rows/schema-version and checkpoint
    bookmark response filenames. `seed` refuses an already initialized object.
@@ -86,7 +93,8 @@ any upload. Record the starting namespace inventory privately.
 
    ```sh
    WRANGLER_SEND_METRICS=false node_modules/.bin/wrangler rollback \
-     CURRENT_VERSION_ID --config "$recovery_run/wrangler.current.json"
+     CURRENT_VERSION_ID --config "$recovery_run/wrangler.current.json" \
+     --durable-objects-code-update-mode immediate
    ```
 
    Confirm `status` reports the recorded published version, `health` succeeds
@@ -116,6 +124,11 @@ any upload. Record the starting namespace inventory privately.
      --op restart --undo-file PREPARE_RESPONSE_FILE
    ```
 
+   Restart forwards the saved successful native prepare receipt, including
+   target, object ID and undo bookmark. The server validates it under the
+   fixture bearer token even if the runtime discarded its in-memory phase.
+   It aborts without scheduling another restore.
+
    `ctx.abort()` may sever the restart response; that is not a passing check.
    Native scheduling also permits incidental eviction to trigger the restore
    before the explicit restart. Inspect the next session instead of assuming
@@ -144,7 +157,8 @@ any upload. Record the starting namespace inventory privately.
 
    ```sh
    WRANGLER_SEND_METRICS=false node_modules/.bin/wrangler deploy \
-     --config "$recovery_run/wrangler.cleanup.json"
+     --config "$recovery_run/wrangler.cleanup.json" \
+     --durable-objects-code-update-mode immediate
    ```
 
    This bundle exports no class and has no Durable Object binding. Its new
