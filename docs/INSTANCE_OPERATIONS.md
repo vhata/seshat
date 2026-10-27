@@ -54,14 +54,24 @@ need not be serving traffic. `deployments list` records deployment history;
 `deployments status` identifies the current deployment. Dashboard deployment
 details are also useful for comparing bindings and version metadata.
 
-Seshat currently exposes only `{ ok, schemaVersion }` at `/api/health`.
-There is no running-commit endpoint or reliable automatic Git-to-version
-mapping. An untagged Cloudflare version, local `git rev-parse HEAD`, and
-package version `0.0.0` do not prove the source running remotely. Preserve
-an operator record linking source commit, build, returned version/deployment
-IDs, origin, time and verification results whenever deploying. If that
-link is missing, report the source revision as unknown. Automated identity
-is tracked by `identify-running-revision` in [TODO.md](../TODO.md).
+Health reports the compiled Git commit and dirty state alongside
+Cloudflare's immutable serving version ID. Run the read-only inspector
+against the confirmed account, Worker and origin:
+
+```sh
+npm run inspect:revision -- "$instance_origin" --name "$instance_worker"
+```
+
+Compare the reported commit with the intended build's
+`dist/seshat/revision.json`. The inspector checks the responding version
+against the active deployment and exact version metadata, verifies any
+present commit tag, and detects deployment changes during inspection.
+For split traffic it verifies the sampled version and lists all traffic
+allocations; one sample does not verify every active version's source.
+Unknown or dirty builds cannot verify a hosted release. See
+[running revision](RUNNING_REVISION.md) for fields, tagging and evidence.
+An untagged version from before this feature, a local checkout or a package
+version still cannot establish the source running remotely.
 
 ## Initial setup, updates and secret changes
 
@@ -69,7 +79,9 @@ The repository's [CI workflow](../.github/workflows/ci.yml) validates PRs
 and pushes to main. Its checks install dependencies, check queues/docs,
 type-check, test and build; they neither upload nor deploy. A green main
 run is not evidence of an updated hosted instance. There is no deployment
-script or automatic post-deployment verification.
+script or automatic deployment. The read-only revision inspector is an
+explicitly invoked post-deployment identity check; the other checks below
+remain necessary.
 
 Every deployment, including secret uploads and rollback, requires explicit
 owner authorization for that operation. Before provisioning or changing
@@ -92,7 +104,8 @@ For a routine update of an already configured instance:
    permissions and credentials, and assess rollback compatibility below.
 2. Use a clean checkout of the intended commit. Record `git rev-parse HEAD`
    and confirm `git status --short` is empty. Run `bash scripts/setup.sh`
-   and `bash scripts/check.sh`; the latter builds the Worker and frontend.
+   and `bash scripts/check.sh`, then `npm run build:release` to require
+   clean identified source and build the release artifact.
 3. Inspect the generated `dist/seshat/wrangler.json`: its Worker name,
    bindings, migrations and asset paths must match the intended instance.
    It must come from this successful build, not an older ignored `dist/`.
@@ -103,13 +116,16 @@ For a routine update of an already configured instance:
    account and Worker. Preserve the returned version ID and URL privately:
 
    ```sh
-   npx wrangler deploy --config dist/seshat/wrangler.json --name "$instance_worker"
+   npx wrangler deploy --config dist/seshat/wrangler.json \
+     --name "$instance_worker" \
+     --tag "$(node -p "require('./dist/seshat/revision.json').commit")"
    ```
 
-5. Re-run deployment status and inspect its active version. Compare with
-   the upload result, record the source-to-version link, then perform the
-   post-deployment checks. If someone else deployed meanwhile, resolve that
-   discrepancy before claiming this source is live.
+5. Run the revision inspector above and compare the reported commit and
+   active version with the artifact and upload result. Record the
+   source-to-version link, then perform the post-deployment checks. If
+   someone else deployed meanwhile, resolve that discrepancy before claiming
+   this source is live.
 
 The explicit name must agree with the generated name; do not use `--name`
 to repurpose an artifact for another instance. For changed build layouts,
@@ -168,8 +184,12 @@ For a configured instance, require:
 - Health: HTTP 200, JSON `ok: true` and the expected `schemaVersion` from
   the deployed source's [application migrations](../src/object/schema.ts).
   The current source expects version 4; the Wrangler class migration tag
-  `v1` is a separate mechanism. Health proves object/schema reachability,
-  not successful GitHub synchronization, remaining quota or source identity.
+  `v1` is a separate mechanism. Compare the build and serving version with
+  the intended artifact and Cloudflare using the revision inspector. An
+  identity match alone does not prove the schema has advanced: recheck after
+  deployment propagation until the expected schema is observed. Health
+  proves object/schema reachability, not successful GitHub synchronization
+  or remaining quota.
 - Anonymous overview, session and socket paths: HTTP 401 and no instance
   data. A plain GET is sufficient to check the socket's authentication gate.
   The static frontend at `/` is public and is not a data-refusal check.

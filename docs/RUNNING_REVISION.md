@@ -106,3 +106,47 @@ against that account's active deployment, and repeated inspection after a
 later authorized deployment or rollback. A pre-feature deployment without
 identity fields cannot pass inspection. Record hosted evidence separately
 from the local checks, without credentials or private instance data.
+
+## Hosted verification, 2026-10-26
+
+Two explicitly authorized uploads of the same artifact to
+<https://seshat.vhata.workers.dev> demonstrated the identity check across a
+later deployment. Both used clean source commit
+`e3ba7a20ad0048073c5d06d62922fe7b78c444bc` and that full commit as the
+Cloudflare version tag. The Worker bundle's SHA-256 was
+`91e2dc3d081f46c47f109bb47298f84c40486b9a9148bb693c8be9d9caf0af49`;
+all nine build artifact files had unchanged hashes across the uploads.
+These records identify the source actually uploaded, independently of a
+later checkout or squash commit.
+
+| Upload | Observed at (UTC, 2026-10-27) | Active deployment ID | Serving version ID | Traffic |
+| --- | --- | --- | --- | --- |
+| First | 01:54:58 | `556f95a1-3038-4d6c-9af7-fcf5c9ac699e` | `f79af5b1-8b35-4237-b1b3-c26edb245869` | 100% |
+| Second | 01:55:57 | `e68e5d62-e8b1-4315-8eb5-17e21eea3db8` | `ef8807a3-cbfe-4051-a217-9d1ab5e27bd9` | 100% |
+
+After each upload, the inspector returned `verified: true`: the responding
+version belonged to the stable active deployment, exact-version metadata
+matched that ID, and the embedded commit and version tag matched the
+artifact. The second inspection observed different deployment and version
+IDs while retaining the same source identity. Exact version metadata for
+both uploads and the second live inspection were independently checked.
+
+Before these uploads, the existing deployment reported schema 3 without
+identity fields. The first upload briefly returned the new Worker identity
+alongside schema 3 before the Durable Object advanced to schema 4. Acceptance
+was recorded only after schema 4 was observed. A source identity match alone
+therefore does not establish that object/schema propagation has completed.
+
+Both settled deployments returned healthy schema 4 and refused anonymous
+session, overview and socket requests with HTTP 401. Configured setup
+returned HTTP 404, the public frontend returned HTTP 200, and checked API
+and setup responses used `Cache-Control: no-store`. Only approved identity
+fields appeared in health. No credentials or private repository/PR content
+are part of this record.
+
+This demonstrates source and serving-version identification across two
+deployments of one artifact. It does not demonstrate two different source
+revisions, a live rollback, secret-derived version annotations, split
+traffic, authenticated sign-in/socket recovery, GitHub freshness, data
+recovery or operation on a Free subscription. Synthetic tests cover the
+inspector's rollback and split-traffic cases. No new service was provisioned.

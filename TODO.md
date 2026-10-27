@@ -144,14 +144,6 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Blocked by: a suitable authorized organization installation becoming available; changing the App's visibility still requires approval at the time.
   - Starting point: install the App on an authorized organization, confirm its installation remains pending until accepted, confirm repositories stay off until individually selected, and verify opting a repository in and out adds and removes its PRs from the overview.
 
-- [HOSTING] `standardize-instance-deployment` — **Provide a repeatable, explicitly invoked deployment with automated post-deployment verification.** Manual uploads currently leave checks, source identity and confirmation of the running release to the operator.
-  - Source: productionization assessment, branch vhata/prototype-status-review, 2026-10-26
-  - Depends on: `identify-running-revision`
-  - Related: [instance operations runbook](docs/INSTANCE_OPERATIONS.md), `prove-instance-data-recovery`
-  - Starting point: `scripts/check.sh`, the Vite production build and Wrangler. Require a clean, identified source revision, passing validation and an explicit target account/Worker; record the deployed version, commit and URL without exposing secrets.
-  - Add repeatable smoke checks for the expected running revision, health/schema, anonymous data refusal and configured setup closure. Keep authenticated sign-in, socket and real GitHub freshness checks explicit where they cannot safely be automated; health alone is insufficient.
-  - Preserve per-deployment owner authorization. A local owner-invoked command is sufficient; a manually triggered CI workflow is an alternative that needs authorization to change CI in its implementation turn. Do not enable automatic deployment on merge or provision billable resources from queue capture.
-
 ## Ready for separate work
 
 ### P0 Critical
@@ -190,8 +182,9 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
-- [HOSTING] `identify-running-revision` — **Make each deployed Worker version traceable to its Git commit and expose safe running-version information.** Cloudflare currently shows an untagged version while `/api/health` reports only health and schema; mapping the release to source relies on a written acceptance record.
+- [HOSTING] `standardize-instance-deployment` — **Provide a repeatable, explicitly invoked deployment with automated post-deployment verification.** Validation, target selection, upload and smoke checks still rely on separate operator commands.
   - Source: productionization assessment, branch vhata/prototype-status-review, 2026-10-26
-  - Related: [instance operations runbook](docs/INSTANCE_OPERATIONS.md)
-  - Starting point: `src/worker/health.ts`, the production build and Wrangler version metadata/annotations. Associate the built commit with the deployed version and provide an inspection command or endpoint that reports the identity actually running, without credentials or instance data.
-  - Verify the running identity against Cloudflare's active deployment, including after a later deployment or rollback; do not infer it from the local checkout, package version or a historical document.
+  - Related: [instance operations runbook](docs/INSTANCE_OPERATIONS.md), `prove-instance-data-recovery`
+  - Starting point: `scripts/check.sh`, the Vite production build and Wrangler. Require a clean, identified source revision, passing validation and an explicit target account/Worker; record the deployed version, commit and URL without exposing secrets.
+  - Add repeatable smoke checks for the expected running revision, health/schema, anonymous data refusal and configured setup closure. Keep authenticated sign-in, socket and real GitHub freshness checks explicit where they cannot safely be automated; health alone is insufficient.
+  - Preserve per-deployment owner authorization. A local owner-invoked command is sufficient; a manually triggered CI workflow is an alternative that needs authorization to change CI in its implementation turn. Do not enable automatic deployment on merge or provision billable resources from queue capture.
