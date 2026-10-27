@@ -119,6 +119,10 @@ evidence boundary are recorded in
 The offline recovery experiment runs separately with
 `node scripts/acceptance-recovery.mjs`; its state isolation, procedure and
 hosted evidence limits are recorded in [instance recovery](INSTANCE_RECOVERY.md).
+The disposable hosted fixture has a separate offline safeguards check,
+`node scripts/check-hosted-recovery.mjs`; preparation and authorized execution
+are described in [hosted recovery](HOSTED_RECOVERY.md). Neither command changes
+CI or provisions hosted resources.
 A red main must be addressed the same day or filed as P1 with evidence (P0 if
 release-blocking); recovery requires a green run on main.
 

@@ -82,7 +82,8 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
     backup/restore, code replacement, schema refusal and session invalidation
     with synthetic state. The owner confirmed Workers Free. Hosted PITR and
     published rollback remain outstanding; keep this proof-of-concept entry
-    open.
+    open. The [prepared hosted procedure](docs/HOSTED_RECOVERY.md) requires
+    explicit authorization before deployment or fixture mutations.
 
 ## Waiting
 

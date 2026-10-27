@@ -44,9 +44,11 @@ created for this check.
 Wrangler 4.151.0 has no Durable Object restore/export command. D1 time-travel
 commands do not operate on this database. [Data Studio][studio] can query live
 SQL-backed objects, but is not a demonstrated PITR control or backup procedure.
-The deployed Seshat entrypoint exposes no PITR or maintenance RPC. The hosted
-procedure below needs a separately reviewed control implementation and
-explicit deployment authorization before it can run.
+The deployed Seshat entrypoint exposes no PITR or maintenance RPC. The
+dedicated synthetic fixture and its
+[hosted procedure](HOSTED_RECOVERY.md) prepare the native experiment; executing
+it still needs explicit deployment authorization. Production maintenance
+controls remain unimplemented.
 
 ## What recovery must retain
 
@@ -136,7 +138,9 @@ The proof is separate from the ordinary gate and makes no CI/hook changes.
 The original `prove-instance-data-recovery` entry stays open until a disposable
 hosted experiment establishes the missing evidence. The owner has confirmed
 Workers Free; recheck the target account and plan before provisioning.
-Prepare and review a temporary harness before requesting deployment approval:
+The prepared [synthetic harness procedure](HOSTED_RECOVERY.md) covers the
+disposable experiment. Broader hosted acceptance, beyond the fixture's
+SQL/code checks, also requires the following controls and checks:
 
 1. Confirm the exact account, billing plan, new Worker name and SQLite class
    namespace. Use a dedicated disposable Worker such as
