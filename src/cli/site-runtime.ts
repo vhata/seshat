@@ -42,6 +42,16 @@ export function siteEnvironment(accountId?: string, environment: NodeJS.ProcessE
   return result;
 }
 
+/** Local checks use fixture targets rather than the saved deployment account. */
+export function siteValidationEnvironment(accountId?: string, environment: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const result = siteEnvironment(accountId, environment);
+  // command() overlays this on the inherited environment. Explicit undefined
+  // entries prevent either inherited selector from reaching the check suite.
+  result.CLOUDFLARE_ACCOUNT_ID = undefined;
+  result.CF_ACCOUNT_ID = undefined;
+  return result;
+}
+
 export function createSiteRuntime(root: string): SiteRuntime {
   const configDir = join(root, ".seshat");
   const runtime: SiteRuntime = {

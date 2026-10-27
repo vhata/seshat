@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createSiteRuntime, ensureSiteDependencies, siteEnvironment } from "./site-runtime.ts";
+import { createSiteRuntime, ensureSiteDependencies, siteEnvironment, siteValidationEnvironment } from "./site-runtime.ts";
 
 const exec = promisify(execFile);
 const roots: string[] = [];
@@ -21,7 +21,18 @@ describe("site command runtime", () => {
     expect(Object.keys(env).filter(key => key.startsWith("GIT_"))).toEqual([]);
     for (const name of ["CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID", "CLOUDFLARE_ENV", "WRANGLER_ENV", "WRANGLER_CONFIG", "CLOUDFLARE_API_BASE_URL"]) {
       expect(() => siteEnvironment(account, { [name]: "elsewhere" })).toThrow("Unset");
+      expect(() => siteValidationEnvironment(account, { [name]: "elsewhere" })).toThrow("Unset");
     }
+  });
+
+  it("still pins the saved account in the actual Wrangler subprocess", async () => {
+    const root = await temporary();
+    const runtime = createSiteRuntime(root);
+    const accountId = "a".repeat(32);
+    await runtime.writeConfig({ format: 1, accountId, workerName: "fixture", origin: "https://example.com", stage: "configured" });
+    await mkdir(join(root, "node_modules/wrangler/bin"), { recursive: true });
+    await writeFile(join(root, "node_modules/wrangler/bin/wrangler.js"), "process.stdout.write(process.env.CLOUDFLARE_ACCOUNT_ID)");
+    expect(await runtime.wrangler(["whoami"])).toBe(accountId);
   });
 
   it("waits for all subprocess output and never reports credential-bearing stderr", async () => {
