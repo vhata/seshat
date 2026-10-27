@@ -80,6 +80,31 @@ try {
   assert.equal(baseline.sessions.length, 1);
   assert.equal(baseline.pull_requests.length, 1);
   assert.equal((await command("health")).status, 200);
+  // This receipt is deliberately synthetic: native PITR remains disabled.
+  // Restart the runtime to reproduce loss of all volatile handshake fields.
+  const syntheticUndo = "synthetic-native-undo-bookmark";
+  const syntheticReceipt = {
+    target, observedIdentity: { objectId: status.objectId },
+    operation: "prepare-restore", status: 200,
+    response: { undoBookmark: syntheticUndo },
+  };
+  await stop();
+  await start();
+  assert.equal((await (await command("status")).json()).restorePhase, "idle");
+  for (const prepareReceipt of [
+    undefined,
+    { ...syntheticReceipt, target: { ...target, account: "f".repeat(32) } },
+    { ...syntheticReceipt, target: { ...target, name: "seshat" } },
+    { ...syntheticReceipt, observedIdentity: { objectId: "f".repeat(64) } },
+    { ...syntheticReceipt, status: 500 },
+    { ...syntheticReceipt, operation: "bookmark" },
+    { ...syntheticReceipt, response: { undoBookmark: "different-synthetic-undo-bookmark" } },
+  ]) assert.equal((await command("restart", { undoBookmark: syntheticUndo, prepareReceipt })).status, 409);
+  assert.equal((await command("restart", { undoBookmark: "bad", prepareReceipt: syntheticReceipt })).status, 409);
+  const restart = await command("restart", { undoBookmark: syntheticUndo, prepareReceipt: syntheticReceipt });
+  assert.equal(restart.status, 500); // ctx.abort() intentionally severs the request.
+  assert.deepEqual(await (await command("inspect")).json(), baseline);
+  assert.equal((await runtime.dispatchFetch("http://fixture/api/health")).status, 503);
   assert.equal((await command("invalidate-sessions")).status, 200);
   await stop();
   await start();

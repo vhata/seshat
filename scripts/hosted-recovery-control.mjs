@@ -47,6 +47,11 @@ async function main(args) {
     const validated = bookmarkEvidence(saved, manifest, key);
     savedIdentity = validated.identity;
     input[op === "prepare-restore" ? "bookmark" : "undoBookmark"] = validated.value;
+    if (op === "restart") input.prepareReceipt = {
+      target: saved.target, observedIdentity: { objectId: saved.observedIdentity.objectId },
+      operation: saved.operation, status: saved.status,
+      response: { undoBookmark: validated.value },
+    };
   } else if (args.length !== 6) throw new Error("Unexpected arguments");
   async function request(operation, body) {
     const response = await fetch(`${origin}/recovery/${operation}`, {

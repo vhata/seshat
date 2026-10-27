@@ -112,7 +112,25 @@ export class RecoveryFixture extends InstanceObject {
       }
     }
     if (op === "restart") {
-      if (this.restorePhase !== "prepared" || this.pendingUndo === undefined || input.undoBookmark !== this.pendingUndo) return json({ error: "undo-bookmark-ack-required" }, 409);
+      // A successful native prepare receipt is saved outside the object.
+      // JS eviction can clear these fields without consuming the native
+      // restore schedule. A receipt permits aborting that same object, never
+      // scheduling another restore. It is an acknowledgement under the
+      // existing bearer authority, not cryptographic proof of platform state.
+      const receipt = input.prepareReceipt as {
+        target?: { account?: unknown; name?: unknown };
+        observedIdentity?: { objectId?: unknown };
+        operation?: unknown; status?: unknown;
+        response?: { undoBookmark?: unknown };
+      } | undefined;
+      if (receipt?.target?.account !== RECOVERY_BUILD.account || receipt?.target?.name !== RECOVERY_BUILD.name
+          || receipt?.observedIdentity?.objectId !== this.ctx.id.toString()
+          || receipt?.operation !== "prepare-restore" || receipt?.status !== 200
+          || typeof input.undoBookmark !== "string" || !bookmarkPattern.test(input.undoBookmark)
+          || receipt?.response?.undoBookmark !== input.undoBookmark) return json({ error: "undo-bookmark-ack-required" }, 409);
+      if (this.restorePhase === "preparing" || this.restorePhase === "unknown"
+          || (this.pendingUndo !== undefined && this.pendingUndo !== input.undoBookmark)
+          || (this.restorePhase === "prepared" && this.pendingUndo === undefined)) return json({ error: "restore-state-conflict" }, 409);
       // The abort intentionally breaks the connection. Reconnect and inspect.
       this.ctx.abort("synthetic recovery fixture restart");
       return json({ error: "restart" }, 503);
