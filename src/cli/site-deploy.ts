@@ -6,7 +6,7 @@ import { readBuildIdentity } from "../../scripts/build-identity.ts";
 import { MIGRATIONS } from "../object/schema.ts";
 import { CliError } from "./settings.ts";
 import { validateSiteConfig } from "./site-config.ts";
-import { ensureSiteDependencies, siteEnvironment } from "./site-runtime.ts";
+import { ensureSiteDependencies, siteEnvironment, siteValidationEnvironment } from "./site-runtime.ts";
 import type { SiteConfig, SiteInspection, SiteRuntime } from "./site-types.ts";
 
 /** Reuse the existing serving-version inspector rather than infer identity locally. */
@@ -132,7 +132,7 @@ export async function deploySite(runtime: SiteRuntime, supplied: SiteConfig, opt
   }
   const deploymentBefore = options.bootstrap ? null : JSON.parse(await runtime.wrangler(["deployments", "status", "--name", config.workerName, "--json"], { accountId: config.accountId })) as unknown;
   process.stdout.write("seshat: validating the current checkout and building a clean release.\n");
-  await runtime.command("bash", ["scripts/check.sh"], { interactive: true, env: siteEnvironment(config.accountId) });
+  await runtime.command("bash", ["scripts/check.sh"], { interactive: true, env: siteValidationEnvironment(config.accountId) });
   await runtime.command("npm", ["run", "--silent", "build:release"], { interactive: true, env: siteEnvironment(config.accountId) });
   if (requireCleanSource(runtime.root) !== commit) throw new CliError("Source changed during validation; run site update again.");
   const artifact = await prepareDeployArtifact(runtime, config, commit);

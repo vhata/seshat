@@ -4,7 +4,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanGitEnvironment } from "./git.ts";
 import { deploySite, prepareDeployArtifact } from "./site-deploy.ts";
 import { createSiteRuntime } from "./site-runtime.ts";
@@ -90,9 +90,33 @@ beforeEach(async () => {
     status: url === config.origin + "/" ? 200 : url.endsWith("/setup") ? 404 : 401, headers: { "cache-control": "no-store" },
   });
 });
-afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 
 describe("site command contract", () => {
+  it.each(["validate", "update"])("runs %s validation without saved or inherited account selectors", async command => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", config.accountId);
+    vi.stubEnv("CF_ACCOUNT_ID", config.accountId);
+    await writeFile(join(root, "scripts/check.sh"), `node -e 'process.stdout.write(JSON.stringify({account:process.env.CLOUDFLARE_ACCOUNT_ID,alias:process.env.CF_ACCOUNT_ID}))'\n`);
+    await fixtureGit("add", "scripts/check.sh");
+    await fixtureGit("commit", "-m", "Add local validation fixture");
+    commit = (await fixtureGit("rev-parse", "HEAD")).stdout.trim();
+    const commandStub = runtime.command;
+    const execute = createSiteRuntime(root).command;
+    let checked = false;
+    runtime.command = async (executable, args, options) => {
+      if (executable === "bash") {
+        expect(await execute(executable, args, { ...options, interactive: false })).toBe("{}");
+        checked = true;
+        return "";
+      }
+      if (args.includes("build:release")) expect(options?.env?.CLOUDFLARE_ACCOUNT_ID).toBe(config.accountId);
+      return commandStub(executable, args, options);
+    };
+    expect(await runSiteCli([command, ...(command === "update" ? ["--yes"] : [])], root, runtime)).toBe(0);
+    expect(checked).toBe(true);
+    expect(uploaded).toBe(command === "update");
+  });
+
   it("accepts only documented per-command flags", () => {
     expect(parseSiteArguments(["update", "--yes"])).toEqual({ command: "update", yes: true, json: false });
     expect(parseSiteArguments(["status", "--json"])).toEqual({ command: "status", yes: false, json: true });

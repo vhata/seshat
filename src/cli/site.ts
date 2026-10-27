@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { CliError } from "./settings.ts";
 import { lockSite } from "./site-config.ts";
 import { inspectSite, deploySite, verifySite } from "./site-deploy.ts";
-import { createSiteRuntime, ensureSiteDependencies, siteEnvironment } from "./site-runtime.ts";
+import { createSiteRuntime, ensureSiteDependencies, siteEnvironment, siteValidationEnvironment } from "./site-runtime.ts";
 import type { SiteConfig, SiteRuntime } from "./site-types.ts";
 
 export const siteHelp = `Usage: seshat site <command> [options]
@@ -61,7 +61,7 @@ export async function runSiteCli(args: string[], root: string, injected?: SiteRu
     if (parsed.command === "validate" || parsed.command === "build") {
       await ensureSiteDependencies(runtime);
       const config = await runtime.readConfig();
-      const env = siteEnvironment(config?.accountId);
+      const env = parsed.command === "validate" ? siteValidationEnvironment(config?.accountId) : siteEnvironment(config?.accountId);
       await runtime.command(parsed.command === "validate" ? "bash" : "npm",
         parsed.command === "validate" ? ["scripts/check.sh"] : ["run", "--silent", "build"], { interactive: true, env });
       return 0;
