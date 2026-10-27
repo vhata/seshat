@@ -252,6 +252,24 @@ time/status/error summaries. The Cloudflare dashboard's metrics and account
 usage can help correlate exceptions, request failures and quota exhaustion;
 do not assume historical logs or retention have been configured.
 
+Caught GitHub failures emit `seshat.github.failure` warnings. These contain
+only an allowlisted operation and reason, an HTTP status when available,
+and the sweep attempt (`1` or `2`) on sweep failures. `sync-listing`,
+`sync-count` and `sync-read` identify the failing sweep phase. `pr-count`,
+`pr-list` and `pr-reread` distinguish GraphQL errors, malformed data,
+permission failures and other reader failures. Transport warnings separate
+HTTP rejection, timeout and network errors; JSON decoding failures have
+their own reason. An unexpected scheduler exception emits
+`sync-unexpected`, without the exception text.
+
+Start `seshat site logs` before reproducing a failed sync and correlate these
+warnings within the same invocation. The overview's generic GitHub failure
+means data could not be read; it does not establish a network outage. These
+diagnostics omit credentials, URLs, repository identities, query content,
+response bodies and upstream error messages. This does not enable Workers
+Logs or historical retention; apply the [monitoring privacy and retention
+rules](MONITORING.md#privacy-and-retention) to any saved terminal summaries.
+
 | Symptom | Next checks |
 | --- | --- |
 | Wrong page, version or origin | Recheck account/name, dashboard domains, deployment status and active version; compare the operator's source record. Check generated assets and `run_worker_first` in `wrangler.jsonc` if API paths return HTML. |

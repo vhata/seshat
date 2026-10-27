@@ -32,7 +32,7 @@ export async function readReviewerPermission(
   const path = repository.fullName.split("/").map(encodeURIComponent).join("/");
   const response = await githubRequest(token, `/repos/${path}/collaborators/${encodeURIComponent(account.login)}/permission`, {
     headers: conditional ? { "if-none-match": conditional } : {},
-  });
+  }, { expectedStatus: 404 });
   if (response?.status === 304 && conditional) return { ok: true, entry: matching };
   if (response?.status === 404) {
     return { ok: true, entry: { repositoryId: repository.id, accountId: account.id, login: account.login, permission: "none", etag: null } };

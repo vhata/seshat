@@ -3,7 +3,7 @@ import type {
   Review,
 } from "../shared/overview/types";
 import type { PullRequestRecord } from "../shared/overview/protocol";
-import { githubRequest, rateLimited, record, responseJson } from "./github-http";
+import { githubRequest, rateLimited, record, reportGithubFailure, responseJson, type GithubFailureOperation } from "./github-http";
 import { readReviewerPermission, type PermissionCacheEntry } from "./github-permissions";
 import {
   CHECK_PAGE_QUERY, COUNT_QUERY, PR_PAGE_QUERY, REPOSITORIES_QUERY,
@@ -224,7 +224,13 @@ export class GithubPrReader {
     return result;
   }
 
-  private meta(issues: readonly ReadIssue[], successes: number): ReadMeta {
+  private meta(issues: readonly ReadIssue[], successes: number, operation: GithubFailureOperation): ReadMeta {
+    // Collapse repository fan-out into one event per fixed category. Budget
+    // exhaustion and cancellation are scheduling controls. Transport details
+    // are separate so this summary also identifies the logical read operation.
+    for (const reason of new Set(issues.map((issue) => issue.reason))) {
+      if (reason !== "request-limit" && reason !== "interrupted") reportGithubFailure(operation, reason);
+    }
     const permissionCache = [...this.permissions.values()];
     const headCommitDates = [...this.commitDates.values()];
     const continuation: ReaderContinuation | null = issues.some((issue) => issue.reason === "request-limit")
@@ -257,7 +263,7 @@ export class GithubPrReader {
         }
       } catch (error) { issues.push(...ids.map((nodeId) => ({ nodeId, reason: reason(error) }))); }
     }
-    return { ...this.meta(issues, repositories.length), repositories };
+    return { ...this.meta(issues, repositories.length, "pr-count"), repositories };
   }
 
   async readRepositories(nodeIds: readonly string[]): Promise<ReadMeta & { readonly repositories: readonly RepositoryRead[] }> {
@@ -314,7 +320,7 @@ export class GithubPrReader {
         }
       } catch (error) { issues.push(...ids.map((nodeId) => ({ nodeId, reason: reason(error) }))); }
     }
-    return { ...this.meta(issues, repositories.length), repositories };
+    return { ...this.meta(issues, repositories.length, "pr-list"), repositories };
   }
 
   async rereadPrs(nodeIds: readonly string[]): Promise<ReadMeta & { readonly nodes: readonly PrNodeRead[] }> {
@@ -346,7 +352,7 @@ export class GithubPrReader {
         }
       }
     }
-    return { ...this.meta(issues, result.filter((node) => node.kind !== "unavailable").length), nodes: result };
+    return { ...this.meta(issues, result.filter((node) => node.kind !== "unavailable").length, "pr-reread"), nodes: result };
   }
 
   private async pages(initial: unknown, pr: Record<string, unknown>, kind: "reviews" | "checks"): Promise<unknown[]> {

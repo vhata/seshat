@@ -85,6 +85,15 @@ describe("collaborator permission reads", () => {
     expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: false, entry: previous });
   });
 
+  it("does not report a successful no-access 404 as a GitHub failure", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ message: "private-upstream-message" }, { status: 404 }));
+    expect(await readReviewerPermission("private-token", repo, account)).toEqual({
+      ok: true, entry: { repositoryId: repo.id, accountId: account.id, login: account.login, permission: "none", etag: null },
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it("refuses a reused login's permission and preserves the requested identity's last known permission", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ user: { id: 999 }, permission: "admin" }));
     expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: false, entry: previous });
