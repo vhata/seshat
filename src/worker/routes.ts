@@ -13,6 +13,8 @@ import { PATHS } from "../shared/manifest";
 import { finishSignIn, signOut, startSignIn } from "./auth";
 import { jsonResponse, type RouteContext } from "./context";
 import { health } from "./health";
+import { MONITORING_PATH } from "../shared/monitoring";
+import { monitoring } from "./monitoring";
 import { overviewSnapshot, overviewSocket, SNAPSHOT_PATH, SOCKET_PATH } from "./overview";
 import { checkInstallation, finishRegistration, setupForm, startRegistration } from "./setup";
 import { receiveWebhook } from "./webhook";
@@ -23,6 +25,7 @@ type Handler = (context: RouteContext) => Promise<Response>;
 /** Each path maps its methods to handlers; HEAD is served by GET. */
 export const ROUTES: Readonly<Record<string, Readonly<Record<string, Handler>>>> = {
   [PATHS.health]: { GET: health },
+  [MONITORING_PATH]: { GET: monitoring },
   [PATHS.session]: { GET: session },
   [SNAPSHOT_PATH]: { GET: overviewSnapshot },
   [REPOSITORIES_PATH]: { GET: repositorySettings },

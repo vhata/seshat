@@ -60,6 +60,37 @@ async function object(name: string) {
 }
 
 describe("durable overview reconciliation", () => {
+  it("keeps monitoring job age through retries and visibility through restart", async () => {
+    const stub = await object("monitoring-job-age");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage);
+      store.putRepository(FIXTURE_REPOSITORY);
+      let visible = false;
+      let succeeds = false;
+      const context = { storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => visible, guard: async () => succeeds, publish: async () => {} };
+      let sync = new OverviewSync(context);
+      sync.requestGuard(NOW);
+      await sync.rearm(NOW);
+      await sync.alarm(NOW);
+      await sync.alarm(NOW + 15_000);
+      sync = new OverviewSync(context);
+      expect(sync.monitoringStatus(NOW + 600_000)).toMatchObject({ activeSince: null, oldestPendingAt: NOW });
+      succeeds = true;
+      await sync.alarm(NOW + 600_000);
+      // Guard succeeds and queues discovery, which has its own age.
+      expect(sync.monitoringStatus(NOW + 600_000).oldestPendingAt).toBe(NOW + 600_000);
+      await sync.alarm(NOW + 600_001);
+      // Discovery queues its own repository read, rather than hiding it.
+      expect(sync.monitoringStatus(NOW + 600_001).oldestPendingAt).toBe(NOW + 600_001);
+      visible = true;
+      await sync.visibility(NOW + 700_000, false);
+      expect(new OverviewSync(context).monitoringStatus(NOW + 760_000).activeSince).toBe(NOW + 700_000);
+      visible = false;
+      await sync.visibility(NOW + 770_000, false);
+      expect(sync.monitoringStatus(NOW + 800_000).activeSince).toBeNull();
+    });
+  });
+
   it("persists coalesced facts, answers without GitHub, and rereads while no page is visible", async () => {
     const calls = github(() => pr());
     const stub = await object("dormant-reread");
@@ -96,6 +127,13 @@ describe("durable overview reconciliation", () => {
       const saved = JSON.parse(state.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key='overview-sync-work-v1'").toArray()[0]!.value);
       expect(saved.marks).toEqual([]);
       expect(store.pullRequests()[0]?.headSha).toBe("old");
+      expect(sync.monitoringStatus(NOW + 32_000).lastEventFailureAt).toBe(NOW + 32_000);
+      // A sweep begun before the failure cannot claim its recovery.
+      store.putSyncStatus({ ...SYNC_FIXTURES.live, lastSuccessfulSweepAt: NOW });
+      const restarted = new OverviewSync({ storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => false, guard: async () => true, publish: async () => {} });
+      expect(restarted.monitoringStatus(NOW + 33_000).lastEventFailureAt).toBe(NOW + 32_000);
+      store.putSyncStatus({ ...SYNC_FIXTURES.live, lastSuccessfulSweepAt: NOW + 33_000 });
+      expect(sync.monitoringStatus(NOW + 34_000).lastEventFailureAt).toBeNull();
     });
     expect(calls).toHaveBeenCalledTimes(5); // First head date, then immutable cache.
   });

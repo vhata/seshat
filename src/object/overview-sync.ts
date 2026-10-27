@@ -6,11 +6,12 @@ import type { PermissionCacheEntry } from "../worker/github-permissions";
 import type { OverviewStore } from "./overview-store";
 import type { RepositorySelection } from "./repository-selection";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
+import type { MonitoringStatus } from "../shared/monitoring";
 
 const KEY = "overview-sync-work-v1";
 const MINUTE = 60_000;
 const RETRIES = [5_000, 15_000, 30_000] as const;
-interface PendingMark extends PrMark { due: number; firstRead: number | null; retry: number; revision: number; mergeability: boolean }
+interface PendingMark extends PrMark { due: number; queuedAt?: number; firstRead: number | null; retry: number; revision: number; mergeability: boolean }
 interface PendingSha { installationId: number; repositoryId: number; sha: string; facts: DeliveryFact[]; expires: number }
 interface ReadProgress { installationId: number; generation: number; ids: string[]; revisions: [string, number][]; continuation: ReaderContinuation | null }
 interface Sweep {
@@ -28,10 +29,13 @@ interface Sweep {
 interface State {
   marks: PendingMark[];
   shas: PendingSha[];
-  refresh: { id: number; due: number; revision: number }[];
+  refresh: { id: number; due: number; revision: number; queuedAt?: number }[];
   refreshGenerations: Record<number, number>;
   observationGenerations: Record<number, number>;
   guard: number | null;
+  guardQueuedAt?: number | null;
+  activeSince?: number | null;
+  lastEventFailureAt?: number | null;
   nextSweep: number | null;
   lastCatchup: number | null;
   sweep: Sweep | null;
@@ -70,6 +74,7 @@ export class OverviewSync {
     this.state = row ? JSON.parse(row.value) as State : initial();
     this.state.refreshGenerations ??= {};
     this.state.observationGenerations ??= {};
+    this.state.activeSince ??= null;
   }
 
   private save(): void {
@@ -79,9 +84,41 @@ export class OverviewSync {
   }
   private accepted(id: number): boolean { return this.context.installations().some((installation) => installation.id === id && installation.status === "accepted"); }
 
+  /** Reads scheduler evidence without changing visibility or requesting GitHub. */
+  monitoringStatus(now: number): MonitoringStatus {
+    const sync = this.context.store.syncStatus();
+    const attempt = sync.latestAttempt;
+    const queued = [
+      ...(this.state.guard === null ? [] : [this.state.guardQueuedAt ?? this.state.guard]),
+      ...this.state.refresh.map((job) => job.queuedAt ?? job.due),
+      ...this.state.marks.map((mark) => mark.queuedAt ?? mark.due),
+    ];
+    const failure = this.state.lastEventFailureAt ?? null;
+    return {
+      version: 1, serverTime: now,
+      activeSince: this.context.visible(now) ? this.state.activeSince ?? now : null,
+      sync: {
+        lastSuccessfulSweepAt: sync.lastSuccessfulSweepAt,
+        latestAttempt: attempt === null ? null : {
+          startedAt: attempt.startedAt, result: attempt.result,
+          ...(attempt.result === "failed" ? { reason: attempt.reason } : {}),
+        },
+        intervalMs: sync.intervalMs, slowedByRateLimit: sync.slowedByRateLimit,
+      },
+      oldestPendingAt: queued.length ? Math.min(...queued) : null,
+      lastEventFailureAt: failure !== null && (sync.lastSuccessfulSweepAt ?? -Infinity) < failure ? failure : null,
+      githubRateLimited: this.state.rates.some(({ installationId, rate }) => this.accepted(installationId)
+        && rate.resetAt > now && rate.limit !== undefined && rate.remaining < rate.limit / 10),
+      cloudflareCapacity: "unknown",
+    };
+  }
+
   /** The acknowledgement follows this durable write. No GitHub call occurs here. */
   async receive(delivery: ReducedDelivery, now: number): Promise<boolean> {
-    if (delivery.guard) this.state.guard = Math.min(this.state.guard ?? now, now);
+    if (delivery.guard) {
+      this.state.guard = Math.min(this.state.guard ?? now, now);
+      this.state.guardQueuedAt ??= now;
+    }
     if (!this.accepted(delivery.installationId)) {
       // A brand-new installation still needs its guard; no repository/PR data is accepted.
       if (delivery.guard) this.save();
@@ -130,6 +167,7 @@ export class OverviewSync {
 
   requestGuard(now: number): void {
     this.state.guard = Math.min(this.state.guard ?? now, now);
+    this.state.guardQueuedAt ??= now;
     this.save();
   }
   discoveryChanged(id: number, now: number): void {
@@ -146,7 +184,7 @@ export class OverviewSync {
     this.state.refreshGenerations[id] = revision;
     const existing = this.state.refresh.find((entry) => entry.id === id);
     if (existing) { existing.due = Math.min(existing.due, now); existing.revision = revision; }
-    else this.state.refresh.push({ id, due: now, revision });
+    else this.state.refresh.push({ id, due: now, revision, queuedAt: now });
     this.save();
   }
 
@@ -177,7 +215,7 @@ export class OverviewSync {
       previous.revision++;
       previous.mergeability ||= mergeability;
       if (mark.facts.length > 0) { previous.firstRead = null; previous.retry = 0; }
-    } else this.state.marks.push({ ...mark, due, firstRead: null, retry: 0, revision: 0, mergeability });
+    } else this.state.marks.push({ ...mark, due, queuedAt: due, firstRead: null, retry: 0, revision: 0, mergeability });
   }
 
   /** Called for visibility, overdue and retry-now messages. Client clocks are never used. */
@@ -198,6 +236,20 @@ export class OverviewSync {
   async rearm(now: number): Promise<void> {
     if (this.normalizeReread()) this.save();
     const active = this.context.visible(now);
+    const activeSince = active ? this.state.activeSince ?? now : null;
+    if (this.state.activeSince !== activeSince) {
+      this.state.activeSince = activeSince;
+      this.save();
+    }
+    // Upgrade old persisted jobs once; retries must not reset their age.
+    let upgraded = false;
+    if (this.state.guard !== null && this.state.guardQueuedAt == null) {
+      this.state.guardQueuedAt = this.state.guard; upgraded = true;
+    }
+    for (const job of [...this.state.refresh, ...this.state.marks]) {
+      if (job.queuedAt === undefined) { job.queuedAt = job.due; upgraded = true; }
+    }
+    if (upgraded) this.save();
     if (!active && (this.state.sweep !== null || this.state.nextSweep !== null)) {
       // A resumed sweep must not replay cached facts from a quiet interval.
       const interruptedInstallation = this.state.sweep?.installations[this.state.sweep.installationIndex];
@@ -259,6 +311,7 @@ export class OverviewSync {
         if (job.kind === "guard") {
           this.state.guard = null;
           if (await this.context.guard(now)) {
+            this.state.guardQueuedAt = null;
             for (const installation of this.context.installations()) if (installation.status === "accepted") this.refresh(installation.id, now);
           } else this.state.guard = now + 15_000;
         } else if (job.kind === "refresh") await this.refreshRepositories(earliestRefresh!.id, now);
@@ -417,7 +470,7 @@ export class OverviewSync {
   private retryMark(mark: PendingMark, now: number): void {
     mark.firstRead ??= now;
     const offset = RETRIES[mark.retry];
-    if (offset === undefined) { this.removeMark(mark); return; }
+    if (offset === undefined) { this.state.lastEventFailureAt = now; this.removeMark(mark); return; }
     mark.retry++;
     mark.due = Math.max(now + 1, mark.firstRead + offset);
   }
