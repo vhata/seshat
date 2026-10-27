@@ -114,6 +114,9 @@ with `npx wrangler secret bulk`.
 
 ### Hosted setup
 
+For routine updates, deployment/version inspection, verification, logs and
+recovery limits, use the [instance operations runbook](docs/INSTANCE_OPERATIONS.md).
+
 Register the hosted instance's own App at its final HTTPS address. An App
 registered from localhost has no webhook or event subscriptions; changing
 its sign-in callback alone does not enable hosted synchronization.
