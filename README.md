@@ -20,6 +20,9 @@ updates through its owner-gated WebSocket, displays the last successful
 GitHub sync and flags failed or overdue data. Desktop and phone scenarios,
 runtime integration and the free-tier boundary are recorded in
 [overview acceptance](docs/OVERVIEW_ACCEPTANCE.md).
+Owner-run [instance monitoring](docs/MONITORING.md) checks availability,
+GitHub sync progress and an explicit account-usage sample, reporting fixed
+alert codes to the terminal.
 
 Project health classifications and a public view remain future capabilities.
 The hosted overview reports GitHub evidence only.

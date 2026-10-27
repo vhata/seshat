@@ -98,3 +98,8 @@ Real-browser assembly and real-App observations are recorded separately by
 `build-pr-overview`. GitHub cannot deliver a webhook to the local App without
 a reachable ingress, which still requires explicit deployment or tunnel
 authorization. No such ingress was created for these checks.
+
+Owner-only [instance monitoring](MONITORING.md) reports aggregate scheduler
+progress, stable pending-job ages and exhausted event-read retries. A later
+complete sweep started after an exhausted retry clears its failure signal.
+The diagnostic route does not make a page visible or start a sweep.

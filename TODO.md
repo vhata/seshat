@@ -59,12 +59,6 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
-- [HOSTING] `define-instance-monitoring` — **Choose and implement minimal production monitoring and failure alerts.** A healthy HTTP response alone does not establish that GitHub synchronization is working or that account quotas have capacity.
-  - Source: productionization assessment, branch vhata/prototype-status-review, 2026-10-26
-  - Starting point: `/api/health`, the overview's failed/overdue sync state, Cloudflare logs and account usage. Decide which failures need alerts, their thresholds, notification destination and log retention before choosing tools.
-  - Keep credentials and private repository content out of logs and alerts. Document how to inspect failures and verify alert delivery with a controlled scenario.
-  - New billable monitoring resources require explicit cost/provisioning confirmation; sending notifications requires authorization. This entry authorizes neither.
-
 ## Needs proof of concept
 
 ### P0 Critical
