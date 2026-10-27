@@ -6,7 +6,7 @@ Free. A hosted run creates one temporary Worker and its new SQLite Durable
 Object namespace and consumes the account's free quotas. It adds no paid plan,
 custom domain, GitHub App or integration. Deployment, destructive fixture
 mutations, rollback and cleanup still need the owner's explicit authorization
-under [AGENTS.md](../AGENTS.md#docket) and the recovery TODO.
+under [AGENTS.md](../AGENTS.md#docket).
 
 The [instance recovery notes](INSTANCE_RECOVERY.md) describe retained state,
 credentials, the passing offline proof and the remaining production limits.
@@ -177,3 +177,53 @@ any upload. Record the starting namespace inventory privately.
 The native run proves the disposable object's SQL PITR and actual published
 code rollback. Live GitHub reconciliation, production alarms/WebSockets,
 credential recovery and production maintenance remain outside that proof.
+
+## Recorded hosted result
+
+The authorized disposable experiment passed on 2026-10-26 on the
+owner-confirmed Workers Free account. The fixture bundles were frozen at
+source `6907d53`; the restart-receipt repair used source `c626e91`. Native
+evidence is scoped to those immutable builds. Repository checks cover the
+integrated checkout separately.
+
+| Check | Observed result |
+| --- | --- |
+| Target isolation | One new SQLite namespace bound only to the temporary Worker; all three existing namespace IDs preserved. |
+| Refusal and maintenance | Anonymous controls returned 401; ordinary application routes remained 503 throughout the fixture run. |
+| Published code rollback | Broken code returned 503; the original published version returned healthy schema 4 after activation, while damaged choices and revoked sessions remained. |
+| Schema compatibility | The synthetic migration produced schema 5. The verified older published object version refused it with 500. |
+| Native PITR | Restored all seven application tables exactly to the original schema-4 checkpoint, including monitoring choices, accepted/pending organizations, refusal tombstone, PR and session rows. |
+| Session invalidation | The revoked session row reappeared after restore. Deleting restored sessions survived an actual object abort/restart. |
+| Native undo | The first restore's returned undo bookmark restored the exact pre-restore schema-5 rows; compatible migration code returned healthy schema 5. |
+| Receipt after JavaScript state loss | A saved successful native receipt acknowledged restart after status reported idle and the volatile phase had disappeared; no second scheduling call was made for that restart. |
+| Cleanup | A scoped class-deletion migration removed only the fixture namespace; tombstone returned 410, then the temporary Worker was deleted. Final Worker/namespace inventories exactly matched their starting ID sets. |
+| Production check | Health returned 200 with identical schema, build and published version before and after the experiment. |
+
+The run found two practical limits. A successful rollback command preceded
+actual object code activation, including when immediate updates were
+requested. Every successful phase was checked against its observed object
+version and schema; stale transition samples were retained separately.
+The initial restart control also lost its volatile acknowledgement. The
+saved native undo receipt survived outside the object, and deploying the
+reviewed repair triggered the already scheduled restore. Existing intent was
+resumed without blindly scheduling it again. A later native undo exercised
+the repaired acknowledgement after another observed loss of JavaScript state.
+
+The successful undo was verified about 47 seconds after its prepare response,
+including an intentional 36-second idle gap before restart. This single
+workflow timing establishes no general recovery bound. Only fresh bookmarks
+were exercised; the advertised 30-day window was not tested end to end.
+
+Private evidence is retained under `.context/hosted-recovery/run-OEaZ0b` and
+`.context/hosted-recovery/run-GAGeZo`. It includes frozen bundle/config hashes,
+API inventories, published/object identity, raw synthetic row snapshots,
+native prepare/undo receipts, restart outcomes and an indexed assertion record.
+The undo input/receipt linkage is explicitly recorded as coordinator invocation
+evidence; the original response format did not echo its input bookmark.
+Deployed fixture tokens were removed locally after cloud cleanup. No production
+credentials or database were copied into the experiment.
+
+Live GitHub reconciliation, real OAuth sign-in, active alarms/WebSockets,
+full-window retention, account-loss recovery and production maintenance were
+outside the hosted fixture. The offline proof separately verifies old-cookie
+refusal and fresh synthetic owner access after session invalidation.

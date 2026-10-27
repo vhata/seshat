@@ -1,8 +1,8 @@
 # Instance recovery proof
 
 Worker code and Durable Object data recover separately. This document records
-an offline proof, the state that must survive recovery, and the hosted checks
-still required before claiming that a deployed instance can be restored.
+offline and disposable hosted proofs, the state that must survive recovery,
+and the limits still to address before restoring a production instance.
 
 ## Recovery mechanisms and limits
 
@@ -46,9 +46,9 @@ commands do not operate on this database. [Data Studio][studio] can query live
 SQL-backed objects, but is not a demonstrated PITR control or backup procedure.
 The deployed Seshat entrypoint exposes no PITR or maintenance RPC. The
 dedicated synthetic fixture and its
-[hosted procedure](HOSTED_RECOVERY.md) prepare the native experiment; executing
-it still needs explicit deployment authorization. Production maintenance
-controls remain unimplemented.
+[hosted procedure](HOSTED_RECOVERY.md) demonstrate the native experiment on
+disposable state. Production maintenance controls remain unimplemented, and
+future deployments/restores still need explicit authorization.
 
 ## What recovery must retain
 
@@ -133,57 +133,42 @@ or recovery of an actual production database. The local fixture has no active
 sweep/alarm or WebSocket; their recovery remains a hosted acceptance gate.
 The proof is separate from the ordinary gate and makes no CI/hook changes.
 
-## Hosted acceptance procedure awaiting authorization
+## Hosted proof and production limits
 
-The original `prove-instance-data-recovery` entry stays open until a disposable
-hosted experiment establishes the missing evidence. The owner has confirmed
-Workers Free; recheck the target account and plan before provisioning.
-The prepared [synthetic harness procedure](HOSTED_RECOVERY.md) covers the
-disposable experiment. Broader hosted acceptance, beyond the fixture's
-SQL/code checks, also requires the following controls and checks:
+The authorized [hosted experiment](HOSTED_RECOVERY.md#recorded-hosted-result)
+passed on the owner-confirmed Workers Free account. It demonstrated native
+PITR, published-version rollback, schema compatibility checks, session
+invalidation across restart and native undo using synthetic state. Its
+Worker and SQLite namespace were deleted after verification. This completes
+the disposable proof requested by `prove-instance-data-recovery`.
 
-1. Confirm the exact account, billing plan, new Worker name and SQLite class
-   namespace. Use a dedicated disposable Worker such as
-   `seshat-recovery-YYYYMMDD`; never bind it to the production namespace or copy
-   production state/secrets. Provisioning is metered and may be billable under
-   the account's plan, so describe the resources and obtain cost/provisioning
-   confirmation. Deployment and destructive experiments also need authorization
-   under [AGENTS.md](../AGENTS.md#docket) and the queue entry.
-2. Keep the maintenance gate outside restored object data. Gate HTTP, socket,
-   webhook and alarm activity while restoring. Use a private control binding
-   with exact account/Worker/namespace/object identity checks; never expose an
-   anonymous SQL or restore route. Store control credentials and proof artifacts
-   privately. Review that restoration cannot reopen traffic or restore an old
-   control credential.
-3. Seed only the synthetic choices/facts from the local scenario. Save source
-   commit, bundle hash, published version ID, namespace/object ID, schema version,
-   canonical table data and `getCurrentBookmark()` privately. Exercise an active
-   scheduler and owner WebSocket as additional checks.
-4. Publish a bounded code regression, mutate only the disposable state and
-   revoke a session. Roll back to the saved published version with explicit
-   account/Worker targeting. Verify code identity/HTTP health and that data
-   damage remains. Separately apply the synthetic next SQL migration and verify
-   the older code refuses it; do not change the platform class migration.
-5. Close traffic; save a pre-restore bookmark, current version and state.
-   Schedule the checkpoint with `onNextSessionRestoreBookmark()`, save its
-   returned undo bookmark outside the object, then restart. If the response is
-   lost, inspect the next session and existing proof before retrying; do not
-   assume an RPC exception means failure or success.
-6. Under maintenance, compare all recovered rows/schema with the checkpoint,
-   invalidate every restored session, verify the revoked cookie is refused,
-   clear/reconcile stale sync progress as needed and rearm alarms deliberately.
-   Verify accepted/refused organizations and monitoring overrides, anonymous
-   refusal, new owner sign-in, WebSocket reconnection and current GitHub
-   synchronization before making any production-readiness claim.
-7. Demonstrate undo using the saved pre-restore bookmark with compatible code,
-   verify its exact state and retain sanitized results, version IDs and timing.
-   Keep recovery latency and data-loss bounds empirical; the local run supplies
-   neither hosted bound. Delete only the authorized disposable resources after
-   evidence is secured, using an explicit namespace-scoped cleanup plan.
+A production restore still needs its own authorized maintenance window and
+reviewed controls. The synthetic fixture permanently closes application
+routes and disables alarms/sockets; it supplies no production maintenance RPC.
+Before applying recovery to production:
 
-Any production restore needs a separately authorized maintenance window,
-reviewed controls and a verified credential/reconciliation procedure. Do not
-substitute this proposed procedure for an implemented or executed restore.
+- Keep HTTP, socket, webhook and alarm activity closed through a gate outside
+  restored object data. Verify the exact account, Worker, namespace and object,
+  and protect bookmarks/credentials outside the restored database.
+- Preserve the native undo receipt before restarting. A lost response is an
+  uncertain outcome, and JavaScript state may disappear while the native
+  restore remains scheduled. Reconnect and inspect actual state; do not
+  blindly schedule the same operation again.
+- Use compatible application code and check its actual executing object
+  version. CLI deployment success and an immediate-update request did not
+  ensure immediate object code activation in this experiment.
+- Compare recovered data/schema, invalidate every restored session and verify
+  old-cookie refusal before reopening traffic. Require owner sign-in and
+  verify current GitHub access, organizations, monitoring choices and freshness.
+- Reconcile stale sync/monitoring progress and deliberately rearm alarms;
+  verify WebSocket reconnection and live GitHub synchronization. These active
+  runtime checks were outside the disposable fixture.
+
+Only fresh checkpoints were exercised. Cloudflare documents 30-day PITR;
+this experiment establishes neither full-window retention nor a production
+recovery-time/data-loss guarantee. Native PITR is not an off-account backup,
+and saved bookmarks do not protect against namespace deletion or loss of
+account access. No production database, GitHub App or credential was restored.
 
 [pitr]: https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#pitr-point-in-time-recovery-api
 [rollback]: https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/

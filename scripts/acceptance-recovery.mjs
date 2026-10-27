@@ -161,7 +161,9 @@ try {
   await start(restored);
   const recovered = await command();
   assert.deepEqual(recovered, baseline);
-  assert.deepEqual(await (await request("/api/health")).json(), { ok: true, schemaVersion });
+  assert.deepEqual(await (await request("/api/health")).json(), {
+    ok: true, schemaVersion, build: { commit: null, dirty: null }, version: { id: null },
+  });
   // Do not exercise HTTP with the revoked cookie before invalidation. The
   // restored session row proves that whole-database restore resurrected it.
   assert.equal(recovered.sessions.some(({key}) => key === sessionKey), true);
