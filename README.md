@@ -160,6 +160,9 @@ Follow-ups live in [TODO.md](TODO.md), decisions in
 [docs/DECISIONS.md](docs/DECISIONS.md), and gates and validation in
 [docs/QUALITY.md](docs/QUALITY.md).
 
+Recovery mechanisms, the repeatable offline experiment and remaining hosted
+acceptance are documented in [instance recovery](docs/INSTANCE_RECOVERY.md).
+
 ## License
 
 [MIT](LICENSE), copyright 2026 Jonathan Hitchcock.

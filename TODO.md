@@ -77,6 +77,11 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Starting point: the SQLite Durable Object's schema, monitoring overrides, installation choices and sessions. Establish the account's available recovery mechanisms, retention and restore constraints; distinguish reconstructible GitHub facts from owner settings that must be retained.
   - Run a bounded backup/restore and code-rollback experiment against disposable state, including migration compatibility and verification after recovery. Record recovery limits, credential handling and the exact procedure; do not treat a successful code rollback as a database restore.
   - Production restores, destructive experiments, deployments and billable resources require their own authorization; this entry records future work only.
+  - Local proof: [instance recovery](docs/INSTANCE_RECOVERY.md) and
+    `node scripts/acceptance-recovery.mjs` demonstrate stopped-runtime
+    backup/restore, code replacement, schema refusal and session invalidation
+    with synthetic state. Hosted PITR, published rollback and account-plan
+    verification remain outstanding; keep this proof-of-concept entry open.
 
 ## Waiting
 

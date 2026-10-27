@@ -116,6 +116,9 @@ overview's browser scenario runs separately with
 `node scripts/acceptance-overview.mjs`; its runtime, browser requirements and
 evidence boundary are recorded in
 [OVERVIEW_ACCEPTANCE.md](OVERVIEW_ACCEPTANCE.md).
+The offline recovery experiment runs separately with
+`node scripts/acceptance-recovery.mjs`; its state isolation, procedure and
+hosted evidence limits are recorded in [instance recovery](INSTANCE_RECOVERY.md).
 A red main must be addressed the same day or filed as P1 with evidence (P0 if
 release-blocking); recovery requires a green run on main.
 
