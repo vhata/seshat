@@ -67,6 +67,7 @@ export async function registerGithubApp(runtime: SiteRuntime, origin: string, na
   options: { timeoutMs?: number } = {}): Promise<SiteCredentials> {
   const state = randomBytes(32).toString("hex");
   const browser = randomBytes(32).toString("hex");
+  const cookieName = `seshat-site-${randomBytes(12).toString("hex")}`;
   const startPath = `/start/${randomBytes(24).toString("hex")}`;
   const callbackPath = "/registered";
   let host = "";
@@ -82,11 +83,11 @@ export async function registerGithubApp(runtime: SiteRuntime, origin: string, na
     const url = new URL(request.url ?? "/", `http://${host}`);
     if (url.pathname === startPath && !settled) {
       const manifest = { ...buildManifest(new URL(origin), name), redirect_url: `http://${host}${callbackPath}` };
-      response.setHeader("Set-Cookie", `seshat-site=${browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=3600`);
+      response.setHeader("Set-Cookie", `${cookieName}=${browser}; HttpOnly; SameSite=Lax; Path=/; Max-Age=3600`);
       reply(response, 200, `<h1>Register your Seshat GitHub App</h1><p>Confirm the personal GitHub account on the next page.</p><form method="post" action="https://github.com/settings/apps/new?state=${state}"><input type="hidden" name="manifest" value="${escape(JSON.stringify(manifest))}"><button>Continue to GitHub</button></form>`);
       return;
     }
-    const cookie = request.headers.cookie?.split(";").map(part => part.trim()).find(part => part.startsWith("seshat-site="))?.slice("seshat-site=".length);
+    const cookie = request.headers.cookie?.split(";").map(part => part.trim()).find(part => part.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
     if (url.pathname !== callbackPath || consumed || !equal(cookie, browser) || !equal(url.searchParams.get("state") ?? undefined, state)) {
       reply(response, 403, "This registration did not start in this browser, or has finished."); return;
     }

@@ -83,6 +83,25 @@ describe("GitHub App local registration", () => {
     expect(client.request).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps concurrent checkout registrations separate in the browser cookie jar", async () => {
+    const starts: Awaited<ReturnType<typeof landing>>[] = [];
+    let release!: () => void;
+    const ready = new Promise<void>(resolve => { release = resolve; });
+    const open = async (url: string) => {
+      const started = await landing(url);
+      starts.push(started);
+      if (starts.length === 2) release();
+      await ready;
+      const cookies = starts.map(item => item.page.cookie!).join("; ");
+      expect((await get(started.callback, { Cookie: cookies })).status).toBe(200);
+    };
+    const first = runtime(open); const second = runtime(open);
+    await Promise.all([registerGithubApp(first, "https://first.example", "Seshat first"),
+      registerGithubApp(second, "https://second.example", "Seshat second")]);
+    expect(starts[0]!.page.cookie!.split("=")[0]).not.toBe(starts[1]!.page.cookie!.split("=")[0]);
+    expect(first.writePrivate).toHaveBeenCalledOnce(); expect(second.writePrivate).toHaveBeenCalledOnce();
+  });
+
   it("does not report registration success when private persistence fails", async () => {
     const client = runtime(async url => {
       const started = await landing(url);
