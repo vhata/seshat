@@ -15,7 +15,12 @@ describe("private instance monitoring", () => {
     const cookie = await ownerSession();
     expect((await fetchWithConfig({ OWNER_ID: "2002" }, "/api/monitoring", { headers: { cookie } })).status).toBe(401);
     const health = await exports.default.fetch(`${BASE}/api/health`);
-    expect(await health.json()).toEqual({ ok: true, schemaVersion: expect.any(Number) });
+    expect(await health.json()).toEqual({
+      ok: true,
+      schemaVersion: expect.any(Number),
+      build: { commit: null, dirty: null },
+      version: { id: expect.any(String) },
+    });
   });
 
   it("returns only aggregate diagnostics without GitHub traffic or per-poll writes", async () => {
