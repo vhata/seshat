@@ -33,6 +33,24 @@ ID, conditionally refreshed with ETags, and preserved on a failed lookup.
 The permission response's user ID must match the reviewer: a reassigned
 login cannot confer trust on the previous account.
 
+GraphQL supplies review identities, state, authors and comment activity;
+the REST [review list][reviews] supplies their `commit_id`. A private PR
+with a submitted review returned an integration-access error for GraphQL
+`review.commit.oid` with the App's existing read-only permissions, while
+the REST review list returned 200 and the matching head commit using the
+same installation token. Production queries omit the inaccessible field
+and still reject every GraphQL error rather than accepting partial data.
+No Contents permission is needed for the REST review list.
+
+Each PR with reviews needs one extra REST request per 100 reviews. A PR
+without reviews needs none. The reader joins both numeric and node IDs,
+preserves GraphQL review order and accepts an explicitly null commit.
+Missing, mismatched, duplicate or malformed identities and commit facts
+fail the read; they never become approvals of the current head. Review
+pagination shares the 40-request cap and continuation with all other
+reads. The reader reconstructs the GitHub path for each next page and
+rejects unexpected hosts, paths, page sizes or page sequences.
+
 ## Continuations and caches
 
 A request-limit result includes a JSON-safe `continuation`. In the next
@@ -49,6 +67,8 @@ read and must not be reused for a later sweep. Across fresh reads, carry
 `permissionCache` and `headCommitDates` instead; the latter is keyed by
 repository ID and immutable head SHA. A sweep sets `refreshPermissions:
 true`; a re-read can reuse known permissions and look up new reviewers.
+Cached REST reviews contain only their numeric ID, node ID and commit SHA;
+review bodies, user profiles and other REST response fields are discarded.
 
 The head date comes from the REST PR commits endpoint with the PR's commit
 count, requesting one entry on the last page and checking its SHA. This
@@ -94,19 +114,18 @@ no Contents permission. See GitHub's [PR fields][fields],
 [PR commits endpoint][commits], [timeline permissions][timeline] and
 [committed event fields][events].
 
-Live private-review access needs a repository with submitted reviews. The
-available sample contained no such reviews, so `review.commit.oid` is
-covered by stubs, not demonstrated on a private reviewed PR. Long timelines,
-permission failures, deep review/check pagination and partial results are
-covered by Workers-runtime tests; the live timeline probe used an ordinary
-PR, not a PR with more than 250 commits.
-
-`bash scripts/setup.sh` and `bash scripts/check.sh` passed. The final full
-code check ran 381 tests, including a 90-request read resumed across three
-invocations, permission refresh continuation and long-timeline pagination.
-All tests stub GitHub; none reaches the network.
+The historical sample above contained no submitted reviews, so its request
+counts exclude REST review reads. The private-review investigation proves
+the REST endpoint's accessibility for that fixture; it does not establish
+hosted browser sign-in, publication or webhook timing. Workers-runtime
+tests cover the identity join, stale and null review commits, sanitized
+review continuation, pagination failures and failed API reads, along with
+long timelines, permission failures and deep review/check pagination. All
+tests stub GitHub; none reaches the network. The live timeline probe used
+an ordinary PR, not a PR with more than 250 commits.
 
 [fields]: https://docs.github.com/en/graphql/reference/pulls
 [commits]: https://docs.github.com/en/rest/pulls/pulls#list-commits-on-a-pull-request
+[reviews]: https://docs.github.com/en/rest/pulls/reviews#list-reviews-for-a-pull-request
 [timeline]: https://docs.github.com/en/rest/issues/timeline#list-timeline-events-for-an-issue
 [events]: https://docs.github.com/en/rest/using-the-rest-api/issue-event-types#committed

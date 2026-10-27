@@ -208,7 +208,11 @@ export class GithubPrReader {
         const event = obj(value);
         return { event: event.event, sha: event.sha ?? null, committer: { date: record(event.committer)?.date ?? null } };
       })
-      : path.includes("/commits?") ? list(raw).map((value) => {
+      : path.includes("/reviews?") ? list(raw).map((value) => {
+        const review = obj(value);
+        return { id: id(review.id), node_id: text(review.node_id),
+          commit_id: review.commit_id === null ? null : text(review.commit_id) };
+      }) : path.includes("/commits?") ? list(raw).map((value) => {
         const commit = obj(value);
         return { sha: commit.sha, commit: { committer: { date: record(obj(commit.commit).committer)?.date ?? null } } };
       }) : (() => {
@@ -377,6 +381,7 @@ export class GithubPrReader {
     const headSha = text(raw.headRefOid);
     const rawReviews = await this.pages(raw.reviews, raw, "reviews");
     const rawChecks = await this.pages(checks(raw), raw, "checks");
+    const reviewCommits = await this.reviewCommits(rawReviews, repo.fullName, number);
     const reviews: Review[] = [];
     const observedReviews: ReadPr["observations"]["reviews"][number][] = [];
     let lastComment = latestComment(raw.comments);
@@ -385,7 +390,10 @@ export class GithubPrReader {
       const review = obj(value);
       const author = account(review.author);
       const state = enumValue(review.state, ["approved", "changes_requested", "commented", "dismissed", "pending"]);
-      const commitSha = review.commit === null ? null : text(obj(review.commit).oid);
+      // Review.commit is inaccessible with this App's private-repository
+      // permissions. Join REST identity without broadening that access.
+      const commitSha = reviewCommits.get(id(review.databaseId));
+      if (commitSha === undefined) fail();
       reviews.push({ author, state, commitSha, submittedAt: nullableTime(review.submittedAt) });
       observedReviews.push({ id: String(id(review.databaseId)), state, commitSha });
       lastComment = later(lastComment, latestComment(review.comments));
@@ -448,6 +456,41 @@ export class GithubPrReader {
         lastCommentAt: lastComment, lastStateChangeAt: latestComment(raw.stateChange),
       },
     } };
+  }
+
+  private async reviewCommits(reviews: readonly unknown[], fullName: string, number: number): Promise<Map<number, string | null>> {
+    const expected = new Map<number, string>();
+    for (const raw of reviews) {
+      const review = obj(raw);
+      const reviewId = id(review.databaseId);
+      if (expected.has(reviewId)) fail();
+      expected.set(reviewId, text(review.id));
+    }
+    const commits = new Map<number, string | null>();
+    if (expected.size === 0) return commits;
+    const path = `/repos/${fullName.split("/").map(encodeURIComponent).join("/")}/pulls/${number}/reviews`;
+    const nodeIds = new Set<string>();
+    let pageNumber = 1;
+    for (;;) {
+      const current = await this.rest(`${path}?per_page=100&page=${pageNumber}`);
+      const nodes = list(current.body);
+      if (nodes.length > 100) fail();
+      for (const raw of nodes) {
+        const review = obj(raw);
+        const reviewId = id(review.id);
+        const nodeId = text(review.node_id);
+        if (commits.has(reviewId) || nodeIds.has(nodeId)) fail();
+        if (expected.get(reviewId) !== nodeId) fail("changed-during-read");
+        nodeIds.add(nodeId);
+        commits.set(reviewId, review.commit_id === null ? null : text(review.commit_id));
+      }
+      const next = linkedPage(current.link, "next", path);
+      if (next === null) break;
+      if (nodes.length === 0 || next !== pageNumber + 1) fail();
+      pageNumber = next;
+    }
+    if (commits.size !== expected.size) fail("changed-during-read");
+    return commits;
   }
 
   private async headDate(raw: Record<string, unknown>, repositoryId: number, fullName: string, headSha: string, number: number): Promise<number> {

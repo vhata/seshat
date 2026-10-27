@@ -8,7 +8,7 @@ export const REPOSITORY_FIELDS = `id databaseId nameWithOwner visibility
   owner { login ... on User { databaseId } ... on Organization { databaseId } }`;
 const ACCOUNT_FIELDS = `__typename login ... on User { databaseId }
   ... on Bot { databaseId } ... on Mannequin { databaseId }`;
-export const REVIEW_FIELDS = `id databaseId state submittedAt commit { oid }
+export const REVIEW_FIELDS = `id databaseId state submittedAt
   author { ${ACCOUNT_FIELDS} } comments(last: 1) { nodes { createdAt } }`;
 export const CHECK_FIELDS = `__typename
   ... on CheckRun { id databaseId name status conclusion }

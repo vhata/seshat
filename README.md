@@ -112,6 +112,35 @@ Setup closes as soon as any of the App's credentials is set, and without
 at its own address, with its own App, storing the JSON the setup page shows
 with `npx wrangler secret bulk`.
 
+### Hosted setup
+
+Register the hosted instance's own App at its final HTTPS address. An App
+registered from localhost has no webhook or event subscriptions; changing
+its sign-in callback alone does not enable hosted synchronization.
+
+1. Run `bash scripts/setup.sh` and `bash scripts/check.sh`. Confirm the
+   intended Cloudflare account and its billing plan with
+   `npx wrangler whoami` and the Cloudflare dashboard before provisioning.
+2. Save `OWNER_ID` and a random `SETUP_SECRET` in a JSON file outside the
+   repository, readable only by you. Deploy the built application with
+   `npx wrangler deploy --secrets-file /path/to/bootstrap.json`. The build
+   supplies the Worker, frontend assets and SQLite Durable Object migration;
+   the same upload sets the two initial secrets.
+3. Open `/setup` at the deployed address and register a separate App there.
+   Save its one-time JSON response privately and run
+   `npx wrangler secret bulk /path/to/app-secrets.json` from this checkout.
+   Delete the temporary credential files after the upload succeeds.
+4. Follow the installation link and select **All repositories** on your
+   personal account. Complete GitHub sign-in and check `/setup/installed`.
+5. Confirm the App's active webhook points to the deployed instance's
+   `/api/github/webhook`, and verify an actual GitHub change reaches the
+   already-open overview. The required bounds and recorded hosted results
+   are in [overview acceptance](docs/OVERVIEW_ACCEPTANCE.md).
+
+The App needs only Metadata, Pull requests, Checks and Commit statuses
+read permissions. Private review commit identities use the REST review
+endpoint; they do not require adding Contents access.
+
 The code lives under `src/`: `worker/` for the Worker's routes, `object/`
 for the Durable Object and its schema, `shared/` for pure logic with tests
 that run in Node, and `frontend/` for the React page. Worker and object tests

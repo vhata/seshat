@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { GithubPrReader, type ReaderContinuation } from "./github-pr-reader";
-import { CHECK_PAGE_QUERY, COUNT_QUERY, PR_FIELDS, REPOSITORIES_QUERY, REREAD_QUERY } from "./github-pr-queries";
+import { CHECK_PAGE_QUERY, COUNT_QUERY, PR_FIELDS, REPOSITORIES_QUERY, REREAD_QUERY, REVIEW_PAGE_QUERY } from "./github-pr-queries";
 
 const WHEN = "2026-10-17T00:00:00Z";
 const RATE = { remaining: 4900, resetAt: "2026-10-17T01:00:00Z", cost: 1 };
@@ -11,7 +11,7 @@ const connection = (nodes: unknown[], totalCount = nodes.length, next: string | 
 });
 const repo = (id = "R1") => ({ id, databaseId: Number(id.slice(1)), nameWithOwner: `owner/repo${id}`, visibility: "PUBLIC", owner: { databaseId: 1, login: "owner" } });
 const review = (id = 1, state = "COMMENTED", user: ReturnType<typeof actor> | null = actor()) => ({
-  id: `REV${id}`, databaseId: id, state, submittedAt: WHEN, commit: { oid: "head" }, author: user, comments: tail(),
+  id: `REV${id}`, databaseId: id, state, submittedAt: WHEN, author: user, comments: tail(),
 });
 const check = (id = 1) => ({ __typename: "CheckRun", id: `CHK${id}`, databaseId: id, name: `check${id}`, status: "COMPLETED", conclusion: "SUCCESS" });
 function pr(id = "P1", overrides: Record<string, unknown> = {}) {
@@ -19,15 +19,35 @@ function pr(id = "P1", overrides: Record<string, unknown> = {}) {
     createdAt: WHEN, updatedAt: WHEN, isDraft: false, headRefOid: "head", mergeable: "MERGEABLE", author: actor(), repository: repo(),
     comments: tail(), forcePush: tail(), stateChange: tail(), reviews: connection([]), commits: { totalCount: 1 }, statusCheckRollup: { contexts: connection([]) }, ...overrides };
 }
-function github(handler: (query: string, variables: Record<string, unknown>) => unknown, rest?: (url: string, init?: RequestInit) => Response) {
+const restReview = (value: ReturnType<typeof review>, commit: string | null = "head") => ({ id: value.databaseId, node_id: value.id, commit_id: commit });
+function github(handler: (query: string, variables: Record<string, unknown>) => unknown, rest?: (url: string, init?: RequestInit) => Response,
+  reviewRest?: (url: string) => Response) {
+  const reviewsByPr = new Map<string, Map<number, ReturnType<typeof review>>>();
+  const remember = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    const node = value as Record<string, unknown>;
+    if (node.reviews && typeof node.id === "string") {
+      const key = node.id.slice(1);
+      const reviews = reviewsByPr.get(key) ?? new Map();
+      for (const item of (node.reviews as { nodes: ReturnType<typeof review>[] }).nodes) reviews.set(item.databaseId, item);
+      reviewsByPr.set(key, reviews);
+    }
+    for (const item of Object.values(value)) if (typeof item === "object") remember(item);
+  };
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
     if (String(url).endsWith("/graphql")) {
       const request = JSON.parse(String(init?.body)) as { query: string; variables: Record<string, unknown> };
       const value = handler(request.query, request.variables);
       if (value instanceof Response) return value;
+      remember(value);
       return Response.json({ data: { rateLimit: RATE, ...value as object } });
     }
     if (String(url).includes("/commits?")) return Response.json([{ sha: "head", commit: { committer: { date: WHEN } } }]);
+    if (String(url).includes("/reviews?")) {
+      if (reviewRest) return reviewRest(String(url));
+      const key = /\/pulls\/(\d+)\/reviews/.exec(String(url))?.[1] ?? "";
+      return Response.json([...(reviewsByPr.get(key)?.values() ?? [])].map((value) => restReview(value)));
+    }
     if (rest) return rest(String(url), init);
     throw new Error("Unexpected REST request");
   });
@@ -112,7 +132,7 @@ describe("shared PR mapping", () => {
     expect(node.pr.observations.reviews.map((item) => item.id)).toEqual(Array.from({ length: 31 }, (_, i) => String(i + 1)));
     expect(node.pr.ci).toHaveLength(51);
     expect(node.pr.activity.lastCommentAt).toBe(Date.parse("2026-10-18T00:00:00Z"));
-    expect(result.requestsUsed).toBe(4);
+    expect(result.requestsUsed).toBe(5);
   });
 
   it("refuses partial, duplicate or head-changing nested pages", async () => {
@@ -169,7 +189,7 @@ describe("shared PR mapping", () => {
   it("ignores bot approvals for permissions and supports nullable CI and deleted authors", async () => {
     github(() => ({ nodes: [pr("P1", { author: null, reviews: connection([review(1, "APPROVED", actor(3, "Bot"))]), statusCheckRollup: null })] }));
     const result = await new GithubPrReader("token").rereadPrs(["P1"]);
-    expect(result.requestsUsed).toBe(2);
+    expect(result.requestsUsed).toBe(3);
     const node = result.nodes[0];
     expect(node?.kind === "open" && node.pr.author).toBeNull();
     expect(node?.kind === "open" && node.pr.ci).toEqual([]);
@@ -240,8 +260,113 @@ describe("repository reads", () => {
     expect(PR_FIELDS).toContain("statusCheckRollup { contexts");
     expect(PR_FIELDS).not.toContain("committedDate");
     expect(PR_FIELDS).not.toContain("pushedDate");
+    for (const query of [PR_FIELDS, REPOSITORIES_QUERY, REREAD_QUERY, REVIEW_PAGE_QUERY]) {
+      expect(query).not.toMatch(/\bcommit\s*\{/);
+    }
     expect(PR_FIELDS).toContain("HEAD_REF_FORCE_PUSHED_EVENT");
     expect(PR_FIELDS).toContain("REOPENED_EVENT, CONVERT_TO_DRAFT_EVENT, READY_FOR_REVIEW_EVENT");
+  });
+});
+
+describe("private review commit identities", () => {
+  it("uses REST review commits with read-only permissions, preserving stale, null and current-head reviews", async () => {
+    const values = [review(1, "APPROVED", actor(1)), review(2, "CHANGES_REQUESTED", actor(1)), review(3)];
+    const calls = github((query) => {
+      expect(query).not.toMatch(/\bcommit\s*\{/);
+      return { nodes: [pr("P1", { repository: { ...repo(), visibility: "PRIVATE" }, reviews: connection(values.map((value) => ({ ...value, commit: { oid: "ignored-graphql-sha" } }))) })] };
+    }, undefined, (url) => {
+      expect(url).toBe("https://api.github.com/repos/owner/repoR1/pulls/1/reviews?per_page=100&page=1");
+      return Response.json([restReview(values[2]!, null), restReview(values[0]!, "old-head"), restReview(values[1]!)]);
+    });
+    const result = await new GithubPrReader("installation-token").rereadPrs(["P1"]);
+    expect(result.status).toBe("complete");
+    const node = result.nodes[0];
+    if (node?.kind !== "open") throw new Error("expected PR");
+    expect(node.pr.reviews.map(({ commitSha }) => commitSha)).toEqual(["old-head", "head", null]);
+    expect(node.pr.observations.reviews.map(({ commitSha }) => commitSha)).toEqual(["old-head", "head", null]);
+    expect(node.pr.reviewerPermissions.get(1)).toBe("admin");
+    expect(calls).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not list REST reviews when GraphQL confirms none", async () => {
+    const calls = github(() => ({ nodes: [pr()] }), undefined, () => { throw new Error("unnecessary review read"); });
+    expect((await new GithubPrReader("token").rereadPrs(["P1"])).status).toBe("complete");
+    expect(calls).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects missing, mismatched, duplicate and malformed REST review facts", async () => {
+    const value = restReview(review());
+    const variants: [unknown[], string][] = [
+      [[], "changed-during-read"],
+      [[{ ...value, node_id: "another-node" }], "changed-during-read"],
+      [[{ ...value, id: 2 }], "changed-during-read"],
+      [[value, value], "malformed"],
+      [[value, { ...value, id: 2 }], "malformed"],
+      [[{ ...value, id: "1" }], "malformed"],
+      [[{ ...value, commit_id: undefined }], "malformed"],
+      [[{ ...value, commit_id: "" }], "malformed"],
+    ];
+    for (const [body, reason] of variants) {
+      github(() => ({ nodes: [pr("P1", { reviews: connection([review()]) })] }), undefined, () => Response.json(body));
+      const result = await new GithubPrReader("token").rereadPrs(["P1"]);
+      expect(result.nodes).toEqual([{ kind: "unavailable", nodeId: "P1", reason }]);
+      expect(result.continuation).toBeNull();
+    }
+  });
+
+  it("preserves GraphQL errors and failed or rate-limited REST reads as failures", async () => {
+    for (const [response, reason] of [
+      [Response.json({}, { status: 403 }), "github-failed"],
+      [Response.json({}, { status: 503 }), "github-failed"],
+      [new Response(null, { status: 403, headers: { "x-ratelimit-remaining": "0" } }), "rate-limited"],
+    ] as const) {
+      github(() => ({ nodes: [pr("P1", { reviews: connection([review()]) })] }), undefined, () => response);
+      const result = await new GithubPrReader("token").rereadPrs(["P1"]);
+      expect(result.issues).toEqual([{ nodeId: "P1", reason }]);
+      expect(result.nodes[0]?.kind).toBe("unavailable");
+    }
+    const calls = github(() => Response.json({ data: { nodes: [pr("P1", { reviews: connection([review()]) })] }, errors: [{ type: "FORBIDDEN" }] }));
+    calls.mockClear();
+    expect((await new GithubPrReader("token").rereadPrs(["P1"])).issues).toEqual([{ nodeId: "P1", reason: "graphql-errors" }]);
+    expect(calls).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes bounded REST pages and retains only review identity and SHA", async () => {
+    const path = "https://api.github.com/repos/owner/repoR1/pulls/1/reviews";
+    const values = [review(1), review(2)];
+    const calls = github(() => ({ nodes: [pr("P1", { reviews: connection(values) })] }), undefined, (url) => {
+      const page = new URL(url).searchParams.get("page");
+      return Response.json([{ ...restReview(values[Number(page) - 1]!), body: "private review body", user: { email: "private@example.com" }, token: "not-for-cache" }],
+        page === "1" ? { headers: { link: `<${path}?per_page=100&page=2>; rel="next"` } } : {});
+    });
+    const first = await new GithubPrReader("secret-token", { requestLimit: 2 }).rereadPrs(["P1"]);
+    expect(first.issues).toEqual([{ nodeId: "P1", reason: "request-limit" }]);
+    expect(first.requestsUsed).toBe(2);
+    const serialized = JSON.stringify(first.continuation);
+    for (const secret of ["private review body", "private@example.com", "secret-token", "not-for-cache"]) expect(serialized).not.toContain(secret);
+    const cached = first.continuation?.responses.find(([key]) => key.startsWith("REST "))?.[1];
+    expect(cached).toEqual({ body: [restReview(values[0]!)], link: `<${path}?per_page=100&page=2>; rel="next"` });
+    const second = await new GithubPrReader("secret-token", { requestLimit: 2, continuation: JSON.parse(serialized) as ReaderContinuation }).rereadPrs(["P1"]);
+    expect(second.status).toBe("complete");
+    expect(second.requestsUsed).toBe(2);
+    expect(second.nodes[0]?.kind === "open" && second.nodes[0].pr.reviews.length).toBe(2);
+    expect(calls).toHaveBeenCalledTimes(4);
+  });
+
+  it("refuses unsafe, repeated or skipped pagination links without following them", async () => {
+    const path = "https://api.github.com/repos/owner/repoR1/pulls/1/reviews";
+    for (const next of [
+      "https://example.com/reviews?per_page=100&page=2",
+      `${path}/other?per_page=100&page=2`, `${path}?per_page=50&page=2`,
+      `${path}?per_page=100&page=1`, `${path}?per_page=100&page=3`,
+      `${path}?per_page=100&page=2.5`,
+    ]) {
+      const calls = github(() => ({ nodes: [pr("P1", { reviews: connection([review()]) })] }), undefined,
+        () => Response.json([restReview(review())], { headers: { link: `<${next}>; rel="next"` } }));
+      calls.mockClear();
+      expect((await new GithubPrReader("token").rereadPrs(["P1"])).issues).toEqual([{ nodeId: "P1", reason: "malformed" }]);
+      expect(calls).toHaveBeenCalledTimes(2);
+    }
   });
 });
 
@@ -275,7 +400,7 @@ describe("bounded reads across invocations", () => {
         expect(node?.kind === "open" && node.pr.ci.length).toBe(45);
       }
     }
-    expect(calls).toHaveBeenCalledTimes(90);
+    expect(calls).toHaveBeenCalledTimes(91);
   });
 
   it("does not repeat successful permission refreshes when a repository needs more than one invocation", async () => {
@@ -294,7 +419,7 @@ describe("bounded reads across invocations", () => {
     expect(second.status).toBe("complete");
     expect(second.repositories[0]?.prs[0]?.reviewerPermissions.size).toBe(41);
     expect(permissionCalls).toBe(41);
-    expect(calls).toHaveBeenCalledTimes(44);
+    expect(calls).toHaveBeenCalledTimes(45);
   });
 
   it("reads >250-commit PR head dates through the timeline and resumes backwards paging", async () => {
