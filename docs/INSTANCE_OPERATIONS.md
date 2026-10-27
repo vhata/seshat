@@ -1,7 +1,12 @@
 # Hosted instance operations
 
-Use this runbook for an existing Seshat instance. First-time registration
-and installation remain in [hosted setup](../README.md#hosted-setup);
+Use [site commands](SITE.md) for normal setup, updates, status and logs.
+They save the target locally and bundle validation, upload and verification.
+This runbook is the advanced reference for inspecting those operations or
+performing an explicitly authorized manual intervention.
+
+First-time registration and installation start with
+[hosted setup](../README.md#hosted-setup);
 configuration names and owner/session behavior are in
 [configuration and sign-in](../README.md#configuration-and-sign-in).
 The [acceptance record](OVERVIEW_ACCEPTANCE.md#hosted-verification-2026-10-26)
@@ -78,10 +83,10 @@ version still cannot establish the source running remotely.
 The repository's [CI workflow](../.github/workflows/ci.yml) validates PRs
 and pushes to main. Its checks install dependencies, check queues/docs,
 type-check, test and build; they neither upload nor deploy. A green main
-run is not evidence of an updated hosted instance. There is no deployment
-script or automatic deployment. The read-only revision inspector is an
-explicitly invoked post-deployment identity check; the other checks below
-remain necessary.
+run is not evidence of an updated hosted instance. Deployment is invoked
+explicitly with `seshat site update`, which bundles validation, release
+build, upload and automated smoke checks. Authenticated browser checks
+below remain necessary; deployment does not happen automatically on merge.
 
 Every deployment, including secret uploads and rollback, requires explicit
 owner authorization for that operation. Before provisioning or changing
@@ -91,8 +96,10 @@ is on Free or has spare quota; check its plan and usage before provisioning.
 Writing this runbook does not authorize any of these operations.
 
 For a new instance, follow the README's hosted setup at the final HTTPS
-origin. That flow uploads `OWNER_ID` and `SETUP_SECRET`, registers a separate
-hosted GitHub App, uploads its one-time credential JSON, and installs it.
+origin. The CLI deploys a locked bootstrap, registers a separate hosted
+GitHub App through a local browser callback, and uploads `OWNER_ID` and
+the App credentials together. Install the App and finish owner sign-in
+in the browser.
 A localhost App lacks the webhook and subscriptions; changing only its
 OAuth callback is insufficient. Finish setup before applying the configured
 instance checks below.
@@ -127,9 +134,12 @@ For a routine update of an already configured instance:
    someone else deployed meanwhile, resolve that discrepancy before claiming
    this source is live.
 
-The explicit name must agree with the generated name; do not use `--name`
-to repurpose an artifact for another instance. For changed build layouts,
-consult the generated redirect file rather than guessing the config path.
+For the manual upload above, the explicit name must agree with the
+generated name. The site command deliberately derives an adjacent target
+configuration for the saved Worker name, retaining the generated asset
+paths and validating the instance binding before upload. For changed build
+layouts, consult the generated redirect file rather than guessing the
+config path.
 Cloudflare documents this distinction under
 [generated Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/#generated-wrangler-configuration).
 
@@ -300,8 +310,8 @@ PITR, native undo and code rollback on Workers Free. They document retention,
 session invalidation and credential limits; they do not establish production
 maintenance controls or a production recovery-time guarantee. Do not use
 object/namespace deletion as repair.
-Repeatable deployment automation remains
-`standardize-instance-deployment`; this manual runbook does not supply it.
+Use [site commands](SITE.md) for repeatable deployment and automatic smoke
+checks; this runbook supplies the advanced manual procedure.
 
 ## Command verification boundary
 

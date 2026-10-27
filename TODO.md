@@ -59,6 +59,10 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
+- [TOOLING] `accept-linux-site-workflow` — **Verify and document the site commands on Linux.** The initial operator workflow is supported on macOS; Linux browser launch, authentication and filesystem behavior need evidence before claiming support.
+  - Source: operator setup discussion, branch vhata/operator-setup-commands-simplify, 2026-10-26
+  - Starting point: [site commands and portability gaps](docs/SITE.md#local-development-and-linux), the `xdg-open` adapter and loopback App registration. Decide whether remote/headless browser approval is in scope, then exercise fresh setup, adoption, update and interrupted-operation recovery on Linux without introducing platform-specific secret storage.
+
 ## Needs proof of concept
 
 ### P0 Critical
@@ -168,10 +172,3 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Check before relying on them: whether the Workers Rate Limiting binding is available on Free, and whether GitHub shows conflict state to visitors without write access ([not verified](docs/specs/2026-10-15-public-view.md#not-verified)).
 
 ### Unprioritized
-
-- [HOSTING] `standardize-instance-deployment` — **Provide a repeatable, explicitly invoked deployment with automated post-deployment verification.** Validation, target selection, upload and smoke checks still rely on separate operator commands.
-  - Source: productionization assessment, branch vhata/prototype-status-review, 2026-10-26
-  - Related: [instance operations runbook](docs/INSTANCE_OPERATIONS.md), [recovery proof](docs/INSTANCE_RECOVERY.md)
-  - Starting point: `scripts/check.sh`, the Vite production build and Wrangler. Require a clean, identified source revision, passing validation and an explicit target account/Worker; record the deployed version, commit and URL without exposing secrets.
-  - Add repeatable smoke checks for the expected running revision, health/schema, anonymous data refusal and configured setup closure. Keep authenticated sign-in, socket and real GitHub freshness checks explicit where they cannot safely be automated; health alone is insufficient.
-  - Preserve per-deployment owner authorization. A local owner-invoked command is sufficient; a manually triggered CI workflow is an alternative that needs authorization to change CI in its implementation turn. Do not enable automatic deployment on merge or provision billable resources from queue capture.

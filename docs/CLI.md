@@ -1,21 +1,31 @@
 # Seshat CLI
 
-The CLI reads the project index and surveys local directories without a
+The `site` command group manages a hosted instance from its permanent
+checkout. Start with `./bin/seshat site setup`; see
+[site commands](SITE.md) for setup, updates and maintenance. Site settings
+belong to the launcher's checkout and are separate from the project-index
+settings below. Site setup installs its dependencies without installing
+contributor Git hooks.
+
+The project commands read the index and survey local directories without a
 hosted Seshat instance or a credential. `list`, `check` and `survey` read
-only; `each` runs the command you give it. The CLI does not fetch, update
-the index, push, call GitHub or write survey results into a checkout.
+only; `each` runs the command you give it. These project commands do not
+fetch, update the index, push, call GitHub or write survey results into a
+checkout.
 
 ## Install from a checkout
 
-Use Git, Bash and Node.js 24 or later. From a Seshat checkout:
+Use Git, Bash and Node.js 24 or later. For hosting, run
+`./bin/seshat site setup` from a Seshat checkout; it installs the needed
+dependencies. For contributing code and installing contributor hooks:
 
 ```sh
 bash scripts/setup.sh
 ./bin/seshat --help
 ```
 
-Setup installs the locked npm dependencies with install scripts disabled,
-generates the app's local types and installs this repository's hooks. It
+Developer setup installs the locked dependencies with install scripts
+disabled, generates the app's local types and installs its hooks. It
 does not deploy anything. The launcher runs TypeScript directly in Node;
 there is no CLI build or published npm package. Keep the checkout and its
 `node_modules` directory in place. To put it on your PATH, create a symlink

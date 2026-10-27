@@ -54,23 +54,25 @@ npm run dev             # serve the app locally at the printed URL
 
 `npm run dev` runs the Worker, the Durable Object and the page in the local
 Workers runtime; try `/` and `/api/health`. Local state lives in `.wrangler/`.
-There is no deploy script, and deploying needs the owner's word each time.
+Hosted operations use `./bin/seshat site`; deployments require an explicit
+operator invocation and confirmation.
 Build and runtime version inspection are described in
 [running revision](docs/RUNNING_REVISION.md).
 
 ## Configuration and sign-in
 
 Only the owner, identified by numeric GitHub account ID, can sign in. Each
-instance has its own GitHub App, registered from the instance's setup page.
-Seshat stores no GitHub token for anyone and no App credential: the owner
-sets these as Worker secrets, in `.dev.vars` for local development (ignored
-by Git) or with `npx wrangler secret put` or `npx wrangler secret bulk` for a
-deployed instance. Each secret write deploys a new version.
+instance has its own GitHub App. Guided site setup registers the hosted
+App and uploads its credentials as Cloudflare Worker secrets. Local
+development uses the browser setup below and `.dev.vars` (ignored by Git).
+Seshat keeps no owner GitHub token or App credential in application data.
+Manual `wrangler secret put` and `secret bulk` are advanced alternatives;
+each secret write deploys a new version.
 
 | Name | Set by | What it is |
 | --- | --- | --- |
-| `OWNER_ID` | the owner, before setup | The owner's numeric account ID, from `https://api.github.com/users/<login>`; setup shows it if unset |
-| `SETUP_SECRET` | the owner, before setup | Any long random string; it unlocks the setup page |
+| `OWNER_ID` | site setup; manually for local development | The owner's numeric account ID; hosted registration supplies it |
+| `SETUP_SECRET` | the owner, for browser/manual setup | Any long random string; it unlocks the setup page and is unnecessary for guided site setup |
 | `GITHUB_APP_SLUG` | setup | The App's URL name |
 | `GITHUB_CLIENT_ID` | setup | The App's client ID |
 | `GITHUB_CLIENT_SECRET` | setup | The App's client secret |
@@ -113,39 +115,35 @@ To try sign-in locally:
 4. Sign in at `/`. Signing out is on the same page.
 
 Setup closes as soon as any of the App's credentials is set, and without
-`SETUP_SECRET` it never opens. A deployed instance follows the same steps
-at its own address, with its own App, storing the JSON the setup page shows
-with `npx wrangler secret bulk`.
+`SETUP_SECRET` it never opens. Hosted instances use the guided site setup
+below, which handles the registration and upload without copying JSON.
 
 ### Hosted setup
 
-For routine updates, deployment/version inspection, verification, logs and
-recovery limits, use the [instance operations runbook](docs/INSTANCE_OPERATIONS.md).
+Keep a permanent checkout and let the site commands save the target and
+guide browser approvals:
 
-Register the hosted instance's own App at its final HTTPS address. An App
-registered from localhost has no webhook or event subscriptions; changing
-its sign-in callback alone does not enable hosted synchronization.
+```sh
+./bin/seshat site setup
+```
 
-1. Run `bash scripts/setup.sh` and `bash scripts/check.sh`. Confirm the
-   intended Cloudflare account and its billing plan with
-   `npx wrangler whoami` and the Cloudflare dashboard before provisioning.
-2. Save `OWNER_ID` and a random `SETUP_SECRET` in a JSON file outside the
-   repository, readable only by you. Build the committed, clean checkout
-   with `npm run build:release`, then use the tagged upload command in
-   [running revision](docs/RUNNING_REVISION.md#build-and-tag-an-upload),
-   adding `--secrets-file /path/to/bootstrap.json`. The build
-   supplies the Worker, frontend assets and SQLite Durable Object migration;
-   the same upload sets the two initial secrets.
-3. Open `/setup` at the deployed address and register a separate App there.
-   Save its one-time JSON response privately and run
-   `npx wrangler secret bulk /path/to/app-secrets.json` from this checkout.
-   Delete the temporary credential files after the upload succeeds.
-4. Follow the installation link and select **All repositories** on your
-   personal account. Complete GitHub sign-in and check `/setup/installed`.
-5. Confirm the App's active webhook points to the deployed instance's
-   `/api/github/webhook`, and verify an actual GitHub change reaches the
-   already-open overview. The required bounds and recorded hosted results
-   are in [overview acceptance](docs/OVERVIEW_ACCEPTANCE.md).
+For routine maintenance:
+
+```sh
+./bin/seshat site status
+./bin/seshat site update
+```
+
+Update validates, builds and deploys the current clean checkout, asking
+once before changing the saved target. Pull from `main` yourself when
+ready; the command does not update Git. Setup detects existing instances
+and resumes interrupted progress without repeated IDs or credential JSON
+copying.
+
+See [site commands](docs/SITE.md) for installation, local settings,
+credentials, diagnostics and macOS/Linux boundaries. The
+[instance operations runbook](docs/INSTANCE_OPERATIONS.md) remains the
+advanced reference for verification, secret changes and recovery.
 
 The App needs only Metadata, Pull requests, Checks and Commit statuses
 read permissions. Private review commit identities use the REST review
