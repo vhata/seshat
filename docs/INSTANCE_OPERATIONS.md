@@ -286,16 +286,20 @@ Run in an interactive terminal outside CI and answer Wrangler's message
 and confirmation prompts. Non-interactive/CI execution can accept defaults
 without a human prompt. Record the new deployment, inspect the active
 version and repeat post-deployment checks, including socket
-recovery and GitHub freshness. Do not equate command success with recovery.
+recovery and GitHub freshness. The disposable proof observed stale object
+code after rollback, even with an immediate-update request; verify the
+executing object revision before assessing its schema/data behavior. Do not
+equate command success with recovery.
 
 GitHub repository/PR facts can be reread subject to access and sync behavior;
 owner monitoring overrides, installation decisions and sessions are local
-instance state and cannot all be reconstructed from GitHub. There is no
-demonstrated backup/restore or migration-recovery procedure for this instance.
-`prove-instance-data-recovery` in [TODO.md](../TODO.md) tracks a disposable
-backup/restore and code-rollback experiment, retention and restore limits.
-Do not claim a recovery window or use object/namespace deletion as repair.
-Link a demonstrated recovery procedure here when that task lands.
+instance state and cannot all be reconstructed from GitHub. The
+[recovery proof](INSTANCE_RECOVERY.md) and
+[hosted procedure/results](HOSTED_RECOVERY.md) demonstrate disposable SQLite
+PITR, native undo and code rollback on Workers Free. They document retention,
+session invalidation and credential limits; they do not establish production
+maintenance controls or a production recovery-time guarantee. Do not use
+object/namespace deletion as repair.
 Repeatable deployment automation remains
 `standardize-instance-deployment`; this manual runbook does not supply it.
 
