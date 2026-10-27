@@ -24,6 +24,7 @@ import type { InstallationRefreshResult, MonitoringMutationResult } from "../sha
 import { MIGRATIONS } from "./schema";
 import { OverviewSync } from "./overview-sync";
 import type { ReducedDelivery } from "../shared/overview/webhook-marks";
+import type { MonitoringStatus } from "../shared/monitoring";
 
 const VERSION_TABLE = "schema_version";
 
@@ -73,6 +74,12 @@ export class InstanceObject extends DurableObject<Env> {
     const schemaVersion = this.ensureSchema();
     await this.syncScheduler().rearm(Date.now());
     return { schemaVersion };
+  }
+
+  /** Owner-gated by the Worker; diagnostics never expose the underlying jobs. */
+  async monitoringStatus(now: number): Promise<MonitoringStatus> {
+    this.ensureSchema();
+    return this.syncScheduler().monitoringStatus(now);
   }
 
   /**
