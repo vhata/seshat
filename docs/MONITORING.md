@@ -15,9 +15,11 @@ in a private file outside the checkout. The file contains only the raw
 header value: no `Cookie:` prefix, JSON, browser cookie export or
 `Set-Cookie` attributes. Use just the `__Host-seshat-session` cookie
 (`seshat-session` is also accepted for HTTP loopback development), with
-its unchanged 43-character base64url token. Restrict access to the owner
-(`chmod 600`). Never paste the cookie into a command, issue, screenshot or
-shared terminal log.
+its unchanged 43-character base64url token. The file must contain no
+control characters, including a trailing newline. Save without a final
+newline using a private editor or a protected `printf` workflow; do not
+use `echo`. Restrict access to the owner (`chmod 600`). Never paste the
+cookie into a command, issue, screenshot or shared terminal log.
 
 ```sh
 node scripts/monitor-instance.mjs https://INSTANCE \
@@ -62,8 +64,9 @@ The [synchronization scheduler](OVERVIEW_SYNC.md) remains authoritative
 for work, retries, visibility and rate limits. The diagnostic response
 reports version `1`, its `serverTime`, the continuous visible period's
 `activeSince` (or `null`), `sync` status, the first enqueue time of the
-oldest pending event (`oldestPendingAt`), the latest exhausted event retry
-time (`lastEventFailureAt`), `githubRateLimited`, and
+oldest pending event, discovery or installation-guard job
+(`oldestPendingAt`), the latest exhausted event retry time
+(`lastEventFailureAt`), `githubRateLimited`, and
 `cloudflareCapacity: "unknown"`. Sync status includes
 `lastSuccessfulSweepAt`, `latestAttempt` (or `null`), `intervalMs` and
 `slowedByRateLimit`; an attempt has `startedAt`, `result` and an optional
@@ -73,7 +76,7 @@ bounded `reason`. All diagnostic timestamps are epoch milliseconds.
 | --- | --- | --- |
 | `sync-failed` | The latest stored sweep attempt failed, even while dormant. | A complete successful sweep; starting recovery does not clear failure. |
 | `sync-overdue` | After one minute continuously visible, the last successful sweep is older than `max(5 minutes, 2 × intervalMs)`, or no sweep has succeeded. | A complete successful sweep, or visible activity ends. |
-| `sync-stalled` | A running attempt is older than ten minutes. | The attempt finishes or is replaced by a later attempt. |
+| `sync-stalled` | While a page is visible, a running attempt is older than ten minutes. | The attempt finishes, is replaced by a later attempt, or visible activity ends. |
 | `background-work-overdue` | The first enqueue time of pending work is older than ten minutes, including while dormant. | The pending work is drained. Coalescing newer events does not reset its age. |
 | `event-read-failed` | A repository event read has exhausted its retries. | A complete successful sweep that started after the exhaustion; an older in-flight sweep cannot clear it. |
 | `github-budget-low` | The known remaining installation budget is below ten percent of its reported limit and the reset has not passed. | The reported reset passes or newer budget evidence recovers. |
@@ -81,9 +84,12 @@ bounded `reason`. All diagnostic timestamps are epoch milliseconds.
 | `cloudflare-capacity-unknown` | Usable fresh account evidence is absent. | A complete fresh sample. |
 
 The overdue rule allows one minute for catch-up after a page becomes
-visible; a ten-minute running attempt still alerts independently. Dormancy
-alone is healthy because sweeps stop when the last visible page hides.
-Failed sweeps, stalled queued events and exhausted event retries remain
+visible. After that grace, old or absent successful-sync evidence alerts;
+the grace does not restart the successful-sync age. A ten-minute running
+attempt alerts independently while active. Hiding the last page cancels
+sweep work and may leave its stored status running, so that status does
+not signal a stalled sweep while dormant. Failed sweeps, stalled queued
+background work and exhausted event retries remain
 actionable while dormant. These are monitoring thresholds, separate from
 the page's freshness wording.
 
