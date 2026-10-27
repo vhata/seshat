@@ -11,6 +11,7 @@ import type { SurveyDirectory, SurveyOptions } from "./survey.ts";
 
 const help = `Usage: seshat <command> [options]
 
+  site <command> (run seshat site --help for hosted operations)
   list [CLASSIFICATION ...] [--paths | --json]
   each [CLASSIFICATION ...] -- COMMAND [ARG ...]
   check [FILE] [--strict] [--json] [--format-only]
