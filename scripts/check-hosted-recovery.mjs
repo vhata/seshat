@@ -1,6 +1,6 @@
 /** Offline checks of the hosted fixture's safeguards; native PITR is NOT simulated. */
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -18,6 +18,23 @@ const directory = await mkdtemp(path.join(tmpdir(), "seshat-hosted-fixture-"));
 const artifacts = await prepare(target);
 const loaded = await loadArtifacts(artifacts);
 assert.equal(loaded.manifest.name, target.name);
+const cleanupConfig = JSON.parse(await readFile(path.join(artifacts, "wrangler.cleanup.json"), "utf8"));
+assert.equal(cleanupConfig.account_id, target.account);
+assert.equal(cleanupConfig.name, target.name);
+assert.equal(cleanupConfig.main, "./cleanup.mjs");
+assert.equal(cleanupConfig.durable_objects, undefined);
+assert.equal(cleanupConfig.vars, undefined);
+assert.deepEqual(cleanupConfig.migrations, [
+  { tag: "recovery-fixture-v1", new_sqlite_classes: ["RecoveryFixture"] },
+  { tag: "recovery-fixture-v2", deleted_classes: ["RecoveryFixture"] },
+]);
+assert.equal(Object.keys(loaded.manifest.sha256).length, 8);
+const tombstone = new Miniflare(convertV4MiniflareOptions({
+  port: 0, cf: false, telemetry: { enabled: false },
+  workers: [{ name: target.name, modules: true, script: await readFile(path.join(artifacts, "cleanup.mjs"), "utf8"), compatibilityDate: "2026-10-12" }],
+}));
+try { assert.equal((await tombstone.dispatchFetch("http://fixture/recovery/inspect")).status, 410); }
+finally { await tombstone.dispose(); }
 assert.equal(endpointFor(loaded.manifest, `https://${target.name}.example.workers.dev`), `https://${target.name}.example.workers.dev`);
 assert.throws(() => endpointFor(loaded.manifest, "https://seshat.example.workers.dev"));
 assert.throws(() => endpointFor(loaded.manifest, `https://${target.name}.different-account.workers.dev`));

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 export async function loadArtifacts(directory) {
   const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"));
   for (const [name, expected] of Object.entries(manifest.sha256)) {
-    if (!/^(current|broken|migration)\.mjs$|^wrangler\.(current|broken|migration)\.json$/.test(name)) throw new Error("Unexpected artifact name");
+    if (!/^(current|broken|migration|cleanup)\.mjs$|^wrangler\.(current|broken|migration|cleanup)\.json$/.test(name)) throw new Error("Unexpected artifact name");
     const content = await readFile(path.join(directory, name));
     if (createHash("sha256").update(content).digest("hex") !== expected) throw new Error(`Frozen artifact changed: ${name}`);
   }

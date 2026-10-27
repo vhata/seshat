@@ -29,16 +29,24 @@ export async function prepare(target) {
   const directory = await mkdtemp(path.join(evidenceRoot, "run-"));
   const source = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   const manifest = { ...target, source, syntheticOnly: true, deployed: false, sha256: {} };
-  for (const mode of ["current", "broken", "migration"]) {
-    const script = await bundleFixture(target, mode, source);
+  for (const mode of ["current", "broken", "migration", "cleanup"]) {
+    const cleanup = mode === "cleanup";
+    const script = cleanup
+      ? 'export default { fetch() { return new Response("Recovery fixture retired", { status: 410, headers: { "cache-control": "no-store" } }); } };\n'
+      : await bundleFixture(target, mode, source);
     const config = JSON.stringify({
       name: target.name, account_id: target.account, main: `./${mode}.mjs`, compatibility_date: "2026-10-12",
       workers_dev: true, preview_urls: false,
-      version_metadata: { binding: "CF_VERSION_METADATA" },
+      ...(cleanup ? {} : { version_metadata: { binding: "CF_VERSION_METADATA" } }),
       observability: { enabled: false },
-      vars: { OWNER_ID: "1001", RECOVERY_ACCOUNT: target.account, RECOVERY_NAME: target.name, RECOVERY_MAINTENANCE: "enabled", RECOVERY_NATIVE_PITR: "hosted-only" },
-      durable_objects: { bindings: [{ name: "RECOVERY", class_name: "RecoveryFixture" }] },
-      migrations: [{ tag: "recovery-fixture-v1", new_sqlite_classes: ["RecoveryFixture"] }],
+      ...(cleanup ? {} : {
+        vars: { OWNER_ID: "1001", RECOVERY_ACCOUNT: target.account, RECOVERY_NAME: target.name, RECOVERY_MAINTENANCE: "enabled", RECOVERY_NATIVE_PITR: "hosted-only" },
+        durable_objects: { bindings: [{ name: "RECOVERY", class_name: "RecoveryFixture" }] },
+      }),
+      migrations: [
+        { tag: "recovery-fixture-v1", new_sqlite_classes: ["RecoveryFixture"] },
+        ...(cleanup ? [{ tag: "recovery-fixture-v2", deleted_classes: ["RecoveryFixture"] }] : []),
+      ],
     }, null, 2) + "\n";
     for (const [name, content] of [[`${mode}.mjs`, script], [`wrangler.${mode}.json`, config]]) {
       await writeFile(path.join(directory, name), content, { mode: 0o400 });
