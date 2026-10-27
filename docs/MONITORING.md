@@ -200,8 +200,8 @@ instance collects logs, nor a retention guarantee for owner-held output.
    rate-limit slowdown. Avoid repeated manual retries that consume the
    remaining allowance. For Cloudflare capacity, inspect the account
    usage and refresh the sample after corrective action.
-6. Verify failure reporting with the repository's local stub-server and
-   monitoring tests: run
+6. Verify failure reporting with the repository's local monitoring tests:
+   run
    `npx vitest run --project cli src/cli/monitor-instance.test.ts`, then
    [the combined validation gates](QUALITY.md#gates).
    Use synthetic cookies, diagnostic state and usage samples. Exercise
@@ -211,8 +211,10 @@ instance collects logs, nor a retention guarantee for owner-held output.
    text never appear in output. Never induce these failures by corrupting
    production state, exhausting real quotas or revoking live credentials.
 
-The controlled scenario verifies terminal alert output only. No
-notification destination has been configured or sent a test message.
+These tests use mocked `fetch` responses to verify local issue codes and
+exit decisions, and a subprocess checks terminal output for invalid local
+configuration. They exercise no real HTTP server or network delivery.
+No notification destination has been configured or sent a test message.
 The command must be invoked to observe a failure; no unattended detection
 or delivery guarantee is implied.
 
