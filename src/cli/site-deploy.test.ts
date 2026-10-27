@@ -157,6 +157,11 @@ describe("site command contract", () => {
     try {
       expect(await runSiteCli(["status", "--json"], root, runtime)).toBe(1);
       expect(JSON.parse(output)).toMatchObject({ verified: false, lastOperation: { state: "deployed-unverified" } });
+      output = "";
+      expect(await runSiteCli(["status"], root, runtime)).toBe(1);
+      expect(output).toContain("Last operation: deployed-unverified");
+      expect(output).toContain(`Account: ${config.accountId}`);
+      expect(output).toContain(`Worker: ${config.workerName}`);
     } finally { process.stdout.write = original; }
   });
 });

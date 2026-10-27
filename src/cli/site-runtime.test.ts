@@ -1,8 +1,9 @@
-import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSiteRuntime, ensureSiteDependencies, siteEnvironment } from "./site-runtime.ts";
 
@@ -67,5 +68,58 @@ describe("site command runtime", () => {
     expect(top.stdout).toContain("site");
     expect(site.stdout).toContain("update [--yes]");
     expect(await readFile(join(root, "package.json"), "utf8")).toBe('{"type":"module"}');
+
+    // A PATH symlink must keep its own site's settings even when invoked from
+    // an unrelated checkout and before npm dependencies have been installed.
+    await mkdir(join(root, "bin"));
+    await cp(resolve("bin/seshat"), join(root, "bin/seshat"));
+    const elsewhere = await temporary();
+    const link = join(elsewhere, "seshat");
+    await symlink(join(root, "bin/seshat"), link);
+    const runtime = createSiteRuntime(root);
+    await runtime.writeConfig({ format: 1, accountId: "a".repeat(32), workerName: "owning-checkout", origin: "https://example.com", stage: "configured" });
+    let status: string;
+    try { status = (await exec(link, ["site", "status", "--json"], { cwd: elsewhere })).stdout; }
+    catch (error) { status = (error as { stdout: string }).stdout; }
+    expect(JSON.parse(status)).toMatchObject({ workerName: "owning-checkout", verified: false });
+    expect(JSON.parse(status).checkout.replace(/\/$/, "")).toBe(await realpath(root));
   });
+
+  it("terminates and waits for an active subprocess before releasing its lock on SIGTERM", async () => {
+    const root = await temporary();
+    const configSource = pathToFileURL(resolve("src/cli/site-config.ts")).href;
+    const runtimeSource = pathToFileURL(resolve("src/cli/site-runtime.ts")).href;
+    const script = `
+      import {lockSite} from ${JSON.stringify(configSource)};
+      import {createSiteRuntime} from ${JSON.stringify(runtimeSource)};
+      await lockSite(${JSON.stringify(join(root, ".seshat"))});
+      try { await createSiteRuntime(${JSON.stringify(root)}).command(process.execPath,
+        ["-e", 'process.stdout.write("CHILD="+process.pid); setInterval(()=>{},10000)'], {interactive:true}); } catch {}
+      setInterval(()=>{},10000);
+    `;
+    const parent = spawn(process.execPath, ["--input-type=module", "-e", script], { stdio: ["ignore", "pipe", "pipe"] });
+    let childPid: number | undefined;
+    try {
+      childPid = await new Promise<number>((resolveReady, reject) => {
+        let output = "";
+        const timer = setTimeout(() => reject(new Error("Child did not announce readiness.")), 3000);
+        parent.stdout.on("data", chunk => {
+          output += String(chunk);
+          const matched = /CHILD=(\d+)/.exec(output);
+          if (matched) { clearTimeout(timer); resolveReady(Number(matched[1])); }
+        });
+        parent.once("error", error => { clearTimeout(timer); reject(error); });
+        parent.once("exit", () => { clearTimeout(timer); reject(new Error("Parent exited before starting its child.")); });
+      });
+      const exited = new Promise<number | null>(resolveExit => parent.once("exit", code => resolveExit(code)));
+      parent.kill("SIGTERM");
+      expect(await exited).toBe(143);
+      expect(() => process.kill(childPid!, 0)).toThrow();
+      const { lockSite } = await import("./site-config.ts");
+      await (await lockSite(join(root, ".seshat")))();
+    } finally {
+      parent.kill("SIGKILL");
+      if (childPid !== undefined) try { process.kill(childPid, "SIGKILL"); } catch { /* Already gone. */ }
+    }
+  }, 10_000);
 });
