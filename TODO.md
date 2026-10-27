@@ -79,7 +79,7 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 - [HOSTING] `prove-instance-data-recovery` — **Demonstrate safe recovery of instance data and application code.** Worker code rollback alone does not restore Durable Object data or undo schema migrations.
   - Source: productionization assessment, branch vhata/prototype-status-review, 2026-10-26
-  - Related: `document-instance-operations`
+  - Related: [instance operations runbook](docs/INSTANCE_OPERATIONS.md)
   - Starting point: the SQLite Durable Object's schema, monitoring overrides, installation choices and sessions. Establish the account's available recovery mechanisms, retention and restore constraints; distinguish reconstructible GitHub facts from owner settings that must be retained.
   - Run a bounded backup/restore and code-rollback experiment against disposable state, including migration compatibility and verification after recovery. Record recovery limits, credential handling and the exact procedure; do not treat a successful code rollback as a database restore.
   - Production restores, destructive experiments, deployments and billable resources require their own authorization; this entry records future work only.
@@ -147,7 +147,7 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 - [HOSTING] `standardize-instance-deployment` — **Provide a repeatable, explicitly invoked deployment with automated post-deployment verification.** Manual uploads currently leave checks, source identity and confirmation of the running release to the operator.
   - Source: productionization assessment, branch vhata/prototype-status-review, 2026-10-26
   - Depends on: `identify-running-revision`
-  - Related: `document-instance-operations`, `prove-instance-data-recovery`
+  - Related: [instance operations runbook](docs/INSTANCE_OPERATIONS.md), `prove-instance-data-recovery`
   - Starting point: `scripts/check.sh`, the Vite production build and Wrangler. Require a clean, identified source revision, passing validation and an explicit target account/Worker; record the deployed version, commit and URL without exposing secrets.
   - Add repeatable smoke checks for the expected running revision, health/schema, anonymous data refusal and configured setup closure. Keep authenticated sign-in, socket and real GitHub freshness checks explicit where they cannot safely be automated; health alone is insufficient.
   - Preserve per-deployment owner authorization. A local owner-invoked command is sufficient; a manually triggered CI workflow is an alternative that needs authorization to change CI in its implementation turn. Do not enable automatic deployment on merge or provision billable resources from queue capture.
@@ -190,15 +190,8 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
-- [DOCS] `document-instance-operations` — **Write one operations runbook for identifying, deploying, verifying and troubleshooting a hosted instance.** Initial setup instructions and a historical acceptance record do not explain routine updates or how to determine what is running where.
-  - Source: productionization assessment, branch vhata/prototype-status-review, 2026-10-26
-  - Related: `identify-running-revision`, `standardize-instance-deployment`, `define-instance-monitoring`, `prove-instance-data-recovery`
-  - Starting point: the README's hosted setup, `docs/OVERVIEW_ACCEPTANCE.md`, `wrangler.jsonc` and `.github/workflows/ci.yml`. Document account/Worker/URL identification, current deployment and version history, version inspection, logs, initial setup versus updates, and post-deploy checks.
-  - Explain CI versus deployment, the explicit authorization requirement, secret uploads creating deployments, socket disruption and rollback/schema compatibility limits. Link to monitoring and recovery procedures as they become demonstrated, and label outstanding gaps rather than inventing guarantees.
-  - Verify documented inspection commands against the installed Wrangler and link the runbook from the README. Keep credentials and private repository content out of examples.
-
 - [HOSTING] `identify-running-revision` — **Make each deployed Worker version traceable to its Git commit and expose safe running-version information.** Cloudflare currently shows an untagged version while `/api/health` reports only health and schema; mapping the release to source relies on a written acceptance record.
   - Source: productionization assessment, branch vhata/prototype-status-review, 2026-10-26
-  - Related: `document-instance-operations`
+  - Related: [instance operations runbook](docs/INSTANCE_OPERATIONS.md)
   - Starting point: `src/worker/health.ts`, the production build and Wrangler version metadata/annotations. Associate the built commit with the deployed version and provide an inspection command or endpoint that reports the identity actually running, without credentials or instance data.
   - Verify the running identity against Cloudflare's active deployment, including after a later deployment or rollback; do not infer it from the local checkout, package version or a historical document.
