@@ -7,6 +7,9 @@ Cloudflare resource or persistent log collection. The implementation is
 local until the owner authorizes deployment; this document does not assert
 that a hosted instance has been updated or checked.
 
+Use the [instance operations runbook](INSTANCE_OPERATIONS.md) to identify
+the target account, Worker, origin and deployment before investigating it.
+
 ## Run a check
 
 Use the repository's Node.js version or later. Sign in to the intended

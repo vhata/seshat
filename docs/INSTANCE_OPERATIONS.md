@@ -232,10 +232,12 @@ do not assume historical logs or retention have been configured.
 | Missing repositories or PRs | Check All repositories on the personal installation, archive/fork defaults, monitoring overrides and organization acceptance plus individual opt-in. Compare GitHub access with `/repositories` before treating missing data as a sync bug. |
 | Socket repeatedly disconnects | Correlate deployments, network failures, session expiry and owner changes. Verify authenticated same-origin upgrades and browser errors; persistent reconnect failure is not a successful update. |
 
-Minimal production alerts, thresholds, destinations and log retention have
-not been established. `define-instance-monitoring` in [TODO.md](../TODO.md)
-tracks that work; this tail/metrics procedure is manual investigation, not
-demonstrated monitoring or alert delivery.
+The [instance monitor](MONITORING.md) defines terminal alerts, thresholds,
+private diagnostic access, account-usage samples and output retention. It
+reports availability, synchronization failures and overdue background work.
+It must be invoked by an operator; remote notification delivery and
+unattended monitoring are not configured. This tail/metrics procedure is
+manual investigation, and a healthy endpoint does not prove quota capacity.
 
 ## Rollback and data recovery limits
 
@@ -273,8 +275,8 @@ demonstrated backup/restore or migration-recovery procedure for this instance.
 `prove-instance-data-recovery` in [TODO.md](../TODO.md) tracks a disposable
 backup/restore and code-rollback experiment, retention and restore limits.
 Do not claim a recovery window or use object/namespace deletion as repair.
-Link the demonstrated monitoring and recovery procedures here when those
-tasks land. Repeatable deployment automation remains
+Link a demonstrated recovery procedure here when that task lands.
+Repeatable deployment automation remains
 `standardize-instance-deployment`; this manual runbook does not supply it.
 
 ## Command verification boundary
