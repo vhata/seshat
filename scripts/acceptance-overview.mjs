@@ -68,6 +68,20 @@ let prs = [
 ];
 let failing = false;
 const calls = [];
+let heldRepositoryRead = null;
+const repositoryReadGates = [];
+function holdRepositoryRead() {
+  let entered;
+  let release;
+  const gate = {
+    entered: new Promise((resolve) => { entered = resolve; }),
+    response: new Promise((resolve) => { release = resolve; }),
+    enter: () => entered(), release: () => release(),
+  };
+  heldRepositoryRead = gate;
+  repositoryReadGates.push(gate);
+  return gate;
+}
 const unexpected = [];
 const installation = { id: 9, account: { id: 1001, login: "example", type: "User" }, repository_selection: "all", suspended_at: null };
 const restRepository = { id: 12, node_id: "R_example", full_name: "example/observatory", owner: { id: 1001, login: "example" }, visibility: "public", fork: false, archived: false };
@@ -75,7 +89,8 @@ let listing = [restRepository];
 async function github(request) {
   const url = new URL(request.url);
   const route = `${request.method} ${url.origin}${url.pathname}`;
-  calls.push({ route, at: now });
+  const call = { route, at: now };
+  calls.push(call);
   if (live) {
     assert.equal(url.origin, "https://api.github.com", "Real-App probe only contacts GitHub's API");
     const token = request.method === "POST" && /^\/app\/installations\/[1-9][0-9]*\/access_tokens$/.test(url.pathname);
@@ -89,7 +104,7 @@ async function github(request) {
       console.error("acceptance: live transport failed", { type: error.name, code: error.cause?.code });
       throw error;
     }
-    calls.at(-1).status = response.status;
+    call.status = response.status;
     // Node fetch has already decoded compression. Do not tell workerd that
     // the decoded bytes are still gzip encoded, or keep the encoded length.
     const headers = new Headers(response.headers);
@@ -105,6 +120,8 @@ async function github(request) {
   if (route === "GET https://api.github.com/repos/example/observatory/collaborators/example/permission") return Response.json({ permission: "admin", user: { id: 1001, login: "example" } });
   if (route === "POST https://api.github.com/graphql") {
     const { query, variables } = await request.json();
+    call.operation = query.match(/query\s+(\w+)/)?.[1];
+    call.ids = variables.ids ?? (variables.id ? [variables.id] : []);
     const repositoryFor = (id) => {
       const listed = listing.find((entry) => entry.node_id === id);
       return { ...repository, id, databaseId: listed?.id ?? repository.databaseId, nameWithOwner: listed?.full_name ?? repository.nameWithOwner };
@@ -114,6 +131,12 @@ async function github(request) {
       : query.includes("SeshatRepositoryPrs")
         ? variables.ids.map((id) => ({ ...repositoryFor(id), pullRequests: connection(id === repository.id ? prs.filter((p) => p.state === "OPEN") : []) }))
         : variables.ids.map((id) => prs.find((p) => p.id === id) ?? null);
+    if (query.includes("SeshatRepositoryPrs") && heldRepositoryRead) {
+      const gate = heldRepositoryRead;
+      heldRepositoryRead = null;
+      gate.enter();
+      await gate.response;
+    }
     return Response.json({ data: { nodes, rateLimit: { cost: 1, remaining: 4900, limit: 5000, resetAt: iso(now + 3_600_000) } } });
   }
   const number = Number(url.pathname.match(/\/pulls\/(\d+)/)?.[1]);
@@ -218,6 +241,10 @@ try {
   const errors = [];
   const external = [];
   const sockets = [];
+  let manualPosts = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/repositories/refresh-one") manualPosts++;
+  });
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("websocket", (socket) => sockets.push(socket));
   await page.route("**/*", (route) => {
@@ -373,6 +400,101 @@ try {
   await emptyRepositoryDetails.getByRole("tooltip").waitFor({ state: "visible" });
   assert.ok((await emptyRepositoryDetails.getByRole("tooltip").innerText()).includes("Repository fully checked"));
   await page.locator(".repository-checks summary").click();
+  // Manual reconciliation uses a single repository's complete open set,
+  // independently of discovery and of the aggregate scheduled sweep time.
+  prs[2] = { ...prs[2], mergeable: "MERGEABLE" };
+  await advance(6000);
+  await visibility(false);
+  const manualChecks = [];
+  function selectedOnly(before, nodeId) {
+    const observed = calls.slice(before);
+    assert.ok(observed.some((call) => call.operation === "SeshatRepositoryPrs"));
+    assert.ok(observed.every((call) => !call.route.endsWith("/installation/repositories")),
+      "A repository refresh must not request installation discovery");
+    assert.ok(observed.every((call) => call.operation !== "SeshatPrCounts"),
+      "A repository refresh must not start the all-repository count phase");
+    for (const call of observed.filter((call) => call.operation === "SeshatRepositoryPrs")) {
+      assert.deepEqual(call.ids, [nodeId], "Only the requested repository may be reconciled");
+    }
+  }
+  async function clickRefresh(control, repositoryId) {
+    const response = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/repositories/refresh-one");
+    await control.click();
+    const accepted = await response;
+    assert.equal(accepted.status(), 202);
+    const receipt = await accepted.json();
+    assert.equal(receipt.ok, true);
+    assert.equal(receipt.attempt.result, "queued");
+    const snapshot = await command("snapshot");
+    assert.equal(snapshot.freshness.repositoryRefreshes[String(repositoryId)].latestAttempt.id, receipt.attempt.id);
+    return receipt.attempt;
+  }
+  const beforeManual = await command("snapshot");
+  const originalPrs = [...prs];
+  prs = [{ ...prs[0], state: "CLOSED" }, ...prs.slice(1), pr(8, { title: "Missed open discovered by targeted refresh" })];
+  const held = holdRepositoryRead();
+  const selectedControl = page.locator('[data-pr="PR_1"] .repository-refresh button');
+  const beforeSelectedCalls = calls.length;
+  const beforeSelectedPosts = manualPosts;
+  const request = await clickRefresh(selectedControl, 12);
+  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Requested refresh: queued." }).waitFor();
+  await selectedControl.evaluate((button) => { button.click(); button.click(); });
+  assert.equal(manualPosts, beforeSelectedPosts + 1, "Disabled repeated clicks send no extra requests");
+  const reading = drain(1);
+  let entryTimeout;
+  try {
+    await Promise.race([held.entered, new Promise((_, reject) => {
+      entryTimeout = setTimeout(() => reject(new Error("Targeted refresh did not begin its repository read")), 10_000);
+    })]);
+  } finally { clearTimeout(entryTimeout); }
+  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Requested refresh: running;" }).waitFor();
+  const duplicate = await page.evaluate(async () => {
+    const response = await fetch("/api/repositories/refresh-one", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repositoryId: 12, ownerAccountId: 1001 }),
+    });
+    return response.json();
+  });
+  assert.equal(duplicate.attempt.id, request.id, "A concurrent request coalesces onto the running work");
+  held.release();
+  await reading;
+  await drain();
+  const afterManual = await command("snapshot");
+  assert.equal(afterManual.freshness.repositoryRefreshes["12"].latestAttempt.result, "success");
+  assert.equal(afterManual.freshness.repositoryRefreshes["12"].latestAttempt.id, request.id);
+  assert.equal(afterManual.sync.lastSuccessfulSweepAt, beforeManual.sync.lastSuccessfulSweepAt);
+  assert.equal(afterManual.buckets.flatMap((bucket) => bucket.rows).some((row) => row.pr.nodeId === "PR_1"), false);
+  await page.locator('[data-pr="PR_8"]').waitFor();
+  await page.locator('[data-pr="PR_1"]').waitFor({ state: "detached" });
+  await page.locator('[data-pr="PR_8"] .repository-refresh [role=status]').filter({ hasText: "Requested refresh: completed;" }).waitFor();
+  selectedOnly(beforeSelectedCalls, "R_example");
+  manualChecks.push("selected repository only", "queued and running feedback", "duplicate request coalescing", "missed open and close reconciliation");
+  await page.screenshot({ path: path.join(evidence, "manual-refresh-completed.png"), fullPage: true });
+  prs = originalPrs;
+  await clickRefresh(page.locator('[data-pr="PR_8"] .repository-refresh button'), 12);
+  await drain();
+  await page.locator('[data-pr="PR_1"]').waitFor();
+  await page.locator('[data-pr="PR_8"]').waitFor({ state: "detached" });
+
+  // A failed explicit request retains its identity and the cached PRs while
+  // ordinary retry deadlines run; a later successful request confirms recovery.
+  failing = true;
+  const failedRequest = await clickRefresh(page.locator('[data-pr="PR_1"] .repository-refresh button'), 12);
+  await drain();
+  await advance(30_100);
+  const failedManual = await command("snapshot");
+  assert.equal(failedManual.freshness.repositoryRefreshes["12"].latestAttempt.id, failedRequest.id);
+  assert.equal(failedManual.freshness.repositoryRefreshes["12"].latestAttempt.result, "failed");
+  assert.equal(await page.locator(".pr-row").count(), 7, "Manual failure must retain all cached rows");
+  await page.locator('[data-pr="PR_1"] .repository-refresh [role=alert]').filter({ hasText: "Cached data retained." }).waitFor();
+  await page.screenshot({ path: path.join(evidence, "manual-refresh-failed.png"), fullPage: true });
+  failing = false;
+  await clickRefresh(page.locator('[data-pr="PR_1"] .repository-refresh button'), 12);
+  await drain();
+  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Requested refresh: completed;" }).waitFor();
+  manualChecks.push("failed request preserves cached rows", "explicit recovery confirms a new request");
+  await visibility(true);
+
   listing = listing.map((repo) => repo.id === 13 ? { ...repo, archived: true } : repo);
   await sendDelivery("repository", { action: "archived", repository: { ...created, archived: true } });
   assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 13)?.monitored, false, "Archiving must stop monitoring without owner action");
@@ -520,6 +642,24 @@ try {
   await mutedSummary.waitFor();
   assert.match(await mutedSummary.textContent(), /1 repositor(?:y|ies).*0 (?:open )?PRs/);
   assert.equal(await page.locator(".buckets .pr-row").count(), 7);
+  // Empty muted repositories have a refresh action even without a PR row.
+  await visibility(false);
+  await drain();
+  await page.locator(".repository-checks summary").click();
+  const emptyRefresh = page.locator(".repository-checks li").filter({ hasText: "example/new-repository" });
+  const emptyCalls = calls.length;
+  const emptyRequest = await clickRefresh(emptyRefresh.getByRole("button", { name: "Refresh example/new-repository", exact: true }), 13);
+  await drain();
+  await emptyRefresh.locator(".repository-refresh [role=status]").filter({ hasText: "Requested refresh: completed;" }).waitFor();
+  const emptySnapshot = await command("snapshot");
+  assert.equal(emptySnapshot.freshness.repositoryRefreshes["13"].latestAttempt.id, emptyRequest.id);
+  assert.equal(emptySnapshot.freshness.repositoryRefreshes["13"].latestAttempt.result, "success");
+  assert.equal(emptySnapshot.repositories.find((repo) => repo.id === 13)?.muted, true);
+  selectedOnly(emptyCalls, "R_created");
+  manualChecks.push("empty muted repository refresh");
+  await page.locator(".repository-checks summary").click();
+  await visibility(true);
+
   await mutedSummary.focus();
   await page.keyboard.press("Enter");
   await muted.getByRole("button", { name: "Unmute example/new-repository", exact: true }).click();
@@ -593,11 +733,12 @@ try {
   await page.waitForTimeout(1500);
   assert.equal(sockets.length, endedSockets, "Ended sessions must stop reconnecting");
   await page.screenshot({ path: path.join(evidence, "session-ended.png") });
-  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in", "scoped repository and PR evidence", "hover and keyboard freshness details", "PR reread preserves repository check time", "empty repository check", "object restart retains check evidence"] };
+  const summary = { rows: 7, buckets: 7, transitions, manualChecks, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in", "scoped repository and PR evidence", "hover and keyboard freshness details", "PR reread preserves repository check time", "empty repository check", "object restart retains check evidence"] };
   await writeFile(path.join(evidence, "results.json"), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary));
   }
 } finally {
+  for (const gate of repositoryReadGates) gate.release();
   await browser?.close();
   await mf.dispose();
 }
