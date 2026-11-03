@@ -14,6 +14,7 @@ import {
   type OverviewState,
 } from "./overview-client";
 import logo from "../../assets/seshat.svg";
+import { MutedRepositories } from "./MutedRepositories";
 
 const RULES: Record<BucketId, string> = {
   "ready-to-land":
@@ -407,10 +408,19 @@ function SnapshotContent({
   outdated: boolean;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const count = snapshot.buckets.reduce((n, b) => n + b.rows.length, 0);
-  const monitored = snapshot.repositories.filter(
-    (repo) => repo.monitored,
-  ).length;
+  const monitoredRepositories = snapshot.repositories.filter((repo) => repo.monitored);
+  const mutedRepositories = monitoredRepositories.filter((repo) => repo.muted);
+  const mutedIds = new Set(mutedRepositories.map((repo) => repo.id));
+  const activeBuckets = snapshot.buckets.map((bucket) => ({
+    ...bucket, rows: bucket.rows.filter((row) => !mutedIds.has(row.pr.repositoryId)),
+  }));
+  const mutedBuckets = snapshot.buckets.map((bucket) => ({
+    ...bucket, rows: bucket.rows.filter((row) => mutedIds.has(row.pr.repositoryId)),
+  }));
+  const count = activeBuckets.reduce((n, b) => n + b.rows.length, 0);
+  const mutedCount = mutedBuckets.reduce((n, b) => n + b.rows.length, 0);
+  const monitored = monitoredRepositories.length;
+  const activeRepositories = monitored - mutedRepositories.length;
   const initial = snapshot.sync.lastSuccessfulSweepAt === null;
   function jump(id: string) {
     setCollapsed((previous) => {
@@ -424,7 +434,7 @@ function SnapshotContent({
         ?.scrollIntoView({ block: "start", behavior: "smooth" }),
     );
   }
-  if (initial && count === 0)
+  if (initial && count + mutedCount === 0)
     return (
       <div className="empty">
         <h1>Loading your first overview</h1>
@@ -452,12 +462,12 @@ function SnapshotContent({
           <div key={group} className="summary-group">
             <div className="eyebrow">
               {group === "needs-you" ? "Needs you" : "Waiting"} ·{" "}
-              {snapshot.buckets
+              {activeBuckets
                 .filter((b) => b.bucket.group === group)
                 .reduce((n, b) => n + b.rows.length, 0)}
             </div>
             <div className="chips">
-              {snapshot.buckets
+              {activeBuckets
                 .filter((b) => b.bucket.group === group)
                 .map(({ bucket, rows }) => (
                   <button
@@ -488,17 +498,18 @@ function SnapshotContent({
             </>
           ) : (
             <>
-              {count} open PRs · {monitored} repositories
+              {count} open PRs · {activeRepositories} repositories
             </>
           )}
         </span>
       </div>
       {count === 0 && (
         <div className="empty">
-          <h1>No open pull requests</h1>
+          <h1>{mutedCount > 0 ? "No active pull requests" : "No open pull requests"}</h1>
           <p>
-            No open pull requests were reported on your monitored repositories
-            at the last successful check.
+            {mutedCount > 0
+              ? "All open pull requests are in Muted repositories below."
+              : "No open pull requests were reported on your monitored repositories at the last successful check."}
           </p>
           <a href="/repositories">Manage repositories</a>
         </div>
@@ -515,7 +526,7 @@ function SnapshotContent({
           <span>Active</span>
         </div>
         {(["needs-you", "waiting"] as const).map((group) => {
-          const buckets = snapshot.buckets.filter(
+          const buckets = activeBuckets.filter(
             (b) => b.bucket.group === group,
           );
           const groupCount = buckets.reduce((n, b) => n + b.rows.length, 0);
@@ -600,6 +611,18 @@ function SnapshotContent({
           );
         })}
       </div>
+      <MutedRepositories
+        repositories={mutedRepositories}
+        buckets={mutedBuckets}
+        renderRow={(row) => <PrRow
+          key={row.pr.nodeId}
+          row={row}
+          ownerId={snapshot.ownerId}
+          now={state.now}
+          note={state.changes.get(row.pr.nodeId)}
+          outdated={outdated}
+        />}
+      />
     </>
   );
 }

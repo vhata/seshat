@@ -26,6 +26,16 @@ and object classes, a local Miniflare runtime and real browser WebSockets.
 GitHub is replaced at the runtime's outbound service boundary; an unknown
 request fails the scenario. Browser requests to other origins are refused.
 
+The synthetic scenario also exercises repository muting through the page's
+real controls. It verifies persistence across page reload and discovery,
+separate active and muted counts (including an empty repository), retained
+bucket labels, keyboard disclosure and explicit unmute. Signed webhook
+updates and a missed-event scheduled sweep must update muted PRs while the
+section remains collapsed, at the same reconciliation interval and with
+normal last-success reporting. Turning monitoring off and on must retain
+the mute choice. These checks use local controlled time and stubbed GitHub;
+they do not establish hosted delivery latency or physical-device behavior.
+
 The harness seeds an owner session through a private service binding. Its
 test bundle supplies clock and alarm controls through that binding, outside
 the HTTP surface. Since workerd reserves the alarm RPC name, a generated

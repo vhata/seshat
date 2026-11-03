@@ -374,6 +374,112 @@ try {
   await drain();
   await page.locator(".pr-row").first().waitFor();
 
+  // Muting is a persisted display preference: the same monitored PRs keep
+  // updating over the real socket while the muted section stays collapsed.
+  const beforeMute = await command("snapshot");
+  await page.goto(`${origin}/repositories`);
+  const mute = page.getByRole("button", { name: "Mute example/observatory", exact: true });
+  await mute.waitFor();
+  await mute.focus();
+  await page.keyboard.press("Space");
+  await page.getByRole("button", { name: "Unmute example/observatory", exact: true }).waitFor();
+  await page.reload();
+  await page.getByRole("button", { name: "Unmute example/observatory", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Refresh listings", exact: true }).click();
+  await page.waitForFunction(() => {
+    const button = [...document.querySelectorAll("button")].find((entry) => entry.textContent === "Refresh listings");
+    return button && !button.disabled;
+  });
+  await page.getByRole("button", { name: "Unmute example/observatory", exact: true }).waitFor();
+  await page.getByRole("link", { name: "PR overview", exact: true }).click();
+  const muted = page.locator("details.muted-repositories");
+  const mutedSummary = muted.locator("summary");
+  await mutedSummary.waitFor();
+  assert.equal(await muted.getAttribute("open"), null, "Muted repositories start collapsed");
+  assert.equal(await page.locator(".buckets .pr-row").count(), 0, "Muted rows leave the regular buckets");
+  assert.equal(await muted.locator(".pr-row").count(), 7, "Muting retains every cached PR");
+  assert.match(await mutedSummary.textContent(), /1 repositor(?:y|ies).*7 (?:open )?PRs/);
+  for (const heading of await page.locator(".buckets .group-heading h2").allTextContents()) {
+    assert.match(heading, /0\s*$/, "Active group counts exclude muted PRs");
+  }
+  assert.equal(await page.getByText("No repositories monitored yet", { exact: true }).count(), 0);
+  let mutedSnapshot = await command("snapshot");
+  assert.equal(mutedSnapshot.repositories.find((repo) => repo.id === 12)?.muted, true);
+  assert.equal(mutedSnapshot.repositories.find((repo) => repo.id === 12)?.monitored, true);
+  assert.equal(mutedSnapshot.sync.intervalMs, beforeMute.sync.intervalMs, "Muting keeps the normal reconciliation interval");
+
+  await mutedSummary.focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await muted.evaluate((element) => element.open), true, "Enter expands the native muted disclosure");
+  for (const bucket of beforeMute.buckets.filter((bucket) => bucket.rows.length)) {
+    assert.ok((await muted.getByRole("heading", { name: bucket.bucket.title, exact: false }).count()) > 0, `Muted PRs retain ${bucket.bucket.title}`);
+  }
+  await page.screenshot({ path: path.join(evidence, "muted-expanded.png"), fullPage: true });
+  await mutedSummary.focus();
+  await page.keyboard.press("Space");
+  assert.equal(await muted.evaluate((element) => element.open), false, "Space collapses the native muted disclosure");
+
+  await webhook("edited", { title: "Muted webhook update stays collapsed" });
+  await page.waitForFunction(() => document.querySelector(".muted-repositories")?.textContent.includes("Muted webhook update stays collapsed"));
+  assert.equal(await muted.evaluate((element) => element.open), false, "New activity must not expand or unmute");
+  assert.equal(await page.locator(".buckets .pr-row").count(), 0);
+  const lastMutedSweep = (await command("snapshot")).sync.lastSuccessfulSweepAt;
+  const collapsedCalls = calls.length;
+  prs[0] = { ...prs[0], title: "Muted missed delivery caught by scheduled sweep" };
+  await advance(120_000);
+  await page.waitForFunction(() => document.querySelector(".muted-repositories")?.textContent.includes("Muted missed delivery caught by scheduled sweep"));
+  mutedSnapshot = await command("snapshot");
+  assert.ok(calls.length > collapsedCalls, "Collapsed muted PRs still receive scheduled GitHub reads");
+  assert.ok(mutedSnapshot.sync.lastSuccessfulSweepAt > lastMutedSweep, "Muted repository reads retain freshness reporting");
+  assert.equal(mutedSnapshot.repositories.find((repo) => repo.id === 12)?.muted, true);
+  assert.equal(await muted.evaluate((element) => element.open), false);
+  await page.screenshot({ path: path.join(evidence, "muted-collapsed.png"), fullPage: true });
+
+  await page.goto(`${origin}/repositories`);
+  await page.getByRole("switch", { name: "Monitor example/observatory", exact: true }).click();
+  await page.waitForFunction(() => {
+    const input = document.querySelector('input[aria-label="Monitor example/observatory"]');
+    return input && !input.checked && !input.disabled;
+  });
+  assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 12)?.muted, true, "Monitoring off keeps the mute choice");
+  await page.getByRole("switch", { name: "Monitor example/observatory", exact: true }).click();
+  await page.waitForFunction(() => {
+    const input = document.querySelector('input[aria-label="Monitor example/observatory"]');
+    return input && input.checked && !input.disabled;
+  });
+  await page.getByRole("link", { name: "PR overview", exact: true }).click();
+  await page.waitForTimeout(150);
+  await drain();
+  await page.waitForFunction(() => document.querySelectorAll(".muted-repositories .pr-row").length === 7);
+  await mutedSummary.focus();
+  await page.keyboard.press("Enter");
+  const unmute = muted.getByRole("button", { name: "Unmute example/observatory", exact: true });
+  await unmute.focus();
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => document.querySelectorAll(".buckets .pr-row").length === 7);
+  await page.waitForFunction(() => document.activeElement === document.querySelector(".muted-repositories summary"));
+  assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 12)?.muted, false, "Explicit keyboard unmute restores the regular buckets");
+
+  // An empty muted repository contributes to the repository count, with no
+  // PRs to infer its existence from and an explicit way to unmute it.
+  listing = listing.map((repo) => repo.id === 13 ? { ...repo, archived: false } : repo);
+  await sendDelivery("repository", { action: "unarchived", repository: { ...created, archived: false } });
+  await page.goto(`${origin}/repositories`);
+  await page.getByRole("button", { name: "Mute example/new-repository", exact: true }).click();
+  await page.getByRole("button", { name: "Unmute example/new-repository", exact: true }).waitFor();
+  await page.getByRole("link", { name: "PR overview", exact: true }).click();
+  await mutedSummary.waitFor();
+  assert.match(await mutedSummary.textContent(), /1 repositor(?:y|ies).*0 (?:open )?PRs/);
+  assert.equal(await page.locator(".buckets .pr-row").count(), 7);
+  await mutedSummary.focus();
+  await page.keyboard.press("Enter");
+  await muted.getByRole("button", { name: "Unmute example/new-repository", exact: true }).click();
+  await page.waitForFunction(() => /0 repositories.*0 (?:open )?PRs/.test(document.querySelector(".muted-repositories summary")?.textContent ?? ""));
+  assert.equal(await muted.getByRole("button", { name: /^Unmute / }).count(), 0);
+  assert.ok((await muted.textContent()).includes("No muted repositories are monitored."));
+  listing = listing.map((repo) => repo.id === 13 ? { ...repo, archived: true } : repo);
+  await sendDelivery("repository", { action: "archived", repository: { ...created, archived: true } });
+
   await visibility(false);
   await advance(360_000);
   await visibility(true);
@@ -426,7 +532,7 @@ try {
   await page.waitForTimeout(1500);
   assert.equal(sockets.length, endedSockets, "Ended sessions must stop reconnecting");
   await page.screenshot({ path: path.join(evidence, "session-ended.png") });
-  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in"] };
+  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in"] };
   await writeFile(path.join(evidence, "results.json"), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary));
   }

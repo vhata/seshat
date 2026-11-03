@@ -223,27 +223,3 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Verify that only the selected repository is requested by the action,
     including an empty repository, missed open/close events, concurrent
     background work, duplicate requests, permission loss and rate limits.
-
-- [PRODUCT] `mute-repositories` — **Move muted repos out of the main view.**
-  Quiet repositories should remain monitored without cluttering the work
-  the owner is actively following.
-  - Source: owner discussion of refresh and muting, 2026-11-03
-  - Starting point: `src/frontend/Overview.tsx`,
-    `src/frontend/Repositories.tsx`, `src/object/repository-selection.ts`,
-    `src/object/repository-discovery-store.ts` and
-    `src/shared/overview/protocol.ts`.
-  - Store mute independently from monitoring. Move muted PRs into a
-    collapsed "Muted repositories" section below the regular buckets,
-    retaining their bucket labels. Exclude them from the main "Needs you"
-    and "Waiting" counts; show separate muted repository and PR counts.
-  - Keep webhook reads, scheduled reconciliation and freshness reporting
-    working at the normal frequency. Muting must not delete cached PRs;
-    turning monitoring off currently does, so do not reuse that operation.
-  - Provide Mute/Unmute in repository controls and an Unmute action in
-    the muted section. Persist the preference across sessions, discovery
-    refreshes and repository renames, scoped to repository and owner IDs
-    so ownership transfers do not silently inherit it. New activity does
-    not automatically unmute a repository.
-  - Verify persisted choices, active/muted counts and empty states,
-    continued updates while collapsed, explicit unmute, monitoring
-    changes, renames and ownership transfers, plus keyboard operation.

@@ -124,6 +124,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
           ...listed, installationId, ownerPermission: permissions.get(listed.id)!,
           monitorOverride: this.context.discovery.monitoringOverride(listed.id, listed.ownerAccountId)
             ?? (prior?.ownerAccountId === listed.ownerAccountId ? prior.monitorOverride : null) ?? null,
+          muted: this.context.discovery.repositoryMuted(listed.id, listed.ownerAccountId),
           listedAt: now, visibilityReportedAt: now,
         };
         // A new owner without permission must also withdraw the old owner's row.
@@ -172,6 +173,19 @@ export class RepositorySelection implements RepositorySelectionOperations {
     this.context.discovery.saveMonitoringOverride(repositoryId, repository.ownerAccountId, override);
     if (this.context.store.putRepository(result)) await this.context.publish(now);
     return { ok: true, repository: result };
+  }
+
+  async setRepositoryMuted(repositoryId: number, ownerAccountId: number, muted: boolean, now: number): Promise<MonitoringMutationResult> {
+    const repository = this.context.store.repositories().find((entry) => entry.id === repositoryId);
+    if (!repository) return { ok: false, reason: "not-found" };
+    if (repository.ownerAccountId !== ownerAccountId || !this.acceptedInstallation(repository.installationId)) {
+      return { ok: false, reason: "not-allowed" };
+    }
+    const updated = { ...repository, muted };
+    // No network reads or scheduling: monitoring and cached PRs are unchanged.
+    this.context.discovery.saveRepositoryMuted(repositoryId, ownerAccountId, muted);
+    if (this.context.store.putRepository(updated)) await this.context.publish(now);
+    return { ok: true, repository: updated };
   }
 
   forget(installationId: number): void {

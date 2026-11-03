@@ -3,6 +3,7 @@ import type { StoredInstallation } from "../shared/installations";
 import type { InstallationRefreshResult, RepositoryRecord } from "../shared/overview/protocol";
 import { canMonitorRepository, REPOSITORIES_PATH, type RepositorySettings } from "../shared/repositories";
 import "./Repositories.css";
+import { setRepositoryMuted } from "./repository-muting";
 
 async function refreshInstallation(installationId: number): Promise<void> {
   for (;;) {
@@ -56,6 +57,16 @@ export function Repositories() {
     }
     finally { setBusy(false); }
   }
+  async function mute(repository: RepositoryRecord) {
+    setBusy(true); setError(null);
+    try {
+      await setRepositoryMuted(repository, !repository.muted);
+      setSettings(await settingsRequest() as RepositorySettings);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      try { setSettings(await settingsRequest() as RepositorySettings); } catch { /* keep the last view */ }
+    } finally { setBusy(false); }
+  }
   async function refresh() {
     if (!settings) return;
     setBusy(true); setError(null);
@@ -88,13 +99,13 @@ export function Repositories() {
     {settings && <>
       {settings.installations.filter((installation) => installation.status === "pending").map((installation) => <PendingOrganization key={installation.id} installation={installation} login={logins[installation.id]} busy={busy} decide={(accept) => void action("/organization", { installationId: installation.id, accept })} />)}
       {settings.installations.length === 0 && <p>No GitHub App installations are available. <a href="/setup/installed">Check the installation</a>.</p>}
-      <RepositoryGroup title="Owned repositories" description="Your own repositories are monitored automatically, except forks and archives." repositories={settings.repositories.filter((repository) => repository.ownerAccountId === settings.ownerId && !repository.isFork)} settings={settings} busy={busy} change={(repositoryId, override) => void action("/monitoring", { repositoryId, override })} />
-      <RepositoryGroup title="Your forks" description="Forks stay off until you choose to monitor them." repositories={settings.repositories.filter((repository) => repository.ownerAccountId === settings.ownerId && repository.isFork)} settings={settings} busy={busy} change={(repositoryId, override) => void action("/monitoring", { repositoryId, override })} />
+      <RepositoryGroup title="Owned repositories" description="Your own repositories are monitored automatically, except forks and archives." repositories={settings.repositories.filter((repository) => repository.ownerAccountId === settings.ownerId && !repository.isFork)} settings={settings} busy={busy} mute={(repository) => void mute(repository)} change={(repositoryId, override) => void action("/monitoring", { repositoryId, override })} />
+      <RepositoryGroup title="Your forks" description="Forks stay off until you choose to monitor them." repositories={settings.repositories.filter((repository) => repository.ownerAccountId === settings.ownerId && repository.isFork)} settings={settings} busy={busy} mute={(repository) => void mute(repository)} change={(repositoryId, override) => void action("/monitoring", { repositoryId, override })} />
       {settings.installations.filter((installation) => installation.accountType === "Organization" && installation.status === "accepted").map((installation) => {
         const repositories = settings.repositories.filter((repository) => repository.installationId === installation.id);
-        return <RepositoryGroup key={installation.id} title={logins[installation.id] ?? repositories[0]?.ownerLogin ?? `Organization ${installation.accountId}`} description="Organization repositories are monitored only when you switch them on. Only repositories you can access are listed." repositories={repositories} settings={settings} busy={busy} change={(repositoryId, override) => void action("/monitoring", { repositoryId, override })} />;
+        return <RepositoryGroup key={installation.id} title={logins[installation.id] ?? repositories[0]?.ownerLogin ?? `Organization ${installation.accountId}`} description="Organization repositories are monitored only when you switch them on. Only repositories you can access are listed." repositories={repositories} settings={settings} busy={busy} mute={(repository) => void mute(repository)} change={(repositoryId, override) => void action("/monitoring", { repositoryId, override })} />;
       })}
-      <p className="repository-footnote">Changes apply to the overview immediately. Switching monitoring off removes that repository’s pull requests.</p>
+      <p className="repository-footnote">Changes apply to the overview immediately. Switching monitoring off removes that repository’s pull requests. Muting keeps monitoring on at the normal frequency and moves its PRs to the collapsed Muted repositories section. New activity does not unmute it.</p>
     </>}
   </main>;
 }
@@ -103,14 +114,15 @@ export function PendingOrganization({ installation, login, busy, decide }: { ins
   return <aside className="repository-pending"><h2>Organization installation awaiting acceptance</h2><p>GitHub organization {login ?? `account ${installation.accountId}`}, installation {installation.id}. No repositories are read until you accept. Accepting lets you choose individual repositories; it monitors none automatically.</p>{login && <a href={`https://github.com/${encodeURIComponent(login)}`}>View organization on GitHub</a>}<div><button disabled={busy} onClick={() => decide(true)}>Accept organization</button><button disabled={busy} onClick={() => decide(false)}>Refuse and uninstall</button></div></aside>;
 }
 
-export function RepositoryGroup({ title, description, repositories, settings, busy, change }: {
+export function RepositoryGroup({ title, description, repositories, settings, busy, change, mute }: {
   title: string; description: string; repositories: readonly RepositoryRecord[]; settings: RepositorySettings;
   busy: boolean; change: (repositoryId: number, override: boolean | null) => void;
+  mute: (repository: RepositoryRecord) => void;
 }) {
   return <section className="repository-group"><div className="repository-group-heading"><h2>{title}</h2><span>{repositories.filter((repository) => repository.monitored).length} monitored · {repositories.length} available</span></div><p>{description}</p>
     {repositories.length === 0 ? <p className="repository-empty">No repositories listed. Refresh listings to check GitHub.</p> : <ul>{[...repositories].sort((a, b) => a.fullName.localeCompare(b.fullName)).map((repository) => <li key={repository.id}>
       <div><a className="repository-name" href={`https://github.com/${repository.fullName.split("/").map(encodeURIComponent).join("/")}`}>{repository.fullName}</a><span className="repository-visibility">{repository.visibility}</span><p>{repository.isArchived ? "Archived · Not monitored" : repository.isFork ? "Fork · Opt in to monitor" : repository.monitorOverride === null && repository.ownerAccountId === settings.ownerId ? "Monitored by default" : repository.monitored ? "Monitoring on" : "Not monitored"}</p></div>
-      <div className="repository-controls"><label className="repository-toggle"><input type="checkbox" role="switch" aria-label={`Monitor ${repository.fullName}`} checked={repository.monitored} disabled={busy || !canMonitorRepository(repository, settings)} onChange={(event) => change(repository.id, event.target.checked)} /><span>{repository.monitored ? "On" : "Off"}</span></label>{repository.monitorOverride !== null && !repository.isArchived && <button className="repository-reset" disabled={busy} onClick={() => change(repository.id, null)}>Use default</button>}</div>
+      <div className="repository-controls"><button type="button" disabled={busy} aria-label={`${repository.muted ? "Unmute" : "Mute"} ${repository.fullName}`} onClick={() => mute(repository)}>{repository.muted ? "Unmute" : "Mute"}</button><label className="repository-toggle"><input type="checkbox" role="switch" aria-label={`Monitor ${repository.fullName}`} checked={repository.monitored} disabled={busy || !canMonitorRepository(repository, settings)} onChange={(event) => change(repository.id, event.target.checked)} /><span>{repository.monitored ? "On" : "Off"}</span></label>{repository.monitorOverride !== null && !repository.isArchived && <button className="repository-reset" disabled={busy} onClick={() => change(repository.id, null)}>Use default</button>}</div>
     </li>)}</ul>}
   </section>;
 }

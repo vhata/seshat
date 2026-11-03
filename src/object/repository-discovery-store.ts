@@ -71,5 +71,29 @@ export class RepositoryDiscoveryStore {
     if (ownerAccountId !== undefined && typeof value === "object" && value !== null && value.ownerAccountId !== ownerAccountId) return;
     this.storage.sql.exec("DELETE FROM settings WHERE key = ?", key);
   }
+  /** Preferences survive listing omissions; a newly observed owner starts unmuted. */
+  repositoryMuted(repositoryId: number, ownerAccountId: number): boolean {
+    const row = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", `repository-mute:${repositoryId}`).toArray()[0];
+    if (!row) return false;
+    const value = JSON.parse(row.value) as { ownerAccountId: number; muted: boolean };
+    if (value.ownerAccountId === ownerAccountId) return value.muted === true;
+    this.forgetRepositoryMute(repositoryId);
+    return false;
+  }
+  saveRepositoryMuted(repositoryId: number, ownerAccountId: number, muted: boolean): void {
+    if (!muted) { this.forgetRepositoryMute(repositoryId); return; }
+    const key = `repository-mute:${repositoryId}`;
+    const value = JSON.stringify({ ownerAccountId, muted });
+    const old = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", key).toArray()[0];
+    if (old?.value !== value) this.storage.sql.exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", key, value);
+  }
+  forgetRepositoryMute(repositoryId: number, ownerAccountId?: number): void {
+    const key = `repository-mute:${repositoryId}`;
+    const row = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", key).toArray()[0];
+    if (!row) return;
+    const value = JSON.parse(row.value) as { ownerAccountId: number };
+    if (ownerAccountId !== undefined && value.ownerAccountId !== ownerAccountId) return;
+    this.storage.sql.exec("DELETE FROM settings WHERE key = ?", key);
+  }
   private key(installationId: number): string { return `repository-discovery:${installationId}`; }
 }

@@ -213,11 +213,11 @@ describe("durable overview reconciliation", () => {
     });
   });
 
-  it("persists coalesced facts, answers without GitHub, and rereads while no page is visible", async () => {
+  it.each([false, true])("persists coalesced facts, answers without GitHub, and rereads while no page is visible (muted %s)", async (muted) => {
     const calls = github(() => pr());
-    const stub = await object("dormant-reread");
+    const stub = await object(`dormant-reread-${muted}`);
     await runInDurableObject(stub, async (_instance, state) => {
-      const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY);
+      const store = new OverviewStore(state.storage); store.putRepository({ ...FIXTURE_REPOSITORY, muted });
       const published: number[] = [];
       const sync = new OverviewSync({ storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => false, guard: async () => true, publish: async (now) => { published.push(now); } });
       await sync.receive(delivery(), NOW); await sync.receive(delivery(), NOW);
@@ -225,6 +225,7 @@ describe("durable overview reconciliation", () => {
       expect(await state.storage.getAlarm()).toBe(NOW + 2000);
       await sync.alarm(NOW + 2000);
       expect(store.pullRequests()).toHaveLength(1);
+      expect(store.repositories()[0]?.muted).toBe(muted);
       expect(store.pullRequests()[0]?.title).toBe("Updated through GitHub");
       expect(store.syncStatus().lastSuccessfulSweepAt).toBeNull();
       expect(JSON.stringify(state.storage.sql.exec("SELECT * FROM settings").toArray())).not.toContain("memory-only-token");
@@ -275,11 +276,11 @@ describe("durable overview reconciliation", () => {
     });
   });
 
-  it("runs immediate visible catchup and timed sweeps, records start time, and never polls while hidden", async () => {
+  it.each([false, true])("runs immediate visible catchup and timed sweeps, records start time, and never polls while hidden (muted %s)", async (muted) => {
     let count = 1; const calls = github(() => pr(), { count: () => count });
-    const stub = await object("visibility-sweep");
+    const stub = await object(`visibility-sweep-${muted}`);
     await runInDurableObject(stub, async (_instance, state) => {
-      const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY);
+      const store = new OverviewStore(state.storage); store.putRepository({ ...FIXTURE_REPOSITORY, muted });
       let visible = true;
       const discovery = selection();
       const sync = new OverviewSync({ storage: state.storage, store, selection: discovery, installations: () => INSTALLATIONS, visible: () => visible, guard: async () => true, publish: async () => {} });
@@ -287,9 +288,17 @@ describe("durable overview reconciliation", () => {
       for (let i = 0; i < 4; i++) await sync.alarm(NOW + i);
       expect(store.syncStatus().lastSuccessfulSweepAt).toBe(NOW);
       expect(store.pullRequests()).toHaveLength(1);
-      expect(await state.storage.getAlarm()).not.toBeNull();
+      expect(store.repositories()[0]?.muted).toBe(muted);
+      expect(store.syncStatus().intervalMs).toBe(120_000);
+      const firstReads = calls.mock.calls.length;
+      await sync.alarm(NOW + 119_999);
+      expect(calls.mock.calls.length).toBe(firstReads);
+      for (let i = 0; i < 4; i++) await sync.alarm(NOW + 120_000 + i);
+      expect(store.syncStatus().lastSuccessfulSweepAt).toBe(NOW + 120_000);
+      expect(calls.mock.calls.length).toBeGreaterThan(firstReads);
+      expect(store.repositories()[0]?.muted).toBe(muted);
       const before = calls.mock.calls.length;
-      visible = false; await sync.visibility(NOW + 1000, false); await sync.alarm(NOW + 120_000);
+      visible = false; await sync.visibility(NOW + 121_000, false); await sync.alarm(NOW + 240_000);
       expect(calls.mock.calls.length).toBe(before);
       visible = true; count = 0; await sync.visibility(NOW + 360_000, false);
       for (let i = 0; i < 4; i++) await sync.alarm(NOW + 360_000 + i);
@@ -501,16 +510,18 @@ describe("durable overview reconciliation", () => {
   it("records visibility for every delivery and withdraws transferred/deleted rows immediately", async () => {
     const stub = await object("repository-withdrawal");
     await runInDurableObject(stub, async (_instance, state) => {
-      const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY); store.putPullRequest(fixturePr());
+      const store = new OverviewStore(state.storage); store.putRepository({ ...FIXTURE_REPOSITORY, muted: true }); store.putPullRequest(fixturePr());
       const discovery = new RepositoryDiscoveryStore(state.storage); discovery.saveMonitoringOverride(12, FIXTURE_REPOSITORY.ownerAccountId, true);
+      discovery.saveRepositoryMuted(12, FIXTURE_REPOSITORY.ownerAccountId, true);
       const sync = new OverviewSync({ storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => false, guard: async () => true, publish: async () => {} });
       await sync.receive(reduceDelivery("repository", { installation: { id: 9 }, action: "privatized", repository: { id: 12 } }, NOW)!, NOW);
       expect(store.repositories()[0]).toMatchObject({ visibility: "private", listedAt: FIXTURE_REPOSITORY.listedAt, visibilityReportedAt: NOW });
       await sync.receive(delivery("edited"), NOW + 1);
       expect(store.repositories()[0]?.listedAt).toBe(FIXTURE_REPOSITORY.listedAt);
       await sync.receive(reduceDelivery("repository", { installation: { id: 9 }, action: "transferred", repository: { id: 12, visibility: "public", owner: { id: 4 } } }, NOW + 1)!, NOW + 1);
-      expect(store.pullRequests()).toEqual([]); expect(store.repositories()[0]).toMatchObject({ monitored: false, monitorOverride: null, ownerAccountId: 4 });
+      expect(store.pullRequests()).toEqual([]); expect(store.repositories()[0]).toMatchObject({ monitored: false, monitorOverride: null, ownerAccountId: 4, muted: false });
       expect(discovery.monitoringOverride(12, FIXTURE_REPOSITORY.ownerAccountId)).toBeNull();
+      expect(discovery.repositoryMuted(12, FIXTURE_REPOSITORY.ownerAccountId)).toBe(false);
       await sync.receive(reduceDelivery("repository", { installation: { id: 9 }, action: "deleted", repository: { id: 12 } }, NOW + 2)!, NOW + 2);
       expect(store.repositories()).toEqual([]);
     });
@@ -520,14 +531,16 @@ describe("durable overview reconciliation", () => {
     github(() => pr({ repository: { ...repository, nameWithOwner: "other/observatory", owner: { ...owner, databaseId: 4004, login: "other", __typename: "Organization" } } }));
     const stub = await object("pr-read-transfer");
     await runInDurableObject(stub, async (_instance, state) => {
-      const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY); store.putPullRequest(fixturePr());
+      const store = new OverviewStore(state.storage); store.putRepository({ ...FIXTURE_REPOSITORY, muted: true }); store.putPullRequest(fixturePr());
       const discovery = new RepositoryDiscoveryStore(state.storage); discovery.saveMonitoringOverride(12, FIXTURE_REPOSITORY.ownerAccountId, true);
+      discovery.saveRepositoryMuted(12, FIXTURE_REPOSITORY.ownerAccountId, true);
       const sync = new OverviewSync({ storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS, visible: () => false, guard: async () => true, publish: async () => {} });
       await sync.receive(delivery(), NOW);
       await sync.alarm(NOW + 2000);
       expect(store.pullRequests()).toEqual([]);
-      expect(store.repositories()[0]).toMatchObject({ monitored: false, monitorOverride: null, ownerAccountId: 4004 });
+      expect(store.repositories()[0]).toMatchObject({ monitored: false, monitorOverride: null, ownerAccountId: 4004, muted: false });
       expect(discovery.monitoringOverride(12, FIXTURE_REPOSITORY.ownerAccountId)).toBeNull();
+      expect(discovery.repositoryMuted(12, FIXTURE_REPOSITORY.ownerAccountId)).toBe(false);
     });
   });
 

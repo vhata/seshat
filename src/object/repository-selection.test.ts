@@ -97,6 +97,7 @@ describe("repository selection in the instance", () => {
     const stub = instanceStub(env); await stub.checkInstallations(NOW);
     await stub.decideOrganization(20, true, NOW); await stub.decideOrganization(30, true, NOW);
     await stub.refreshInstallation(20, NOW); await stub.setMonitoringOverride(5, override, NOW);
+    await stub.setRepositoryMuted(5, 3003, true, NOW);
     if (scenario === "transfer delivery" || scenario === "owner-change delivery") {
       await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 20 }, action: scenario === "transfer delivery" ? "transferred" : "edited",
         repository: { id: 5, visibility: "private", owner: { id: 4004 } } }, NOW + 1)!, NOW + 1);
@@ -108,23 +109,25 @@ describe("repository selection in the instance", () => {
     }
     listed = [repository(5, { full_name: "other/repo-5", owner: { id: 4004, login: "other" } })];
     expect(await stub.refreshInstallation(30, NOW + 2)).toMatchObject({ ok: true, changed: true });
-    expect((await stub.repositorySettings()).repositories).toMatchObject(scenario === "no permission after transfer" ? [] : [{ id: 5, ownerAccountId: 4004, monitored: false, monitorOverride: null }]);
+    expect((await stub.repositorySettings()).repositories).toMatchObject(scenario === "no permission after transfer" ? [] : [{ id: 5, ownerAccountId: 4004, monitored: false, monitorOverride: null, muted: false }]);
     expect((await storedRows()).settings).not.toContainEqual(expect.objectContaining({ key: "repository-monitoring:5" }));
+    expect((await storedRows()).settings).not.toContainEqual(expect.objectContaining({ key: "repository-mute:5" }));
     if (scenario.startsWith("delayed transfer")) {
       const destination = listed;
       await stub.setMonitoringOverride(5, override, NOW + 3);
+      await stub.setRepositoryMuted(5, 4004, true, NOW + 3);
       if (scenario === "delayed transfer with absent row") { listed = []; await stub.refreshInstallation(30, NOW + 4); }
       await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 20 }, action: "transferred",
         repository: { id: 5, visibility: "private", ...(scenario === "delayed transfer without owner" ? {} : { owner: { id: 4004 } }) } }, NOW + 5)!, NOW + 5);
       listed = []; await stub.refreshInstallation(30, NOW + 6);
       listed = destination; await stub.refreshInstallation(30, NOW + 7);
-      expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 5, monitored: override, monitorOverride: override }]);
+      expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 5, monitored: override, monitorOverride: override, muted: true }]);
     }
     // A later return to the original owner must not resurrect its old choice.
     listed = [repository(5, { full_name: "org/repo-5", owner: { id: 3003, login: "org" } })];
     if (scenario !== "old installation removed") {
       await stub.refreshInstallation(20, NOW + 8);
-      expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 5, monitored: false, monitorOverride: null }]);
+      expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 5, monitored: false, monitorOverride: null, muted: false }]);
     }
   });
   it.each([3003, null])("clears an absent repository's choice when transfer to %s is observed before a transfer back", async (destinationOwnerId) => {
@@ -132,12 +135,13 @@ describe("repository selection in the instance", () => {
     stubGitHub(githubRoutes(() => listed, () => [PERSONAL, ORG]));
     const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.decideOrganization(20, true, NOW);
     await stub.refreshInstallation(10, NOW); await stub.setMonitoringOverride(1, true, NOW);
+    await stub.setRepositoryMuted(1, OWNER_ID, true, NOW);
     listed = []; await stub.refreshInstallation(10, NOW + 1);
     await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 10 }, action: "transferred",
       repository: { id: 1, ...(destinationOwnerId === null ? {} : { owner: { id: destinationOwnerId } }) } }, NOW + 2)!, NOW + 2);
     await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 20 }, action: "transferred", repository: { id: 1, owner: { id: OWNER_ID } } }, NOW + 3)!, NOW + 3);
     listed = [repository(1, { fork: true })]; await stub.refreshInstallation(10, NOW + 4);
-    expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 1, monitored: false, monitorOverride: null }]);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ id: 1, monitored: false, monitorOverride: null, muted: false }]);
   });
   it.each(["current row", "omitted row", "installation removed", "reset row", "unknown owner"])("handles a legacy choice with %s", async (scenario) => {
     let listed = [repository(1, { fork: true })];
@@ -377,14 +381,120 @@ describe("repository selection in the instance", () => {
   });
 });
 
+describe("persistent repository muting", () => {
+  it("persists across eviction, owner and repository renames, omission and installation removal", async () => {
+    let listed = [repository(12)];
+    let installations = [PERSONAL];
+    stubGitHub(githubRoutes(() => listed, () => installations));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    await stub.setRepositoryMuted(12, OWNER_ID, true, NOW);
+    await evictDurableObject(stub);
+    listed = [repository(12, { full_name: "new-login/renamed", owner: { id: OWNER_ID, login: "new-login" } })];
+    await stub.refreshInstallation(10, NOW + 1);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted: true, monitored: true, fullName: "new-login/renamed" }]);
+    listed = []; await stub.refreshInstallation(10, NOW + 2);
+    installations = []; await stub.checkInstallations(NOW + 3);
+    installations = [PERSONAL]; await stub.checkInstallations(NOW + 4);
+    listed = [repository(12)]; await stub.refreshInstallation(10, NOW + 5);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted: true }]);
+    await stub.setRepositoryMuted(12, OWNER_ID, false, NOW + 6);
+    await stub.refreshInstallation(10, NOW + 7);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted: false, monitored: true }]);
+  }, 15_000);
+
+  it("publishes muting without changing cached PRs, sync state or scheduling, and keeps monitoring independent", async () => {
+    const github = stubGitHub(githubRoutes(() => [repository(12)]));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    await runInDurableObject(stub, (_instance, state) => { new OverviewStore(state.storage).putPullRequest(fixturePr()); });
+    const requests = github.calls.length;
+    await runInDurableObject(stub, async (instance, state) => {
+      const store = new OverviewStore(state.storage);
+      const oldSync = store.syncStatus();
+      const alarm = await state.storage.getAlarm();
+      const publish = vi.spyOn(instance, "publishOverview");
+      expect(await instance.setRepositoryMuted(12, OWNER_ID, true, NOW + 1)).toMatchObject({ ok: true, repository: { muted: true, monitored: true } });
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(publish.mock.calls[0]?.[0]).toMatchObject({ type: "snapshot", snapshot: { repositories: [{ muted: true }] } });
+      expect(store.pullRequests()).toHaveLength(1);
+      expect(store.syncStatus()).toEqual(oldSync);
+      expect(await state.storage.getAlarm()).toEqual(alarm);
+      store.putPullRequest(fixturePr({ title: "New activity while muted" }));
+      expect(store.repositories()[0]?.muted).toBe(true);
+    });
+    expect(github.calls).toHaveLength(requests);
+    await stub.setMonitoringOverride(12, false, NOW + 2);
+    expect((await stub.overviewSnapshot(NOW + 2)).buckets.flatMap((bucket) => bucket.rows)).toEqual([]);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted: true, monitored: false }]);
+    await stub.setMonitoringOverride(12, true, NOW + 3);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted: true, monitored: true }]);
+    expect(await stub.setRepositoryMuted(12, OWNER_ID, false, NOW + 4)).toMatchObject({ ok: true, repository: { muted: false, monitored: true } });
+  });
+
+  it("uses the latest mute choice when a listing completes after a concurrent change", async () => {
+    let concurrent = false;
+    const stub = instanceStub(env);
+    let mute!: () => Promise<unknown>;
+    stubGitHub({ ...githubRoutes(() => [repository(12)]), [LIST]: async () => {
+      if (concurrent) await mute();
+      return json({ total_count: 1, repositories: [repository(12)] });
+    } });
+    await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    await runInDurableObject(stub, (instance) => { mute = () => instance.setRepositoryMuted(12, OWNER_ID, true, NOW + 1); });
+    concurrent = true; await stub.refreshInstallation(10, NOW + 2);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted: true }]);
+  });
+
+  it.each([OWNER_ID, null])("handles a same-installation delayed transfer reporting owner %s", async (reportedOwnerId) => {
+    stubGitHub(githubRoutes(() => [repository(12)]));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    await stub.setRepositoryMuted(12, OWNER_ID, true, NOW);
+    await stub.receiveDelivery(reduceDelivery("repository", { installation: { id: 10 }, action: "transferred",
+      repository: { id: 12, visibility: "private", ...(reportedOwnerId === null ? {} : { owner: { id: reportedOwnerId } }) } }, NOW + 1)!, NOW + 1);
+    const muted = reportedOwnerId === OWNER_ID;
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted }]);
+    await stub.refreshInstallation(10, NOW + 2);
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted }]);
+  });
+
+  it("refuses stale owner identities and unavailable repositories without changing preferences", async () => {
+    stubGitHub(githubRoutes(() => [repository(12)]));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    expect(await stub.setRepositoryMuted(12, 9999, true, NOW)).toEqual({ ok: false, reason: "not-allowed" });
+    expect(await stub.setRepositoryMuted(9999, OWNER_ID, true, NOW)).toEqual({ ok: false, reason: "not-found" });
+    expect((await stub.repositorySettings()).repositories).toMatchObject([{ muted: false }]);
+  });
+});
+
 describe("owner-only repository routes", () => {
+  it("validates owner-scoped mute requests and publishes successful choices without GitHub reads", async () => {
+    const github = stubGitHub(githubRoutes(() => [repository(12)]));
+    const stub = instanceStub(env); await stub.checkInstallations(NOW); await stub.refreshInstallation(10, NOW);
+    const cookie = await ownerSession();
+    const reads = github.calls.length;
+    const request = (body: unknown) => exports.default.fetch(`${BASE}/api/repositories/mute`, {
+      method: "POST", headers: { cookie, origin: BASE, "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    for (const body of [null, {}, { repositoryId: 12, muted: true }, { repositoryId: 12, ownerAccountId: 0, muted: true },
+      { repositoryId: 12.5, ownerAccountId: OWNER_ID, muted: true }, { repositoryId: 12, ownerAccountId: OWNER_ID, muted: "true" }]) {
+      expect((await request(body)).status).toBe(400);
+    }
+    expect((await request({ repositoryId: 99, ownerAccountId: OWNER_ID, muted: true })).status).toBe(404);
+    expect((await request({ repositoryId: 12, ownerAccountId: 9999, muted: true })).status).toBe(403);
+    for (const muted of [true, false]) {
+      const response = await request({ repositoryId: 12, ownerAccountId: OWNER_ID, muted });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, repository: { id: 12, muted, monitored: true } });
+      expect((await stub.overviewSnapshot(NOW)).repositories).toMatchObject([{ id: 12, muted }]);
+    }
+    expect(github.calls).toHaveLength(reads);
+  });
   it("returns stored settings without external reads, refuses invalid mutations and CSRF", async () => {
     const github = stubGitHub({}); const cookie = await ownerSession();
     const response = await exports.default.fetch(`${BASE}/api/repositories`, { headers: { cookie } });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ownerId: OWNER_ID, repositories: [], installations: [] });
     expect(github.calls).toEqual([]);
-    for (const [path, body] of [["refresh", { installationId: -1 }], ["monitoring", { repositoryId: 1, override: "yes" }], ["organization", { installationId: 1, accept: "yes" }]] as const) {
+    for (const [path, body] of [["refresh", { installationId: -1 }], ["monitoring", { repositoryId: 1, override: "yes" }], ["mute", { repositoryId: 1, ownerAccountId: OWNER_ID, muted: "yes" }], ["organization", { installationId: 1, accept: "yes" }]] as const) {
       expect((await exports.default.fetch(`${BASE}/api/repositories/${path}`, { method: "POST", headers: { cookie, origin: BASE, "content-type": "application/json" }, body: JSON.stringify(body) })).status).toBe(400);
       expect((await exports.default.fetch(`${BASE}/api/repositories/${path}`, { method: "POST", headers: { cookie, origin: "https://elsewhere.test", "content-type": "application/json" }, body: JSON.stringify(body) })).status).toBe(403);
     }
