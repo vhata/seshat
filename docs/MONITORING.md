@@ -106,6 +106,14 @@ are not progress or successful-sync evidence. Diagnostics contain neither
 job identities nor cache content and do not change scheduling to test a
 hypothesis.
 
+Ordinary application requests can [repair stale alarms](OVERVIEW_SYNC.md#visibility-and-one-alarm)
+when queued work exists, the stored alarm is more than five minutes late,
+and no scheduler operation is running. Monitoring remains read-only so it
+can observe the original evidence. After repair, verify the pending work
+drains and a complete sweep advances `lastSuccessfulSweepAt`; replacing an
+alarm or receiving updates alone does not prove recovery or explain why
+the alarm stopped executing.
+
 | Code | Alert condition | Recovery |
 | --- | --- | --- |
 | `sync-failed` | The latest stored sweep attempt failed, even while dormant. | A complete successful sweep; starting recovery does not clear failure. |

@@ -60,6 +60,101 @@ async function object(name: string) {
 }
 
 describe("durable overview reconciliation", () => {
+  it("repairs a day-old alarm without dropping persisted visible or dormant work", async () => {
+    const stub = await object("stale-alarm-persisted-work");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage); store.putRepository(FIXTURE_REPOSITORY);
+      let visible = false;
+      const context = { storage: state.storage, store, selection: selection(), installations: () => INSTALLATIONS,
+        visible: () => visible, guard: async () => true, publish: async () => {} };
+      let sync = new OverviewSync(context);
+      const old = NOW;
+      const current = old + 86_400_000;
+      sync.refresh(9, old);
+      for (let i = 0; i < 34; i++) await sync.receive(delivery("synchronize", { node_id: `PR_${i}` }), old);
+      expect(await state.storage.getAlarm()).toBe(old);
+      sync = new OverviewSync(context);
+      expect(sync.schedulerStatus().pending).toEqual({ guard: 0, refresh: 1, marks: 34 });
+      await sync.rearm(current);
+      expect(await state.storage.getAlarm()).toBe(current);
+      expect(sync.schedulerStatus().pending).toEqual({ guard: 0, refresh: 1, marks: 34 });
+      // A later visible request repairs the same shape without resetting jobs.
+      await state.storage.setAlarm(old);
+      visible = true;
+      await new OverviewSync(context).visibility(current, true);
+      expect(await state.storage.getAlarm()).toBe(current);
+      const restarted = new OverviewSync(context);
+      expect(restarted.schedulerStatus()).toMatchObject({
+        nextSweepAt: current, pending: { guard: 0, refresh: 1, marks: 34 },
+      });
+    });
+  });
+
+  it.each([
+    { name: "missing", offset: null, expected: 10_000, writes: 1 },
+    { name: "earlier future", offset: 1000, expected: 1000, writes: 0 },
+    { name: "later future", offset: 20_000, expected: 10_000, writes: 1 },
+    { name: "freshly overdue", offset: -15_000, expected: -15_000, writes: 0 },
+    { name: "exactly five minutes old", offset: -300_000, expected: -300_000, writes: 0 },
+    { name: "over five minutes old", offset: -300_001, expected: 10_000, writes: 1 },
+  ])("rearms a $name alarm only when needed, without rewriting scheduler state", async ({ name, offset, expected, writes }) => {
+    const stub = await object(`alarm-boundary-${name}`);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sync = new OverviewSync({ storage: state.storage, store: new OverviewStore(state.storage), selection: selection(),
+        installations: () => INSTALLATIONS, visible: () => false, guard: async () => true, publish: async () => {} });
+      sync.requestGuard(NOW + 10_000);
+      if (offset === null) await state.storage.deleteAlarm();
+      else await state.storage.setAlarm(NOW + offset);
+      const before = state.storage.sql.exec<{ changes: number }>("SELECT total_changes() AS changes").one();
+      const saved = state.storage.sql.exec("SELECT * FROM settings").toArray();
+      const setAlarm = vi.spyOn(state.storage, "setAlarm");
+      await sync.rearm(NOW);
+      await sync.rearm(NOW);
+      expect(await state.storage.getAlarm()).toBe(NOW + expected);
+      expect(setAlarm).toHaveBeenCalledTimes(writes);
+      // The runtime's alarm metadata accounts for one change per setAlarm;
+      // repairing an alarm must not add application-state SQL writes.
+      expect(state.storage.sql.exec("SELECT total_changes() AS changes").one()).toEqual({ changes: before.changes + writes });
+      expect(state.storage.sql.exec("SELECT * FROM settings").toArray()).toEqual(saved);
+    });
+  });
+
+  it("does not replace an old alarm solely for staleness while work is running", async () => {
+    const stub = await object("stale-alarm-running");
+    await runInDurableObject(stub, async (_instance, state) => {
+      let release = (_result: boolean) => {};
+      const guardResult = new Promise<boolean>((resolve) => { release = resolve; });
+      const sync = new OverviewSync({ storage: state.storage, store: new OverviewStore(state.storage), selection: selection(),
+        installations: () => INSTALLATIONS, visible: () => false, guard: () => guardResult, publish: async () => {} });
+      const current = NOW + 86_400_000;
+      sync.requestGuard(current); sync.refresh(9, current + 10_000);
+      await sync.rearm(current);
+      const invocation = sync.alarm(current);
+      expect(sync.schedulerStatus().running).toBe(true);
+      await state.storage.setAlarm(NOW);
+      const setAlarm = vi.spyOn(state.storage, "setAlarm");
+      await sync.rearm(current);
+      expect(await state.storage.getAlarm()).toBe(NOW);
+      expect(setAlarm).not.toHaveBeenCalled();
+      release(false); await invocation;
+      expect(sync.schedulerStatus().running).toBe(false);
+      expect(await state.storage.getAlarm()).toBe(current + 10_000);
+    });
+  });
+
+  it("removes an obsolete alarm when no work remains", async () => {
+    const stub = await object("stale-alarm-no-work");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sync = new OverviewSync({ storage: state.storage, store: new OverviewStore(state.storage), selection: selection(),
+        installations: () => INSTALLATIONS, visible: () => false, guard: async () => true, publish: async () => {} });
+      await state.storage.setAlarm(NOW);
+      const removeAlarm = vi.spyOn(state.storage, "deleteAlarm");
+      await sync.rearm(NOW + 86_400_000); await sync.rearm(NOW + 86_400_000);
+      expect(await state.storage.getAlarm()).toBeNull();
+      expect(removeAlarm).toHaveBeenCalledOnce();
+    });
+  });
+
   it("reports volatile running state independently of persisted scheduler progress", async () => {
     const stub = await object("scheduler-running-diagnostics");
     await runInDurableObject(stub, async (_instance, state) => {

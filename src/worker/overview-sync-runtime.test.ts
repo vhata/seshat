@@ -80,6 +80,40 @@ async function webhook(action: string, pr: Record<string, unknown> = {}) {
 }
 
 describe("Worker, durable scheduler and real owner sockets", () => {
+  it("repairs a stopped alarm on retry and drains queued work through a successful sweep", async () => {
+    const calls = github(() => githubPr()); const stub = await seed(); const { client, snapshots } = await openSocket();
+    await report(client, true);
+    await webhook("synchronize");
+    clock += 86_400_000;
+    await runInDurableObject(stub, async (_instance, state) => {
+      const saved = JSON.parse(state.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key='overview-sync-work-v1'").one().value);
+      saved.refresh = [{ id: 9, due: clock - 3_600_000, queuedAt: clock - 3_600_000, revision: 0 }];
+      saved.marks[0].due = clock - 3_600_000;
+      saved.nextSweep = clock - 13_000;
+      saved.activeSince = clock - 13_000;
+      state.storage.sql.exec("UPDATE settings SET value=? WHERE key='overview-sync-work-v1'", JSON.stringify(saved));
+      const socket = state.getWebSockets()[0]!;
+      socket.serializeAttachment({ ...(socket.deserializeAttachment() as SocketAttachment), visibility: { visible: true, reportedAt: clock } });
+      // Store an alarm still ahead of the runtime's real clock, then observe
+      // it a day later on the test clock; setAlarm(past) clamps to real now.
+      await state.storage.setAlarm(START);
+    });
+    await evictDurableObject(stub);
+    expect((await stub.monitoringStatus(clock)).scheduler).toMatchObject({
+      alarmAt: clock - 86_400_000, running: false, sweep: null, rereadActive: false,
+      pending: { guard: 0, refresh: 1, marks: 1 },
+    });
+    expect(calls).not.toHaveBeenCalled();
+    clock++;
+    await report(client, true, "retry-now");
+    expect((await stub.monitoringStatus(clock)).scheduler?.alarmAt).toBe(clock);
+    for (let i = 0; i < 10 && snapshots.at(-1)?.sync.lastSuccessfulSweepAt === null; i++) await alarm();
+    await vi.waitFor(() => expect(snapshots.at(-1)?.sync.lastSuccessfulSweepAt).toBeGreaterThanOrEqual(START));
+    expect(snapshots.at(-1)?.buckets.flatMap((bucket) => bucket.rows)[0]?.pr.title).toBe("Changed on GitHub");
+    expect((await stub.monitoringStatus(clock)).scheduler?.pending).toEqual({ guard: 0, refresh: 0, marks: 0 });
+    expect(calls).toHaveBeenCalled();
+  });
+
   it("acknowledges durable webhook marks before any API call and delivers the authoritative row within 60 seconds", async () => {
     const calls = github(() => githubPr()); const stub = await seed(); const { snapshots } = await openSocket();
     const receivedAt = clock;

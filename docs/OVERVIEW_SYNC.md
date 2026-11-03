@@ -38,7 +38,22 @@ the defaults. Deletion removes the repository and its PRs.
 The object timestamps visibility reports in hibernating socket attachments.
 A visible report expires after 15 minutes. Reports, the overdue message,
 retry requests, sockets and ordinary RPCs repair a missing alarm when work
-exists; keep-alive pings use the runtime's automatic response.
+exists. They also repair a stored alarm more than five minutes late when
+no scheduler operation is running. Repair schedules the existing earliest
+due work, clamped to now; it preserves queued jobs and continuation state.
+Earlier future alarms and freshly overdue alarms remain unchanged when
+already early enough, and an alarm is removed when no work remains.
+Staleness alone does not replace an alarm during a running operation.
+Keep-alive pings use the runtime's automatic response, and owner monitoring
+reads do not repair alarms.
+
+The five-minute grace is a conservative recovery threshold rather than
+proof that an alarm failed. Cloudflare documents bounded automatic retries
+and warns that [retry exhaustion can stop execution until another alarm is set](https://developers.cloudflare.com/durable-objects/api/alarms/#alarm).
+Handler duration and runtime delays mean nominal backoff times are not an
+upper bound on healthy elapsed retry time. Repair allows later ordinary
+requests to recover from a retained stale alarm without assuming why its
+execution stopped; it does not add an external watchdog.
 
 While a current visible report exists, a sweep runs every two minutes. A
 page returning after more than two minutes starts catch-up immediately,

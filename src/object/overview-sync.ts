@@ -255,7 +255,7 @@ export class OverviewSync {
     await this.rearm(now);
   }
 
-  /** Every inbound request calls this. Existing earlier alarms incur no write. */
+  /** Ordinary requests repair missing or idle stale alarms without dropping jobs. */
   async rearm(now: number): Promise<void> {
     if (this.normalizeReread()) this.save();
     const active = this.context.visible(now);
@@ -307,7 +307,10 @@ export class OverviewSync {
       return;
     }
     const due = Math.max(now, Math.min(...finite));
-    if (current === null || current > due) await this.context.storage.setAlarm(due);
+    // A stored past alarm may have exhausted runtime retries. Keep fresh
+    // overdue alarms and running work intact, but do not retain one forever.
+    const stale = current !== null && now - current > 5 * MINUTE && !this.running;
+    if (current === null || current > due || stale) await this.context.storage.setAlarm(due);
   }
 
   /** One bounded operation per alarm, including at most one token-mint allowance. */
