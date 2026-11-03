@@ -63,8 +63,10 @@ The later `refresh-single-repository` task should queue a complete
 repository reconciliation through `queueRepositoryRead`, rather than
 rereading cached PR IDs. It should reuse these tokens, scheduler budgets,
 continuations and observation guards, and tie action feedback to its own
-work. This change adds no manual refresh action. Mute preferences should
-remain independent of monitoring and should not change these checks.
+work. This change adds no manual refresh action. Muting stays independent
+of monitoring and does not alter these checks. Muted PR rows receive the
+same scoped details, and collapsed muted repositories continue to record
+webhook reads and complete scheduled reconciliations.
 
 ## Validation and evidence limits
 

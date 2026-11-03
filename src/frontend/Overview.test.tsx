@@ -45,7 +45,10 @@ describe("overview presentation", () => {
       [fixturePr({ title: "Active work" }), fixturePr({
         nodeId: "PR_muted", repositoryId: muted.id, title: "Quiet work", isDraft: true,
       })],
-      SYNC_FIXTURES.live, FIXTURE_OWNER_ID, now,
+      SYNC_FIXTURES.live, FIXTURE_OWNER_ID, now, {
+        repositories: { "42": { lastSuccessfulCheckAt: now - 60_000, latestAttempt: null } },
+        pullRequests: { PR_muted: { lastSuccessfulCheckAt: now - 20_000, latestAttempt: null } },
+      },
     ));
     const [active, hidden] = html.split('<details class="muted-repositories">');
     expect(active).toContain("Active work");
@@ -53,9 +56,13 @@ describe("overview presentation", () => {
     expect(active).toContain("Needs you · 1");
     expect(active).toContain("Waiting · 0");
     expect(active).toContain("1 open PRs · 1 repositories");
-    expect(active).toContain("Checked with GitHub");
+    expect(active).toContain("Last full check:");
     expect(hidden).toContain("Muted repositories · 2 repositories · 1 PR");
     expect(hidden).toContain("Quiet work");
+    expect(hidden).toContain("Repository fully checked");
+    expect(hidden).toContain("This PR checked");
+    expect(hidden).toContain("1m ago");
+    expect(hidden).toContain("20s ago");
     expect(hidden).toContain('aria-label="Muted: Draft"');
     expect(hidden).toContain('aria-label="Unmute example/empty"');
     expect(hidden).not.toContain("example/off");

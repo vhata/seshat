@@ -173,39 +173,10 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
-- [PRODUCT] `show-granular-freshness` — **Show repo and PR freshness.**
-  A single overview check time obscures successful partial refreshes and
-  differences between a PR reread and a complete repository check.
-  - Source: owner discussion of refresh and muting, 2026-11-03
-  - Related: `refresh-single-repository`
-  - Starting point: `src/object/overview-sync.ts`,
-    `src/shared/overview/protocol.ts`, `src/object/overview-store.ts`,
-    `src/frontend/freshness.ts` and `src/frontend/Overview.tsx`.
-    The current global timestamp is the start of the last successful
-    full sweep; repository `listedAt` also advances for metadata reads
-    and individual PR reads, so it cannot prove complete PR freshness.
-  - Persist separate evidence for the last successful complete repository
-    reconciliation and each PR's last successful reread, including checks
-    that find no changes. Track pending work and failures at those scopes;
-    a failed repository must not erase another's successful check time.
-    Do not treat a webhook, partial read or replayed continuation as a new
-    complete check, or let older work overwrite newer freshness evidence.
-  - Show a quiet indicator beside repository names, with hover and
-    keyboard-accessible details distinguishing "Repository fully checked"
-    from "This PR checked". Use visible text for checking, overdue and
-    failed states. Keep the global connection indicator and label the
-    aggregate timestamp "Last full check"; preserve prominent warnings
-    required by [Freshness](docs/DELIVERABLE.md#freshness).
-  - Verify mixed-success sweeps, webhook rereads, unchanged and empty
-    repositories, partial reads, retries, restart persistence and delayed
-    completions. Check accessible details and keep the existing inactivity
-    stale flag distinct from GitHub data freshness.
-
 - [PRODUCT] `refresh-single-repository` — **Refresh one repo on demand.**
   An owner checking a merge or CI result should be able to confirm one
   repository without waiting for the next sweep or refreshing all listings.
   - Source: owner discussion of refresh and muting, 2026-11-03
-  - Related: `show-granular-freshness`
   - Starting point: `queueRepositoryRead` in
     `src/object/overview-sync.ts`, `src/object/instance.ts`,
     `src/worker/repositories.ts` and `src/frontend/Overview.tsx`.

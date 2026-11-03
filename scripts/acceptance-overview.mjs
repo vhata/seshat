@@ -427,6 +427,9 @@ try {
   const muted = page.locator("details.muted-repositories");
   const mutedSummary = muted.locator("summary");
   await mutedSummary.waitFor();
+  // Finish the repository read queued by Refresh listings before isolating
+  // the later PR-only webhook observation from concurrent reconciliation.
+  await drain();
   assert.equal(await muted.getAttribute("open"), null, "Muted repositories start collapsed");
   assert.equal(await page.locator(".buckets .pr-row").count(), 0, "Muted rows leave the regular buckets");
   assert.equal(await muted.locator(".pr-row").count(), 7, "Muting retains every cached PR");
@@ -446,12 +449,24 @@ try {
   for (const bucket of beforeMute.buckets.filter((bucket) => bucket.rows.length)) {
     assert.ok((await muted.getByRole("heading", { name: bucket.bucket.title, exact: false }).count()) > 0, `Muted PRs retain ${bucket.bucket.title}`);
   }
+  const mutedFreshnessTrigger = muted.locator('[data-pr="PR_1"] .check-trigger');
+  await mutedFreshnessTrigger.focus();
+  const mutedFreshnessDetails = muted.locator('[data-pr="PR_1"] [role=tooltip]');
+  await mutedFreshnessDetails.waitFor({ state: "visible" });
+  assert.ok((await mutedFreshnessDetails.innerText()).includes("Repository fully checked"));
+  assert.ok((await mutedFreshnessDetails.innerText()).includes("This PR checked"));
+  await mutedFreshnessTrigger.press("Escape");
   await page.screenshot({ path: path.join(evidence, "muted-expanded.png"), fullPage: true });
   await mutedSummary.focus();
   await page.keyboard.press("Space");
   assert.equal(await muted.evaluate((element) => element.open), false, "Space collapses the native muted disclosure");
 
   await webhook("edited", { title: "Muted webhook update stays collapsed" });
+  const mutedWebhookChecks = (await command("snapshot")).freshness;
+  assert.equal(mutedWebhookChecks.repositories["12"].lastSuccessfulCheckAt,
+    mutedSnapshot.freshness.repositories["12"].lastSuccessfulCheckAt);
+  assert.ok(mutedWebhookChecks.pullRequests.PR_1.lastSuccessfulCheckAt >
+    mutedSnapshot.freshness.pullRequests.PR_1.lastSuccessfulCheckAt);
   await page.waitForFunction(() => document.querySelector(".muted-repositories")?.textContent.includes("Muted webhook update stays collapsed"));
   assert.equal(await muted.evaluate((element) => element.open), false, "New activity must not expand or unmute");
   assert.equal(await page.locator(".buckets .pr-row").count(), 0);
@@ -463,6 +478,8 @@ try {
   mutedSnapshot = await command("snapshot");
   assert.ok(calls.length > collapsedCalls, "Collapsed muted PRs still receive scheduled GitHub reads");
   assert.ok(mutedSnapshot.sync.lastSuccessfulSweepAt > lastMutedSweep, "Muted repository reads retain freshness reporting");
+  assert.ok(mutedSnapshot.freshness.repositories["12"].lastSuccessfulCheckAt >
+    mutedWebhookChecks.repositories["12"].lastSuccessfulCheckAt);
   assert.equal(mutedSnapshot.repositories.find((repo) => repo.id === 12)?.muted, true);
   assert.equal(await muted.evaluate((element) => element.open), false);
   await page.screenshot({ path: path.join(evidence, "muted-collapsed.png"), fullPage: true });

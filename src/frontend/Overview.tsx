@@ -672,6 +672,9 @@ function SnapshotContent({
           now={state.now}
           note={state.changes.get(row.pr.nodeId)}
           outdated={outdated}
+          repositoryStatus={snapshot.freshness?.repositories[String(row.pr.repositoryId)]}
+          prStatus={snapshot.freshness?.pullRequests[row.pr.nodeId]}
+          visibleSince={state.visibleSince}
         />}
       />
     </>
