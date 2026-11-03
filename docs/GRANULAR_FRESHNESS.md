@@ -70,6 +70,13 @@ permissions and mergeability. The selected numeric repository owner is
 checked, and organization repositories require a fresh check of the
 instance owner's access before applying even an empty result.
 
+`POST /api/repositories/refresh-one` requires the current owner session,
+a same-origin request and a JSON body containing `repositoryId` and the
+observed `ownerAccountId`. Only monitored repositories on accepted
+installations are eligible. A `202` response acknowledges the durable
+request token; completion comes from that token's status in subsequent
+owner snapshots, rather than from the HTTP acknowledgment.
+
 Explicit requests use the same `CheckStatus` lifecycle in the
 `repository-refresh` namespace. The optional `repositoryRefreshes` map in
 freshness evidence exposes these tokens independently of background
