@@ -141,7 +141,9 @@ describe("durable scoped freshness", () => {
       expect(ctx.store.checkFreshness().pullRequests.PR_example?.latestAttempt).toEqual(queued);
       expect(queued?.result).toBe("queued");
       expect(ctx.store.checkFreshness().pullRequests.PR_example?.lastSuccessfulCheckAt).toBeNull();
-      expect(ctx.store.checkFreshness().repositories[12]?.latestAttempt?.result).toBe("interrupted");
+      // The repository mark remains scheduled, so its canceled observation
+      // is replaced by queued evidence for the work still awaiting a read.
+      expect(ctx.store.checkFreshness().repositories[12]?.latestAttempt?.result).toBe("queued");
     });
   });
 
@@ -251,6 +253,61 @@ describe("durable scoped freshness", () => {
       reject(new Error("superseded refresh failed")); await refreshing;
       expect(queued?.result).toBe("queued");
       expect(ctx.store.checkFreshness().repositories[12]?.latestAttempt).toEqual(queued);
+    });
+  });
+
+  it("requeues unaffected still-pending marks when a newer event invalidates their continued batch", async () => {
+    vi.spyOn(GithubPrReader.prototype, "rereadPrs").mockResolvedValue({ ...META, status: "partial", continuation: CONTINUATION, nodes: [] });
+    const stub = await object("requeue-unaffected");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const ctx = context(state.storage); ctx.store.putRepository(FIXTURE_REPOSITORY); ctx.store.putPullRequest(fixturePr());
+      ctx.store.putPullRequest(fixturePr({ id: 4, nodeId: "PR_other", number: 2 }));
+      const sync = new OverviewSync(ctx); const first = event(); await sync.receive(first, NOW);
+      await sync.receive({ ...first, marks: first.marks.map((mark) => ({ ...mark, nodeId: "PR_other" })) }, NOW);
+      await sync.alarm(NOW + 2000);
+      expect(ctx.store.checkFreshness().pullRequests.PR_other?.latestAttempt?.result).toBe("running");
+      await sync.receive(event(NOW + 2001, "new-head"), NOW + 2001);
+      const evidence = ctx.store.checkFreshness();
+      expect(evidence.pullRequests.PR_example?.latestAttempt).toMatchObject({ startedAt: NOW + 2001, result: "queued" });
+      expect(evidence.pullRequests.PR_other?.latestAttempt).toMatchObject({ startedAt: NOW + 2001, result: "queued" });
+      expect(evidence.pullRequests.PR_other?.lastSuccessfulCheckAt).toBeNull();
+      expect(sync.schedulerStatus().pending.marks).toBe(2);
+    });
+  });
+
+  it.each(["installation", "owner"] as const)("drops an old queued mark after its repository %s identity changes", async (changed) => {
+    const stub = await object(`identity-${changed}`);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const ctx = context(state.storage); ctx.store.putRepository(FIXTURE_REPOSITORY); ctx.store.putPullRequest(fixturePr());
+      const sync = new OverviewSync({ ...ctx, installations: () => [...INSTALLATIONS,
+        { ...INSTALLATIONS[0]!, id: 10, accountId: 1002 },
+      ] });
+      await sync.receive(event(), NOW);
+      ctx.store.putRepository({ ...FIXTURE_REPOSITORY, installationId: changed === "installation" ? 10 : 9,
+        ownerAccountId: changed === "owner" ? 1002 : FIXTURE_REPOSITORY.ownerAccountId });
+      ctx.store.putPullRequest(fixturePr());
+      const current = ctx.store.beginCheck("pr", "PR_example", NOW + 1, "running"); ctx.store.finishCheck("pr", "PR_example", current, "success");
+      const before = ctx.store.checkFreshness(); await sync.alarm(NOW + 2000);
+      expect(ctx.store.checkFreshness()).toEqual(before);
+      expect(ctx.selection.tokens.get).not.toHaveBeenCalled();
+      expect(sync.schedulerStatus().pending.marks).toBe(0);
+    });
+  });
+
+  it("keeps successful unchanged observations checking while webhook facts still await propagation", async () => {
+    const reread = vi.spyOn(GithubPrReader.prototype, "rereadPrs")
+      .mockResolvedValueOnce({ ...META, nodes: [{ kind: "open", pr: fixturePr(), visibility: "public" }] })
+      .mockResolvedValue({ ...META, nodes: [{ kind: "open", pr: fixturePr({ headSha: "expected-new-head", updatedAt: NOW }), visibility: "public" }] });
+    const stub = await object("successful-pending-facts");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const ctx = context(state.storage); ctx.store.putRepository(FIXTURE_REPOSITORY); ctx.store.putPullRequest(fixturePr());
+      const sync = new OverviewSync(ctx); await sync.receive(event(NOW, "expected-new-head"), NOW); await sync.alarm(NOW + 2000);
+      expect(ctx.store.checkFreshness().pullRequests.PR_example).toMatchObject({ lastSuccessfulCheckAt: NOW + 2000, latestAttempt: { result: "running" } });
+      expect(sync.schedulerStatus().pending.marks).toBe(1);
+      await sync.alarm(NOW + 7000);
+      expect(ctx.store.checkFreshness().pullRequests.PR_example).toMatchObject({ lastSuccessfulCheckAt: NOW + 7000, latestAttempt: { result: "success" } });
+      expect(sync.schedulerStatus().pending.marks).toBe(0);
+      expect(reread).toHaveBeenCalledTimes(2);
     });
   });
 });

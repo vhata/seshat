@@ -12,7 +12,7 @@ import { reportGithubFailure } from "../worker/github-http";
 const KEY = "overview-sync-work-v1";
 const MINUTE = 60_000;
 const RETRIES = [5_000, 15_000, 30_000] as const;
-interface PendingMark extends PrMark { due: number; queuedAt?: number; firstRead: number | null; retry: number; revision: number; mergeability: boolean; check?: CheckAttempt }
+interface PendingMark extends PrMark { due: number; queuedAt?: number; firstRead: number | null; retry: number; revision: number; mergeability: boolean; check?: CheckAttempt; repositoryOwnerAccountId?: number }
 interface PendingSha { installationId: number; repositoryId: number; sha: string; facts: DeliveryFact[]; expires: number }
 interface TrackedCheck { scope: "repository" | "pr"; key: string; attempt: CheckAttempt }
 interface PendingRefresh { id: number; due: number; revision: number; queuedAt?: number; checks?: TrackedCheck[] }
@@ -91,6 +91,11 @@ export class OverviewSync {
 
   private markScope(mark: PendingMark): "repository" | "pr" { return mark.nodeId.startsWith("repository:") ? "repository" : "pr"; }
   private markKey(mark: PendingMark): string { return this.markScope(mark) === "repository" ? String(mark.repositoryId) : mark.nodeId; }
+  private markRepository(mark: PendingMark): RepositoryRecord | undefined {
+    const repository = this.context.store.repositories().find((repo) => repo.id === mark.repositoryId);
+    return repository?.monitored && repository.installationId === mark.installationId
+      && (mark.repositoryOwnerAccountId === undefined || mark.repositoryOwnerAccountId === repository.ownerAccountId) ? repository : undefined;
+  }
   private track(checks: TrackedCheck[], scope: TrackedCheck["scope"], key: string, now: number, result: "queued" | "running" = "running"): CheckAttempt {
     const previous = checks.find((check) => check.scope === scope && check.key === key);
     if (previous) return previous.attempt;
@@ -100,6 +105,18 @@ export class OverviewSync {
   }
   private interruptChecks(checks: readonly TrackedCheck[] | undefined): void {
     for (const check of checks ?? []) this.context.store.finishCheck(check.scope, check.key, check.attempt, "interrupted");
+  }
+  private abandonReread(progress: ReadProgress, now: number): void {
+    this.interruptChecks(progress.checks);
+    for (const mark of this.state.marks.filter((mark) => progress.ids.includes(mark.nodeId) && this.accepted(mark.installationId) && this.markRepository(mark))) {
+      const owned = progress.checks?.find((check) => check.scope === this.markScope(mark) && check.key === this.markKey(mark));
+      // A newer event owns its own queued evidence; only repair tokens this
+      // canceled batch interrupted while the same work remains scheduled.
+      if (owned && mark.check?.id === owned.attempt.id) {
+        mark.check = this.context.store.beginCheck(this.markScope(mark), this.markKey(mark), now, "queued");
+      }
+    }
+    this.state.reread = null;
   }
   private queueSweepChecks(sweep: Sweep, now: number): void {
     sweep.checks ??= [];
@@ -255,31 +272,35 @@ export class OverviewSync {
   }
 
   /** Drop cached work before it can restrict scheduling to missing/stale marks. */
-  private normalizeReread(): boolean {
+  private normalizeReread(now: number): boolean {
     const progress = this.state.reread;
     if (progress && (!this.accepted(progress.installationId)
       || progress.generation !== this.generation(progress.installationId)
       || progress.ids.length === 0
       || progress.ids.some((id) => !this.state.marks.some((mark) => mark.nodeId === id
-        && mark.installationId === progress.installationId)))) {
-      this.interruptChecks(progress.checks);
-      this.state.reread = null;
+        && mark.installationId === progress.installationId && this.markRepository(mark))))) {
+      this.abandonReread(progress, now);
       return true;
     }
     return false;
   }
 
   private mark(mark: PrMark, due: number, mergeability = false, queuedAt = due): void {
-    const previous = this.state.marks.find((pending) => pending.nodeId === mark.nodeId && pending.installationId === mark.installationId);
+    const repository = this.context.store.repositories().find((repo) => repo.id === mark.repositoryId);
+    if (repository && (!repository.monitored || repository.installationId !== mark.installationId)) return;
+    let previous = this.state.marks.find((pending) => pending.nodeId === mark.nodeId && pending.installationId === mark.installationId);
+    if (previous && repository && previous.repositoryOwnerAccountId !== undefined && previous.repositoryOwnerAccountId !== repository.ownerAccountId) {
+      this.removeMark(previous); previous = undefined;
+    }
     if (previous) {
       previous.facts = coalesceFacts(previous.facts, mark.facts);
       previous.due = Math.min(previous.due, due);
       previous.revision++;
       previous.mergeability ||= mergeability;
       if (mark.facts.length > 0) { previous.firstRead = null; previous.retry = 0; }
-    } else this.state.marks.push({ ...mark, due, queuedAt, firstRead: null, retry: 0, revision: 0, mergeability });
+    } else this.state.marks.push({ ...mark, due, queuedAt, firstRead: null, retry: 0, revision: 0, mergeability, ...(repository ? { repositoryOwnerAccountId: repository.ownerAccountId } : {}) });
     const queued = previous ?? this.state.marks[this.state.marks.length - 1]!;
-    if (!previous || mark.facts.length > 0) queued.check = this.context.store.beginCheck(this.markScope(queued), this.markKey(queued), queuedAt, "queued");
+    if (repository && (!previous || mark.facts.length > 0)) queued.check = this.context.store.beginCheck(this.markScope(queued), this.markKey(queued), queuedAt, "queued");
   }
 
   /** Called for visibility, overdue and retry-now messages. Client clocks are never used. */
@@ -298,7 +319,7 @@ export class OverviewSync {
 
   /** Ordinary requests repair missing or idle stale alarms without dropping jobs. */
   async rearm(now: number): Promise<void> {
-    if (this.normalizeReread()) this.save();
+    if (this.normalizeReread(now)) this.save();
     const active = this.context.visible(now);
     const activeSince = active ? this.state.activeSince ?? now : null;
     if (this.state.activeSince !== activeSince) {
@@ -337,7 +358,7 @@ export class OverviewSync {
         }
       }
     }
-    const times = [this.state.guard, ...this.state.refresh.map((job) => job.due), ...this.state.marks.map((mark) => mark.due), ...this.state.shas.map((sha) => sha.expires)];
+    const times = [this.state.guard, ...this.state.refresh.map((job) => job.due), ...this.state.marks.filter((mark) => this.markRepository(mark)).map((mark) => mark.due), ...this.state.shas.map((sha) => sha.expires)];
     if (active && !this.state.reread) {
       if (this.state.sweep) times.push(this.state.nextSweep ?? now);
       else times.push(this.state.nextSweep);
@@ -363,10 +384,12 @@ export class OverviewSync {
     let activeRefreshId: number | null = null;
     try {
       this.state.shas = this.state.shas.filter((sha) => sha.expires > now && this.accepted(sha.installationId));
-      this.state.marks = this.state.marks.filter((mark) => this.accepted(mark.installationId));
-      this.normalizeReread();
+      this.state.marks = this.state.marks.filter((mark) => this.accepted(mark.installationId) && (this.markRepository(mark)
+        || mark.repositoryOwnerAccountId === undefined && !this.context.store.repositories().some((repo) => repo.id === mark.repositoryId)
+          && this.state.refresh.some((job) => job.id === mark.installationId)));
+      this.normalizeReread(now);
       const earliestRefresh = this.state.refresh.reduce<{ id: number; due: number; revision: number } | null>((first, job) => first === null || job.due < first.due ? job : first, null);
-      const readMarks = this.state.reread ? this.state.marks.filter((mark) => this.state.reread!.ids.includes(mark.nodeId)) : this.state.marks;
+      const readMarks = this.state.marks.filter((mark) => this.markRepository(mark) && (!this.state.reread || this.state.reread.ids.includes(mark.nodeId)));
       const rereadDue = Math.min(...readMarks.map((mark) => mark.due));
       const jobs = [
         { kind: "guard", due: this.state.guard ?? Infinity },
@@ -393,8 +416,10 @@ export class OverviewSync {
       if (!(error instanceof SyncReadError)) reportGithubFailure("sync-unexpected", "unexpected");
       const failedRead = this.state.reread;
       const readStillCurrent = failedRead !== null && this.accepted(failedRead.installationId)
-        && failedRead.generation === this.generation(failedRead.installationId);
-      if (activeJob === "reread" && this.state.reread) {
+        && failedRead.generation === this.generation(failedRead.installationId)
+        && failedRead.ids.every((id) => this.state.marks.some((mark) => mark.nodeId === id && this.markRepository(mark)));
+      if (activeJob === "reread" && this.state.reread && !readStillCurrent) this.abandonReread(this.state.reread, now);
+      else if (activeJob === "reread" && this.state.reread) {
         for (const check of this.state.reread.checks ?? []) this.context.store.finishCheck(check.scope, check.key, check.attempt, readStillCurrent ? "failed" : "interrupted", readStillCurrent ? error instanceof SyncReadError ? error.reason : "github-unavailable" : undefined);
         this.state.reread = null;
       }
@@ -517,12 +542,12 @@ export class OverviewSync {
   }
 
   private async reread(now: number): Promise<void> {
-    const first = this.state.reread ? this.state.marks.find((mark) => mark.nodeId === this.state.reread!.ids[0]) : this.state.marks.find((mark) => mark.due <= now);
+    const first = this.state.reread ? this.state.marks.find((mark) => mark.nodeId === this.state.reread!.ids[0] && this.markRepository(mark)) : this.state.marks.find((mark) => mark.due <= now && this.markRepository(mark));
     if (!first) { this.state.reread = null; return; }
     const repositoryRead = first.nodeId.startsWith("repository:");
     const selected = this.state.reread
       ? this.state.marks.filter((mark) => this.state.reread!.ids.includes(mark.nodeId))
-      : this.state.marks.filter((mark) => mark.installationId === first.installationId && mark.due <= now && mark.nodeId.startsWith("repository:") === repositoryRead).slice(0, 10);
+      : this.state.marks.filter((mark) => this.markRepository(mark) && mark.installationId === first.installationId && mark.due <= now && mark.nodeId.startsWith("repository:") === repositoryRead).slice(0, 10);
     if (selected.length === 0) { this.state.reread = null; return; }
     const revisions = new Map(this.state.reread?.revisions ?? selected.map((mark): [string, number] => [mark.nodeId, mark.revision]));
     const installationId = first.installationId;
@@ -530,7 +555,7 @@ export class OverviewSync {
     // Starting its fresh read also supersedes those earlier observations.
     if (!this.state.reread) this.invalidateReads(installationId);
     const generation = this.generation(installationId);
-    const current = () => this.accepted(installationId) && this.generation(installationId) === generation;
+    const current = () => this.accepted(installationId) && this.generation(installationId) === generation && selected.every((mark) => this.markRepository(mark));
     const progress: ReadProgress = this.state.reread ?? {
       installationId, generation, ids: selected.map((mark) => mark.nodeId), revisions: [...revisions],
       continuation: null, checks: [], startedAt: now,
@@ -543,6 +568,7 @@ export class OverviewSync {
       progress.startedAt = now;
     } else progress.startedAt ??= Math.min(...selected.map((mark) => mark.queuedAt ?? mark.due));
     for (const mark of selected) {
+      mark.repositoryOwnerAccountId ??= this.markRepository(mark)!.ownerAccountId;
       mark.check = this.track(progress.checks, this.markScope(mark), this.markKey(mark), progress.startedAt);
       this.context.store.runCheck(this.markScope(mark), this.markKey(mark), mark.check);
       if (repositoryRead) {
@@ -551,7 +577,7 @@ export class OverviewSync {
     }
     this.state.reread = progress;
     this.save();
-    const abandon = () => { this.interruptChecks(progress.checks); this.state.reread = null; };
+    const abandon = () => this.abandonReread(progress, now);
     let reader: GithubPrReader | null;
     try { reader = await this.reader(installationId, now, this.state.reread?.continuation ?? null, false, current); }
     catch (error) {
@@ -614,7 +640,7 @@ export class OverviewSync {
             if (mark.facts.length === 0 && !mark.mergeability && checked && revisions.get(mark.nodeId) === mark.revision) {
               this.context.store.finishCheck("pr", mark.nodeId, attempt, "success");
               this.removeMark(mark);
-            } else this.retryMark(mark, now, readFailure(result), attempt);
+            } else this.retryMark(mark, now, readFailure(result), attempt, checked);
           }
         } else if (!result.continuation) this.retryMark(mark, now, readFailure(result), attempt);
       }
@@ -623,10 +649,13 @@ export class OverviewSync {
     await this.context.publish(now);
   }
   private removeMark(mark: PendingMark): void { this.state.marks = this.state.marks.filter((pending) => pending !== mark); }
-  private retryMark(mark: PendingMark, now: number, reason: SyncFailureReason = "github-unavailable", attempt = mark.check): void {
-    if (attempt) this.context.store.finishCheck(this.markScope(mark), this.markKey(mark), attempt, "failed", reason);
+  private retryMark(mark: PendingMark, now: number, reason: SyncFailureReason = "github-unavailable", attempt = mark.check, readSucceeded = false): void {
     mark.firstRead ??= now;
     const offset = RETRIES[mark.retry];
+    // A complete API read can still be waiting for webhook facts or GitHub's
+    // mergeability computation. Keep that successful observation and pending
+    // status; an actual read failure or exhausted retry budget is terminal.
+    if (attempt && (!readSucceeded || offset === undefined)) this.context.store.finishCheck(this.markScope(mark), this.markKey(mark), attempt, "failed", reason);
     if (offset === undefined) { this.state.lastEventFailureAt = now; this.removeMark(mark); return; }
     mark.retry++;
     mark.due = Math.max(now + 1, mark.firstRead + offset);
