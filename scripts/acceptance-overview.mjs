@@ -297,6 +297,24 @@ try {
   }
   assert.equal(await page.locator(".badge.stale").count(), 7);
   assert.equal(await page.locator("a a").count(), 0);
+  await page.locator(".last-check").filter({ hasText: "Last full check:" }).waitFor();
+  const initialChecks = (await command("snapshot")).freshness;
+  assert.ok(initialChecks.repositories["12"].lastSuccessfulCheckAt !== null);
+  assert.ok(initialChecks.pullRequests.PR_1.lastSuccessfulCheckAt !== null);
+  const checkTrigger = page.locator('[data-pr="PR_1"] .check-trigger');
+  const checkDetails = page.locator('[data-pr="PR_1"] [role="tooltip"]');
+  await checkTrigger.focus();
+  await checkDetails.waitFor({ state: "visible" });
+  assert.ok((await checkDetails.innerText()).includes("Repository fully checked"));
+  assert.ok((await checkDetails.innerText()).includes("This PR checked"));
+  assert.equal(await checkTrigger.getAttribute("aria-describedby"), await checkDetails.getAttribute("id"));
+  await checkTrigger.press("Escape");
+  await checkDetails.waitFor({ state: "hidden" });
+  await checkTrigger.blur();
+  await checkTrigger.hover();
+  await checkDetails.waitFor({ state: "visible" });
+  await page.screenshot({ path: path.join(evidence, "freshness-details.png") });
+  await page.mouse.move(0, 0);
   await page.screenshot({ path: path.join(evidence, "desktop.png"), fullPage: true });
 
   const transitions = [];
@@ -316,6 +334,12 @@ try {
   }
   await webhook("edited", { title: "Title updated through a real socket" });
   await page.getByRole("link", { name: "Title updated through a real socket" }).waitFor();
+  const webhookChecks = (await command("snapshot")).freshness;
+  assert.equal(webhookChecks.repositories["12"].lastSuccessfulCheckAt, initialChecks.repositories["12"].lastSuccessfulCheckAt,
+    "An individual PR reread cannot claim a full repository check");
+  assert.ok(webhookChecks.pullRequests.PR_1.lastSuccessfulCheckAt > initialChecks.pullRequests.PR_1.lastSuccessfulCheckAt);
+  assert.equal(await page.locator('[data-pr="PR_1"] .badge.stale').count(), 1,
+    "Fresh GitHub evidence must not clear the independent inactivity flag");
   await webhook("converted_to_draft", { isDraft: true });
   assert.equal(await page.locator('#rows-draft [data-pr="PR_1"]').count(), 1);
   await webhook("ready_for_review", { isDraft: false });
@@ -341,6 +365,14 @@ try {
   listing = [...listing, created];
   await sendDelivery("repository", { action: "created", repository: created });
   assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 13)?.monitored, true, "A newly created owned repository must become monitored automatically");
+  assert.ok((await command("snapshot")).freshness.repositories["13"].lastSuccessfulCheckAt !== null,
+    "A complete empty repository read supplies freshness evidence");
+  await page.locator(".repository-checks summary").click();
+  const emptyRepositoryDetails = page.locator(".repository-checks li").filter({ hasText: "example/new-repository" });
+  await emptyRepositoryDetails.locator(".check-trigger").focus();
+  await emptyRepositoryDetails.getByRole("tooltip").waitFor({ state: "visible" });
+  assert.ok((await emptyRepositoryDetails.getByRole("tooltip").innerText()).includes("Repository fully checked"));
+  await page.locator(".repository-checks summary").click();
   listing = listing.map((repo) => repo.id === 13 ? { ...repo, archived: true } : repo);
   await sendDelivery("repository", { action: "archived", repository: { ...created, archived: true } });
   assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 13)?.monitored, false, "Archiving must stop monitoring without owner action");
@@ -502,13 +534,25 @@ try {
   await page.waitForTimeout(100);
   await drain();
   await page.locator(".status-live").waitFor();
+  const beforeRestart = (await command("snapshot")).freshness;
   await mf.unsafeEvictDurableObject("app", "AcceptanceInstance", { name: "instance", webSockets: "close" });
   await page.getByText("Disconnected — reconnecting to the instance").waitFor();
   await advance(1200, { alarm: false });
   await page.locator(".status-live").waitFor();
+  assert.deepEqual((await command("snapshot")).freshness, beforeRestart,
+    "Restart and reconnect must retain check evidence without inventing a read");
   const widths = [];
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
+    await page.locator(".repository-checks summary").click();
+    const repositoryTrigger = page.locator(".repository-checks .check-trigger").last();
+    await repositoryTrigger.focus();
+    const tooltip = page.locator(".repository-checks [role=tooltip]").last();
+    await tooltip.waitFor({ state: "visible" });
+    const bounds = await tooltip.boundingBox();
+    assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width,
+      `Freshness details exceed the ${width}px viewport: ${JSON.stringify(bounds)}`);
+    await page.locator(".repository-checks summary").click();
     const dimensions = await page.evaluate(() => ({ viewport: innerWidth, width: document.documentElement.scrollWidth }));
     assert.ok(dimensions.width <= width, `Phone horizontal overflow: ${JSON.stringify(dimensions)}`);
     widths.push(dimensions);
@@ -532,7 +576,7 @@ try {
   await page.waitForTimeout(1500);
   assert.equal(sockets.length, endedSockets, "Ended sessions must stop reconnecting");
   await page.screenshot({ path: path.join(evidence, "session-ended.png") });
-  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in"] };
+  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in", "scoped repository and PR evidence", "hover and keyboard freshness details", "PR reread preserves repository check time", "empty repository check", "object restart retains check evidence"] };
   await writeFile(path.join(evidence, "results.json"), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary));
   }
