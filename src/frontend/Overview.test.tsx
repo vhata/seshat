@@ -241,6 +241,45 @@ describe("overview presentation", () => {
       ),
     ).toContain("Nothing needs you");
   });
+  it("shows attempt age and diagnostic guidance while waiting for GitHub", () => {
+    const html = render(fixtureSnapshot({
+      ...SYNC_FIXTURES.checking,
+      latestAttempt: { result: "running", startedAt: now - 120_000 },
+    }), { visibleSince: now - 30_000, lastMessageAt: now - 15_000 });
+    expect(html).toContain("Waiting for a completed GitHub check for 30s");
+    expect(html).toContain("Last reported check started");
+    expect(html).toContain("2m ago");
+    expect(html).toContain("No completion has been reported.");
+    expect(html).toContain("Last overview update from the instance:");
+    expect(html).toContain("15s ago");
+    expect(html).toContain("Retry now");
+    expect(html).toContain("seshat site logs");
+    expect(html).toContain("seshat.github.failure");
+    expect(html).toContain("A quiet log does not confirm progress.");
+    expect(html).not.toContain('role="alert"');
+  });
+  it("keeps known failure feedback during catch-up without claiming recovery", () => {
+    const html = render(fixtureSnapshot(SYNC_FIXTURES.failed), {
+      visibleSince: now,
+    });
+    expect(html).toContain("Checking with GitHub");
+    expect(html).toContain("The last reported check and its retry failed.");
+    expect(html).toContain("GitHub data could not be read.");
+    expect(html).toContain("A new check has not yet confirmed recovery.");
+    expect(html).not.toContain("No completion has been reported.");
+    expect(render(fixtureSnapshot())).not.toContain('aria-label="Sync details"');
+  });
+  it("distinguishes missing reports from an active check and handles first-sync overdue", () => {
+    const loading = render(null, { visibleSince: now, lastMessageAt: null });
+    expect(loading).toContain("has not reported a GitHub check starting yet");
+    expect(loading).toContain("none received");
+    const overdue = render(fixtureSnapshot(SYNC_FIXTURES.initial));
+    expect(overdue).toContain("No GitHub check has completed successfully yet.");
+    expect(overdue).not.toContain("more than five minutes old");
+    const stale = render(fixtureSnapshot(SYNC_FIXTURES.overdue));
+    expect(stale).toContain("No newer GitHub check has been reported.");
+    expect(stale).toContain("more than five minutes old");
+  });
   it("always shows check time, masks old failure during catch-up and flags stale rows", () => {
     expect(render(fixtureSnapshot())).toContain("Checked with GitHub");
     expect(render(fixtureSnapshot(SYNC_FIXTURES.failed))).toContain(
