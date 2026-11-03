@@ -1,4 +1,4 @@
-import type { SyncStatus } from "../shared/overview/protocol";
+import type { CheckStatus, SyncStatus } from "../shared/overview/protocol";
 
 export const MINUTE = 60_000;
 export type Freshness =
@@ -43,4 +43,23 @@ export function relativeTime(timestamp: number | null, now: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
   return `${Math.floor(seconds / 86400)}d`;
+}
+
+/** Granular GitHub evidence is independent of a PR's inactivity flag. */
+export function checkFreshness(
+  status: CheckStatus | undefined,
+  now: number,
+  visibleSince: number,
+): string {
+  const attempt = status?.latestAttempt;
+  if (attempt?.result === "failed") return "Check failed";
+  const lastSuccess = status?.lastSuccessfulCheckAt ?? null;
+  const overdue = lastSuccess === null || now - lastSuccess > 5 * MINUTE;
+  const overdueVisible = overdue && now - visibleSince >= MINUTE;
+  if (attempt?.result === "queued") return `Checking (queued)${overdueVisible ? " · overdue" : ""}`;
+  if (attempt?.result === "running") return `Checking${overdueVisible ? " · overdue" : ""}`;
+  if (overdueVisible) return "Check overdue";
+  if (attempt?.result === "interrupted") return "Check interrupted";
+  if (lastSuccess === null) return "Not checked";
+  return overdue ? "Checking" : "Checked";
 }
