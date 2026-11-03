@@ -51,6 +51,19 @@ describe("server message decoder", () => {
     ];
     for (const message of messages) expect(parseServerMessage(JSON.stringify(message))).toEqual(message);
   });
+  it("accepts legacy repositories and the additive mute preference but rejects malformed values", async () => {
+    const { fixtureSnapshot } = await import("./fixtures");
+    const { parseServerMessage } = await import("./protocol");
+    const snapshot = fixtureSnapshot();
+    for (const muted of [undefined, false, true]) {
+      const value = { ...snapshot, repositories: snapshot.repositories.map((repo) => ({ ...repo, muted })) };
+      expect(parseServerMessage(JSON.stringify({ type: "snapshot", snapshot: value }))).not.toBeNull();
+    }
+    for (const muted of [null, "true", 1]) {
+      const value = { ...snapshot, repositories: snapshot.repositories.map((repo) => ({ ...repo, muted })) };
+      expect(parseServerMessage(JSON.stringify({ type: "snapshot", snapshot: value }))).toBeNull();
+    }
+  });
   it("rejects wrong versions, raw Maps, invalid permissions, missing facts and bad sync state", async () => {
     const { fixtureSnapshot } = await import("./fixtures");
     const { parseServerMessage } = await import("./protocol");

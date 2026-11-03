@@ -17,6 +17,8 @@ export interface RepositoryRecord {
   readonly ownerPermission: RepositoryPermission;
   readonly monitorOverride: boolean | null;
   readonly monitored: boolean;
+  /** Owner-scoped display preference; absent legacy values mean unmuted. */
+  readonly muted?: boolean;
   /** Last GitHub API read, never refreshed by a public webhook payload. */
   readonly listedAt: number;
   /** Most recent delivery or read reporting visibility, independently of confirmation. */
@@ -244,6 +246,7 @@ function repositoryRecord(value: unknown): boolean {
     && oneOf(value.ownerPermission, PERMISSIONS)
     && (value.monitorOverride === null || typeof value.monitorOverride === "boolean")
     && typeof value.monitored === "boolean" && number(value.listedAt)
+    && (value.muted === undefined || typeof value.muted === "boolean")
     && (value.visibilityReportedAt === undefined || number(value.visibilityReportedAt));
 }
 /** Shared storage and socket decoder rejects malformed JSON before a Map is made. */
