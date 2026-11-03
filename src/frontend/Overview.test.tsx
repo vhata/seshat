@@ -35,6 +35,61 @@ function render(
   );
 }
 describe("overview presentation", () => {
+  it("separates muted PRs and counts while preserving bucket labels and freshness", () => {
+    const muted = { ...FIXTURE_REPOSITORY, id: 42, fullName: "example/quiet", muted: true };
+    const emptyMuted = { ...muted, id: 43, fullName: "example/empty" };
+    const disabled = { ...muted, id: 44, fullName: "example/off", monitored: false };
+    const html = render(buildSnapshot(
+      [FIXTURE_REPOSITORY, muted, emptyMuted, disabled],
+      [fixturePr({ title: "Active work" }), fixturePr({
+        nodeId: "PR_muted", repositoryId: muted.id, title: "Quiet work", isDraft: true,
+      })],
+      SYNC_FIXTURES.live, FIXTURE_OWNER_ID, now,
+    ));
+    const [active, hidden] = html.split('<details class="muted-repositories">');
+    expect(active).toContain("Active work");
+    expect(active).not.toContain("Quiet work");
+    expect(active).toContain("Needs you · 1");
+    expect(active).toContain("Waiting · 0");
+    expect(active).toContain("1 open PRs · 1 repositories");
+    expect(active).toContain("Checked with GitHub");
+    expect(hidden).toContain("Muted repositories · 2 repositories · 1 PRs");
+    expect(hidden).toContain("Quiet work");
+    expect(hidden).toContain('aria-label="Muted: Draft"');
+    expect(hidden).toContain('aria-label="Unmute example/empty"');
+    expect(hidden).not.toContain("example/off");
+    expect(html).not.toContain('<details class="muted-repositories" open');
+    expect((html.match(/data-pr="PR_muted"/g) ?? []).length).toBe(1);
+  });
+  it("distinguishes all-muted, muted-without-PRs and no-muted empty states", () => {
+    const repository = { ...FIXTURE_REPOSITORY, muted: true };
+    const snapshot = (prs: Parameters<typeof buildSnapshot>[1]) => buildSnapshot(
+      [repository], prs, SYNC_FIXTURES.live, FIXTURE_OWNER_ID, now,
+    );
+    const allMuted = render(snapshot([fixturePr()]));
+    expect(allMuted).toContain("No active pull requests");
+    expect(allMuted).toContain("All open pull requests are in Muted repositories below.");
+    expect(allMuted).toContain("0 open PRs · 0 repositories");
+    expect(allMuted).not.toContain("No repositories monitored yet");
+    const emptyMuted = render(snapshot([]));
+    expect(emptyMuted).toContain("Muted repositories · 1 repositories · 0 PRs");
+    expect(emptyMuted).toContain("No open pull requests in muted repositories.");
+    expect(emptyMuted).toContain('aria-label="Unmute example/observatory"');
+    expect(render(fixtureSnapshot())).toContain("No muted repositories are monitored.");
+  });
+  it("continues rendering updated muted facts and marks them out of date on failure", () => {
+    const html = render(buildSnapshot(
+      [{ ...FIXTURE_REPOSITORY, muted: true }],
+      [fixturePr({ title: "New muted activity", mergeable: "conflicting" })],
+      SYNC_FIXTURES.failed, FIXTURE_OWNER_ID, now,
+    ));
+    const hidden = html.split('<details class="muted-repositories">')[1];
+    expect(hidden).toContain("New muted activity");
+    expect(hidden).toContain("conflicts");
+    expect(hidden).toContain("May be out of date");
+    expect(html).toContain("Sync failed");
+    expect(html).toContain("Could not read: example/observatory");
+  });
   it("acknowledges retry immediately and briefly disables duplicate clicks", () => {
     const snapshot = fixtureSnapshot(SYNC_FIXTURES.overdue);
     const html = render(snapshot, {

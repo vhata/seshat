@@ -57,6 +57,37 @@ a:focus-visible {
 .muted {
   color: var(--muted);
 }
+.muted-repositories {
+  margin-top: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
+}
+.muted-repositories summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.muted-repositories summary:focus-visible {
+  outline: 2px solid var(--sky);
+  outline-offset: 3px;
+}
+.muted-repositories > p {
+  color: var(--muted);
+}
+.muted-repository-controls {
+  list-style: none;
+  padding: 0;
+}
+.muted-repository-controls li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+}
+.muted-repository-controls a {
+  overflow-wrap: anywhere;
+}
 .app-header {
   display: flex;
   flex-wrap: wrap;
