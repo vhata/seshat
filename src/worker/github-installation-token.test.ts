@@ -1,7 +1,9 @@
 import { env } from "cloudflare:workers";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InstallationTokens } from "./github-installation-token";
 import { readReviewerPermission } from "./github-permissions";
+
+afterEach(() => { vi.restoreAllMocks(); });
 
 const NOW = Date.UTC(2026, 9, 17);
 const bindings = env as unknown as Record<string, string>;
@@ -54,13 +56,35 @@ describe("installation credentials", () => {
     expect(await new InstallationTokens({ ...app, privateKey: "invalid" }).get(3, NOW)).toEqual({ ok: false, reason: "signing-failed" });
   });
   it("distinguishes rate limits, suspended installations and removed installations", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
     const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}, { status: 429 }));
     const tokens = new InstallationTokens(app);
-    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "rate-limited" });
+    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "rate-limited", retryAt: NOW + 60_000 });
     fetcher.mockResolvedValue(Response.json({ message: "This installation has been suspended." }, { status: 403 }));
-    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "installation-suspended" });
+    expect(await tokens.get(3, NOW + 60_001)).toEqual({ ok: false, reason: "installation-suspended" });
     fetcher.mockResolvedValue(Response.json({}, { status: 404 }));
-    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "installation-removed" });
+    expect(await tokens.get(3, NOW + 60_002)).toEqual({ ok: false, reason: "installation-removed" });
+  });
+
+  it("honors a cold token mint's retry deadline before allowing a new HTTP request", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}, { status: 429, headers: { "retry-after": "120" } }));
+    const tokens = new InstallationTokens(app);
+    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "rate-limited", retryAt: NOW + 120_000 });
+    for (const offset of [1, 5000, 30000, 119999]) expect(await tokens.get(3, NOW + offset)).toEqual({ ok: false, reason: "rate-limited", retryAt: NOW + 120_000 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    fetcher.mockResolvedValue(Response.json({ token: "synthetic-token", expires_at: new Date(NOW + 3_600_000).toISOString() }, { status: 201 }));
+    expect(await tokens.get(3, NOW + 120_000)).toMatchObject({ ok: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("anchors a token throttle to response receipt rather than the earlier alarm time", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW + 2000);
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}, { status: 429, headers: { "retry-after": "1" } }));
+    const tokens = new InstallationTokens(app);
+    expect(await tokens.get(3, NOW)).toEqual({ ok: false, reason: "rate-limited", retryAt: NOW + 3000 });
+    await tokens.get(3, NOW + 2500);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
 });
@@ -73,7 +97,7 @@ describe("collaborator permission reads", () => {
     });
     expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: true, entry: previous });
     fetcher.mockResolvedValue(Response.json({}, { status: 429 }));
-    expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: false, entry: previous, reason: "rate-limited" });
+    expect(await readReviewerPermission("token", repo, account, previous)).toEqual({ ok: false, entry: previous, reason: "rate-limited", retryAt: expect.any(Number) });
   });
 
   it("uses base permission for custom roles, maps 404 to none, and rejects a custom role name as proof of trust", async () => {

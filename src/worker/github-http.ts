@@ -79,3 +79,14 @@ export function rateLimited(response: Response | null): boolean {
   return response?.status === 429 || response?.status === 403
     && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after"));
 }
+
+/** Honor GitHub's throttle deadline, with a conservative secondary fallback. */
+export function githubRetryAt(response: Response, now = Date.now()): number {
+  const retry = response.headers.get("retry-after");
+  const seconds = retry === null ? NaN : Number(retry);
+  const retryAt = Number.isFinite(seconds) && seconds >= 0 ? now + seconds * 1000 : Date.parse(retry ?? "");
+  const reset = response.headers.get("x-ratelimit-remaining") === "0"
+    ? Number(response.headers.get("x-ratelimit-reset")) * 1000 : NaN;
+  const deadlines = [retryAt, reset].filter((value) => Number.isFinite(value) && value > now);
+  return deadlines.length ? Math.max(...deadlines) : now + 60_000;
+}

@@ -407,6 +407,35 @@ describe("overview presentation", () => {
   });
 });
 
+describe("repository refresh integration", () => {
+  it("offers targeted refresh for empty and muted repositories and ties feedback to manual work", () => {
+    const muted = { ...FIXTURE_REPOSITORY, id: 42, fullName: "example/quiet", muted: true };
+    const empty = { ...FIXTURE_REPOSITORY, id: 43, fullName: "example/empty" };
+    const disabled = { ...FIXTURE_REPOSITORY, id: 44, fullName: "example/off", monitored: false };
+    const html = render(buildSnapshot(
+      [FIXTURE_REPOSITORY, muted, empty, disabled],
+      [fixturePr(), fixturePr({ nodeId: "PR_muted", repositoryId: muted.id, repository: { ...fixturePr().repository, fullName: muted.fullName } })],
+      SYNC_FIXTURES.live, FIXTURE_OWNER_ID, now, {
+        repositories: { "12": { lastSuccessfulCheckAt: now, latestAttempt: { id: 99, startedAt: now, result: "success" } } },
+        pullRequests: {},
+        repositoryRefreshes: {
+          "12": { lastSuccessfulCheckAt: null, latestAttempt: { id: 8, startedAt: now - 1000, result: "running" } },
+          "42": { lastSuccessfulCheckAt: now - 5000, latestAttempt: { id: 9, startedAt: now - 5000, result: "success" } },
+        },
+      },
+    ));
+    expect(html).toContain('aria-label="Refresh example/empty"');
+    expect(html).toContain('aria-label="Refresh example/quiet"');
+    expect(html).not.toContain('aria-label="Refresh example/off"');
+    expect(html).toContain("Refresh running.");
+    const mutedSection = html.split('<details class="muted-repositories">')[1]!;
+    expect(mutedSection).toContain('aria-label="Refresh example/quiet"');
+    expect(mutedSection).toContain("Refresh completed.");
+    expect(html).toContain("● Live");
+    expect(html).toContain("Last full check:");
+  });
+});
+
 describe("granular freshness presentation", () => {
   const checked = (at: number): CheckStatus => ({
     lastSuccessfulCheckAt: at,

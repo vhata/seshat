@@ -1,9 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { githubRequest, reportGithubFailure, responseJson, type GithubFailureOperation, type GithubFailureReason } from "./github-http";
+import { githubRequest, githubRetryAt, reportGithubFailure, responseJson, type GithubFailureOperation, type GithubFailureReason } from "./github-http";
 
 const SECRET = "private-token-private-repository-private-upstream-message";
 
 describe("sanitized GitHub diagnostics", () => {
+  it("honors primary and secondary throttle deadlines with a bounded fallback", () => {
+    const now = Date.UTC(2026, 10, 3);
+    const response = (headers: Record<string, string>) => new Response(null, { status: 429, headers });
+    expect(githubRetryAt(response({ "retry-after": "120" }), now)).toBe(now + 120_000);
+    expect(githubRetryAt(response({ "retry-after": new Date(now + 90_000).toUTCString() }), now)).toBe(now + 90_000);
+    expect(githubRetryAt(response({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": String((now + 300_000) / 1000), "retry-after": "60" }), now)).toBe(now + 300_000);
+    expect(githubRetryAt(response({ "x-ratelimit-remaining": "4900", "x-ratelimit-reset": String((now + 3_600_000) / 1000), "retry-after": "60" }), now)).toBe(now + 60_000);
+    for (const value of ["nonsense", "-12", "0", "Infinity"]) expect(githubRetryAt(response({ "retry-after": value }), now)).toBe(now + 60_000);
+  });
   it("reports failed HTTP status without retaining requests, headers or response bodies", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ message: SECRET }, {

@@ -72,11 +72,16 @@ export interface CheckStatus {
   readonly lastSuccessfulCheckAt: number | null;
   readonly latestAttempt: CheckAttempt | null;
 }
-export type CheckScope = "repository" | "pr";
+export type CheckScope = "repository" | "pr" | "repository-refresh";
 export interface FreshnessEvidence {
   readonly repositories: Readonly<Record<string, CheckStatus>>;
   readonly pullRequests: Readonly<Record<string, CheckStatus>>;
+  /** Explicit owner requests, independent of unrelated background checks. */
+  readonly repositoryRefreshes?: Readonly<Record<string, CheckStatus>>;
 }
+export type RepositoryRefreshResult =
+  | { readonly ok: true; readonly attempt: CheckAttempt }
+  | { readonly ok: false; readonly reason: "not-found" | "not-allowed" };
 export type SweepAttempt =
   | { readonly startedAt: number; readonly result: "running" | "success" }
   | {
@@ -311,7 +316,9 @@ export function isCheckStatus(value: unknown): value is CheckStatus {
 function freshnessEvidence(value: unknown): boolean {
   return object(value) && object(value.repositories) && object(value.pullRequests)
     && Object.values(value.repositories).every(isCheckStatus)
-    && Object.values(value.pullRequests).every(isCheckStatus);
+    && Object.values(value.pullRequests).every(isCheckStatus)
+    && (value.repositoryRefreshes === undefined || object(value.repositoryRefreshes)
+      && Object.values(value.repositoryRefreshes).every(isCheckStatus));
 }
 function bucket(value: unknown): boolean {
   return object(value) && object(value.bucket) && oneOf(value.bucket.id, ["ready-to-land", "broken", "awaiting-your-review", "changes-requested-on-yours", "ci-running", "waiting-on-the-author", "draft"])

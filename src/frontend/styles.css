@@ -248,6 +248,27 @@ button:disabled {
   max-width: 100%;
   overflow-wrap: anywhere;
 }
+.repository-refresh {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  font: 10px system-ui, sans-serif;
+}
+.repository .repository-refresh {
+  display: flex;
+  margin-top: 3px;
+}
+.repository-refresh button {
+  padding: 1px 5px;
+  font-size: inherit;
+}
+.repository-refresh [role="alert"] {
+  color: var(--coral);
+}
+.repository-refresh [role="status"] {
+  color: var(--muted);
+}
 .column-head,
 .pr-row {
   display: grid;

@@ -36,6 +36,14 @@ normal last-success reporting. Turning monitoring off and on must retain
 the mute choice. These checks use local controlled time and stubbed GitHub;
 they do not establish hosted delivery latency or physical-device behavior.
 
+Single-repository refresh scenarios use the real controls and request
+receipts. They hold a GitHub response to observe queued/running feedback,
+coalesce repeated requests, recover missed opens and closes, retain cached
+rows after failures and refresh an empty muted repository. Assertions on
+outbound requests ensure these actions read only the selected repository
+without installation discovery or a global sweep. Workers tests separately
+cover permission loss, rate deadlines, eviction and observation races.
+
 The harness seeds an owner session through a private service binding. Its
 test bundle supplies clock and alarm controls through that binding, outside
 the HTTP surface. Since workerd reserves the alarm RPC name, a generated

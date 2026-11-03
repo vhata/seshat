@@ -13,7 +13,7 @@ export class OverviewCheckStore {
   constructor(private readonly checkStorage: DurableObjectStorage) {}
 
   private key(scope: CheckScope, key: string): string { return `${PREFIX}${scope}:${key}`; }
-  private read(scope: CheckScope, key: string): CheckStatus {
+  checkStatus(scope: CheckScope, key: string): CheckStatus {
     const row = this.checkStorage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", this.key(scope, key)).toArray()[0];
     if (!row) return UNKNOWN;
     const value: unknown = JSON.parse(row.value);
@@ -32,7 +32,7 @@ export class OverviewCheckStore {
       if (!Number.isSafeInteger(id)) throw new Error("check sequence exhausted");
       this.checkStorage.sql.exec("INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", SEQUENCE, String(id));
       const attempt: CheckAttempt = { id, startedAt: now, result };
-      const before = this.read(scope, key);
+      const before = this.checkStatus(scope, key);
       // A delayed observer cannot replace a check begun on newer evidence.
       if (now >= (before.latestAttempt?.startedAt ?? -Infinity)) this.write(scope, key, { ...before, latestAttempt: attempt });
       return attempt;
@@ -40,7 +40,7 @@ export class OverviewCheckStore {
   }
 
   private current(scope: CheckScope, key: string, attempt: CheckAttempt): CheckStatus | null {
-    const before = this.read(scope, key);
+    const before = this.checkStatus(scope, key);
     const latest = before.latestAttempt;
     return latest?.id === attempt.id && latest.startedAt === attempt.startedAt
       && (latest.result === "queued" || latest.result === "running") ? before : null;
@@ -75,9 +75,12 @@ export class OverviewCheckStore {
 
   /** Only currently monitored identities cross the owner protocol boundary. */
   evidence(repositoryIds: readonly number[], prIds: readonly string[]): FreshnessEvidence {
+    const repositoryRefreshes = Object.fromEntries(repositoryIds.map((id) => [String(id), this.checkStatus("repository-refresh", String(id))] as const)
+      .filter(([, status]) => status.latestAttempt !== null));
     return {
-      repositories: Object.fromEntries(repositoryIds.map((id) => [String(id), this.read("repository", String(id))])),
-      pullRequests: Object.fromEntries(prIds.map((id) => [id, this.read("pr", id)])),
+      repositories: Object.fromEntries(repositoryIds.map((id) => [String(id), this.checkStatus("repository", String(id))])),
+      pullRequests: Object.fromEntries(prIds.map((id) => [id, this.checkStatus("pr", id)])),
+      ...(Object.keys(repositoryRefreshes).length === 0 ? {} : { repositoryRefreshes }),
     };
   }
 }

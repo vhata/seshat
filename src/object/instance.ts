@@ -20,7 +20,7 @@ import { OverviewStore } from "./overview-store";
 import { RepositorySelection } from "./repository-selection";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 import type { RepositorySettings } from "../shared/repositories";
-import type { InstallationRefreshResult, MonitoringMutationResult } from "../shared/overview/protocol";
+import type { InstallationRefreshResult, MonitoringMutationResult, RepositoryRefreshResult } from "../shared/overview/protocol";
 import { MIGRATIONS } from "./schema";
 import { OverviewSync } from "./overview-sync";
 import type { ReducedDelivery } from "../shared/overview/webhook-marks";
@@ -273,6 +273,10 @@ export class InstanceObject extends DurableObject<Env> {
     return result;
   }
 
+  async refreshRepository(repositoryId: number, ownerAccountId: number, now: number): Promise<RepositoryRefreshResult> {
+    return this.syncScheduler().refreshRepository(repositoryId, ownerAccountId, now);
+  }
+
   async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {
     const selection = this.repositorySelection();
     const result = selection ? await selection.setMonitoringOverride(repositoryId, override, now) : { ok: false as const, reason: "not-allowed" as const };
@@ -335,6 +339,7 @@ export class InstanceObject extends DurableObject<Env> {
   private syncScheduler(): OverviewSync {
     if (this.sync) return this.sync;
     this.sync = new OverviewSync({
+      ownerId: readConfig(this.env as unknown as Record<string, unknown>).ownerId ?? undefined,
       storage: this.ctx.storage, store: this.overviewStore(),
       selection: this.repositorySelection(),
       installations: () => this.storedInstallations(),

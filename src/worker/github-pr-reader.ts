@@ -3,8 +3,9 @@ import type {
   Review,
 } from "../shared/overview/types";
 import type { PullRequestRecord } from "../shared/overview/protocol";
-import { githubRequest, rateLimited, record, reportGithubFailure, responseJson, type GithubFailureOperation } from "./github-http";
+import { githubRequest, githubRetryAt, rateLimited, record, reportGithubFailure, responseJson, type GithubFailureOperation } from "./github-http";
 import { readReviewerPermission, type PermissionCacheEntry } from "./github-permissions";
+import { GitHubRepositoryListing } from "./github-repositories";
 import {
   CHECK_PAGE_QUERY, COUNT_QUERY, PR_PAGE_QUERY, REPOSITORIES_QUERY,
   REREAD_QUERY, REVIEW_PAGE_QUERY,
@@ -14,7 +15,7 @@ export type ReadPr = PullRequestRecord;
 
 export type ReadFailure = "github-failed" | "graphql-errors" | "malformed" | "unavailable" | "request-limit" | "permission-failed" | "changed-during-read" | "rate-limited" | "interrupted";
 export interface ReadIssue { readonly nodeId: string; readonly reason: ReadFailure }
-export interface RateLimit { readonly remaining: number; readonly resetAt: number; readonly cost: number; readonly limit?: number }
+export interface RateLimit { readonly remaining: number; readonly resetAt: number; readonly cost: number; readonly limit?: number; readonly retryAt?: number }
 export interface HeadCommitDate {
   readonly repositoryId: number;
   readonly headSha: string;
@@ -134,6 +135,10 @@ export class GithubPrReader {
   private readonly refreshPermissions: boolean;
   private readonly verifyMergeability: boolean;
   private readonly shouldContinue: () => boolean;
+  private readonly repositoryAccess: {
+    readonly ownerId: number;
+    readonly repositoryOwners: readonly { readonly repositoryId: number; readonly ownerAccountId: number }[];
+  } | undefined;
 
   constructor(private readonly token: string, options: {
     readonly permissionCache?: readonly PermissionCacheEntry[];
@@ -145,12 +150,15 @@ export class GithubPrReader {
     readonly shouldContinue?: () => boolean;
     readonly headCommitDates?: readonly HeadCommitDate[];
     readonly continuation?: ReaderContinuation | null;
+    /** A targeted manual read revalidates owner access without discovery. */
+    readonly repositoryAccess?: GithubPrReader["repositoryAccess"];
   } = {}) {
     const requested = options.requestLimit ?? 40;
     this.requestLimit = Number.isFinite(requested) ? Math.min(40, Math.max(0, Math.floor(requested))) : 40;
     this.refreshPermissions = options.refreshPermissions ?? false;
     this.verifyMergeability = options.verifyMergeability ?? false;
     this.shouldContinue = options.shouldContinue ?? (() => true);
+    this.repositoryAccess = options.repositoryAccess;
     for (const entry of options.continuation?.permissionCache ?? options.permissionCache ?? []) this.permissions.set(`${entry.repositoryId}:${entry.accountId}`, entry);
     for (const entry of options.continuation?.headCommitDates ?? options.headCommitDates ?? []) {
       if (Number.isFinite(entry.committedAt)) this.commitDates.set(`${entry.repositoryId}:${entry.headSha}`, entry);
@@ -165,8 +173,14 @@ export class GithubPrReader {
 
   private consume(): void {
     if (!this.shouldContinue()) fail("interrupted");
+    if (this.repositoryAccess && (this.rate?.retryAt ?? 0) > Date.now()) fail("rate-limited");
     if (this.used >= this.requestLimit) fail("request-limit");
     this.used++;
+  }
+
+  private throttled(retryAt = Date.now() + 60_000): never {
+    this.rate = { remaining: 0, resetAt: retryAt, retryAt, cost: 0, ...(this.rate?.limit === undefined ? {} : { limit: this.rate.limit }) };
+    fail("rate-limited");
   }
 
   private async graphql(query: string, variables: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -176,7 +190,7 @@ export class GithubPrReader {
     const response = await githubRequest(this.token, "/graphql", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, variables }),
     });
-    if (rateLimited(response)) fail("rate-limited");
+    if (rateLimited(response)) this.throttled(githubRetryAt(response!));
     if (!response?.ok) fail("github-failed");
     const body = obj(await responseJson(response));
     const data = record(body.data);
@@ -198,7 +212,7 @@ export class GithubPrReader {
     }
     this.consume();
     const response = await githubRequest(this.token, path);
-    if (rateLimited(response)) fail("rate-limited");
+    if (rateLimited(response)) this.throttled(githubRetryAt(response!));
     if (!response?.ok) fail("github-failed");
     const raw = await responseJson(response);
     // Continuations keep only fields used here, excluding comment bodies,
@@ -281,6 +295,7 @@ export class GithubPrReader {
             let node = obj(nodes[index]);
             const repo = repository(node);
             if (repo.nodeId !== nodeId) fail();
+            await this.checkRepositoryAccess(repo);
             const prs: ReadPr[] = [];
             let complete = true;
             let seen = 0;
@@ -321,6 +336,41 @@ export class GithubPrReader {
       } catch (error) { issues.push(...ids.map((nodeId) => ({ nodeId, reason: reason(error) }))); }
     }
     return { ...this.meta(issues, repositories.length, "pr-list"), repositories };
+  }
+
+  private async checkRepositoryAccess(repo: ReturnType<typeof repository>): Promise<void> {
+    const access = this.repositoryAccess;
+    if (!access) return;
+    const expected = access.repositoryOwners.find((entry) => entry.repositoryId === repo.repositoryId);
+    if (!expected || expected.ownerAccountId !== repo.ownerAccountId) fail("changed-during-read");
+    if (repo.ownerAccountId === access.ownerId) return;
+    // Resolve by account ID on every logical observation so a renamed login
+    // cannot authorize a different user. Only continuation replay reuses it.
+    const loginKey = `OWNER ${access.ownerId}`;
+    let login = this.responses.get(loginKey);
+    if (login === undefined) {
+      this.consume();
+      const result = await new GitHubRepositoryListing().readOwnerLogin(this.token, access.ownerId);
+      if (!result.ok) {
+        if (result.reason === "rate-limited") this.throttled(result.retryAt);
+        fail("permission-failed");
+      }
+      login = result.login;
+      this.responses.set(loginKey, login);
+    }
+    const key = `${repo.repositoryId}:${access.ownerId}`;
+    if (!this.completedPermissions.has(key)) {
+      this.consume();
+      const result = await readReviewerPermission(this.token, { id: repo.repositoryId, fullName: repo.fullName }, { id: access.ownerId, login: text(login) });
+      if (!result.ok || !result.entry) {
+        if (result.reason === "rate-limited") this.throttled(result.retryAt);
+        fail("permission-failed");
+      }
+      this.permissions.set(key, result.entry);
+      this.completedPermissions.add(key);
+      this.refreshedPermissions.add(key);
+    }
+    if (!this.permissions.get(key) || this.permissions.get(key)!.permission === "none") fail("permission-failed");
   }
 
   async rereadPrs(nodeIds: readonly string[]): Promise<ReadMeta & { readonly nodes: readonly PrNodeRead[] }> {
@@ -415,7 +465,10 @@ export class GithubPrReader {
         try {
           this.consume();
           const permission = await readReviewerPermission(this.token, { id: repo.repositoryId, fullName: repo.fullName }, author, entry);
-          if (!permission.ok) issues.push({ nodeId, reason: permission.reason === "rate-limited" ? "rate-limited" : "permission-failed" });
+          if (!permission.ok) {
+            if (permission.reason === "rate-limited") this.throttled(permission.retryAt);
+            issues.push({ nodeId, reason: "permission-failed" });
+          }
           else this.completedPermissions.add(key);
           entry = permission.entry;
           if (entry) this.permissions.set(key, entry);

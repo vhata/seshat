@@ -5,6 +5,7 @@ import {
   type CheckStatus,
   type OverviewRowDto,
   type OverviewSnapshot,
+  type RepositoryRecord,
   type SyncFailureReason,
 } from "../shared/overview/protocol";
 import { freshness, isOverdue, relativeTime } from "./freshness";
@@ -17,6 +18,7 @@ import {
 } from "./overview-client";
 import logo from "../../assets/seshat.svg";
 import { MutedRepositories } from "./MutedRepositories";
+import { RepositoryRefresh } from "./RepositoryRefresh";
 
 const RULES: Record<BucketId, string> = {
   "ready-to-land":
@@ -110,6 +112,8 @@ function PrRow({
   note,
   outdated,
   repositoryStatus,
+  repository,
+  refreshStatus,
   prStatus,
   visibleSince,
 }: {
@@ -119,6 +123,8 @@ function PrRow({
   note?: ChangeNote;
   outdated: boolean;
   repositoryStatus?: CheckStatus;
+  repository?: RepositoryRecord;
+  refreshStatus?: CheckStatus;
   prStatus?: CheckStatus;
   visibleSince: number;
 }) {
@@ -154,6 +160,12 @@ function PrRow({
           now={now}
           visibleSince={visibleSince}
         />
+        {repository && <RepositoryRefresh
+          key={`${repository.id}:${repository.ownerAccountId}:${repository.installationId}`}
+          repository={repository}
+          status={refreshStatus}
+          now={now}
+        />}
       </div>
       <div className="pr-title">
         <a href={pr.url}>{pr.title}</a>{" "}
@@ -440,6 +452,12 @@ function RepositoryChecks({ snapshot, now, visibleSince }: {
               now={now}
               visibleSince={visibleSince}
             />
+            <RepositoryRefresh
+              key={`${repo.id}:${repo.ownerAccountId}:${repo.installationId}`}
+              repository={repo}
+              status={snapshot.freshness?.repositoryRefreshes?.[String(repo.id)]}
+              now={now}
+            />
           </li>
         ))}
       </ul>
@@ -649,6 +667,8 @@ function SnapshotContent({
                             note={state.changes.get(row.pr.nodeId)}
                             outdated={outdated}
                             repositoryStatus={snapshot.freshness?.repositories[String(row.pr.repositoryId)]}
+                            repository={snapshot.repositories.find((repo) => repo.id === row.pr.repositoryId)}
+                            refreshStatus={snapshot.freshness?.repositoryRefreshes?.[String(row.pr.repositoryId)]}
                             prStatus={snapshot.freshness?.pullRequests[row.pr.nodeId]}
                             visibleSince={state.visibleSince}
                           />
@@ -673,6 +693,8 @@ function SnapshotContent({
           note={state.changes.get(row.pr.nodeId)}
           outdated={outdated}
           repositoryStatus={snapshot.freshness?.repositories[String(row.pr.repositoryId)]}
+          repository={snapshot.repositories.find((repo) => repo.id === row.pr.repositoryId)}
+          refreshStatus={snapshot.freshness?.repositoryRefreshes?.[String(row.pr.repositoryId)]}
           prStatus={snapshot.freshness?.pullRequests[row.pr.nodeId]}
           visibleSince={state.visibleSince}
         />}

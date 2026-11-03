@@ -172,25 +172,3 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Check before relying on them: whether the Workers Rate Limiting binding is available on Free, and whether GitHub shows conflict state to visitors without write access ([not verified](docs/specs/2026-10-15-public-view.md#not-verified)).
 
 ### Unprioritized
-
-- [PRODUCT] `refresh-single-repository` — **Refresh one repo on demand.**
-  An owner checking a merge or CI result should be able to confirm one
-  repository without waiting for the next sweep or refreshing all listings.
-  - Source: owner discussion of refresh and muting, 2026-11-03
-  - Starting point: `queueRepositoryRead` in
-    `src/object/overview-sync.ts`, `src/object/instance.ts`,
-    `src/worker/repositories.ts` and `src/frontend/Overview.tsx`.
-    The existing "Refresh listings" control refreshes installation-wide
-    discovery; it is not a single repository's PR refresh action.
-  - Add an owner-authenticated repository refresh action near its name or
-    in its menu. Reconcile the complete open PR set and current facts,
-    including newly opened and closed PRs; rereading only cached PR IDs
-    is insufficient. Respect access, monitoring and GitHub rate limits.
-  - Coalesce repeated clicks, show queued/running and success or failure
-    feedback tied to the requested work, and retain cached rows on failure.
-    Reuse scheduler budgets, continuations and observation guards so a
-    manual refresh cannot regress newer webhook or sweep results.
-    Keep normal visible-overview sweeps and hidden-page webhook handling.
-  - Verify that only the selected repository is requested by the action,
-    including an empty repository, missed open/close events, concurrent
-    background work, duplicate requests, permission loss and rate limits.

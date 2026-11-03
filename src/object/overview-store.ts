@@ -29,6 +29,7 @@ export class OverviewStore extends OverviewCheckStore {
       const previous = before ? JSON.parse(before.data) as RepositoryRecord : null;
       if (!repository.monitored || previous && (previous.ownerAccountId !== repository.ownerAccountId || previous.installationId !== repository.installationId)) {
         this.forget("repository", String(repository.id));
+        this.forget("repository-refresh", String(repository.id));
         this.removeRepositoryPrs(repository.id);
       }
       this.storage.sql.exec(
@@ -51,6 +52,7 @@ export class OverviewStore extends OverviewCheckStore {
       new RepositoryDiscoveryStore(this.storage).migrateMonitoringOverride(repositoryId, repository.ownerAccountId, repository.monitorOverride);
       this.removeRepositoryPrs(repositoryId);
       this.forget("repository", String(repositoryId));
+      this.forget("repository-refresh", String(repositoryId));
       this.storage.sql.exec("DELETE FROM repositories WHERE id = ?", repositoryId);
     });
     return true;
