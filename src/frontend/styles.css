@@ -152,6 +152,20 @@ form {
   padding: 4px 16px;
   color: var(--amber);
 }
+.sync-details {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.sync-details p {
+  margin: 6px 0;
+}
+.sync-details summary {
+  cursor: pointer;
+  margin-top: 8px;
+}
 .summary {
   display: flex;
   flex-wrap: wrap;

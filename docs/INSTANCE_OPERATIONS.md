@@ -238,6 +238,14 @@ and [sync design](OVERVIEW_SYNC.md) explain the broader scenarios.
 
 ## Logs and troubleshooting
 
+The overview shows sync details while Checking, Overdue, Failed or
+Disconnected: the last reported attempt, its age, and the last overview
+update received. Checking is a one-minute catch-up grace period after the
+page becomes visible, not a report of GitHub progress. Returning to the tab
+starts that grace period again. A previous failed attempt remains visible
+in the details until a successful check confirms recovery. An instance
+update or a quiet log does not prove a GitHub check is progressing.
+
 Start a short live tail against the confirmed target, reproduce the issue,
 then stop with Ctrl-C:
 

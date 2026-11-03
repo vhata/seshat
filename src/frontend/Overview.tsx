@@ -261,7 +261,9 @@ export function OverviewPage({
               {status === "Sync failed" && attempt?.result === "failed" ? (
                 REASONS[attempt.reason]
               ) : status === "Overdue" ? (
-                "The last successful check is more than five minutes old. The instance is being asked to check again."
+                lastSuccess === null
+                  ? "No GitHub check has completed successfully yet. The instance is being asked to check again."
+                  : "The last successful check is more than five minutes old. The instance is being asked to check again."
               ) : (
                 <>
                   Last message:{" "}
@@ -303,6 +305,61 @@ export function OverviewPage({
             ? " — loading the first overview…"
             : "…"}
         </p>
+      )}
+      {status !== "Live" && (
+        <section className="sync-details" aria-label="Sync details">
+          {status === "Checking" && (
+            <p>
+              Waiting for a completed GitHub check for{" "}
+              {relativeTime(state.visibleSince, state.now)} since this page
+              became visible. After a minute, an unfinished check is marked
+              overdue.
+            </p>
+          )}
+          <p>
+            {attempt?.result === "running" ? (
+              <>
+                Last reported check started{" "}
+                <Time value={attempt.startedAt} now={state.now} />. No
+                completion has been reported.
+              </>
+            ) : attempt?.result === "failed" ? (
+              <>
+                The last reported check and its retry failed. Check started{" "}
+                <Time value={attempt.startedAt} now={state.now} />. {REASONS[attempt.reason]}{" "}
+                A new check has not yet confirmed recovery.
+              </>
+            ) : attempt?.result === "success" ? (
+              <>No newer GitHub check has been reported.</>
+            ) : (
+              <>The instance has not reported a GitHub check starting yet.</>
+            )}
+          </p>
+          <p>
+            Last overview update from the instance:{" "}
+            {state.lastMessageAt === null ? (
+              "none received"
+            ) : (
+              <Time value={state.lastMessageAt} now={state.now} />
+            )}
+            . An update does not by itself mean a GitHub check completed.
+          </p>
+          {status === "Checking" && (
+            <button type="button" onClick={onRetry}>Retry now</button>
+          )}
+          <details>
+            <summary>Why is this taking so long?</summary>
+            <p>
+              Check progress and the current cause of a delay are not reported
+              to this page. To investigate, run <code>seshat site logs</code>{" "}
+              from your configured checkout, then keep this overview visible
+              and choose Retry now. Logs show new events only; look for{" "}
+              <code>seshat.github.failure</code> for a failure reason and the
+              step that failed. A quiet log does not confirm progress. Stop
+              with Ctrl-C when finished.
+            </p>
+          </details>
+        </section>
       )}
       <main id="overview">
         {!snapshot ? (
