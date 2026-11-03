@@ -172,3 +172,78 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Check before relying on them: whether the Workers Rate Limiting binding is available on Free, and whether GitHub shows conflict state to visitors without write access ([not verified](docs/specs/2026-10-15-public-view.md#not-verified)).
 
 ### Unprioritized
+
+- [PRODUCT] `show-granular-freshness` — **Show repo and PR freshness.**
+  A single overview check time obscures successful partial refreshes and
+  differences between a PR reread and a complete repository check.
+  - Source: owner discussion of refresh and muting, 2026-11-03
+  - Related: `refresh-single-repository`
+  - Starting point: `src/object/overview-sync.ts`,
+    `src/shared/overview/protocol.ts`, `src/object/overview-store.ts`,
+    `src/frontend/freshness.ts` and `src/frontend/Overview.tsx`.
+    The current global timestamp is the start of the last successful
+    full sweep; repository `listedAt` also advances for metadata reads
+    and individual PR reads, so it cannot prove complete PR freshness.
+  - Persist separate evidence for the last successful complete repository
+    reconciliation and each PR's last successful reread, including checks
+    that find no changes. Track pending work and failures at those scopes;
+    a failed repository must not erase another's successful check time.
+    Do not treat a webhook, partial read or replayed continuation as a new
+    complete check, or let older work overwrite newer freshness evidence.
+  - Show a quiet indicator beside repository names, with hover and
+    keyboard-accessible details distinguishing "Repository fully checked"
+    from "This PR checked". Use visible text for checking, overdue and
+    failed states. Keep the global connection indicator and label the
+    aggregate timestamp "Last full check"; preserve prominent warnings
+    required by [Freshness](docs/DELIVERABLE.md#freshness).
+  - Verify mixed-success sweeps, webhook rereads, unchanged and empty
+    repositories, partial reads, retries, restart persistence and delayed
+    completions. Check accessible details and keep the existing inactivity
+    stale flag distinct from GitHub data freshness.
+
+- [PRODUCT] `refresh-single-repository` — **Refresh one repo on demand.**
+  An owner checking a merge or CI result should be able to confirm one
+  repository without waiting for the next sweep or refreshing all listings.
+  - Source: owner discussion of refresh and muting, 2026-11-03
+  - Related: `show-granular-freshness`
+  - Starting point: `queueRepositoryRead` in
+    `src/object/overview-sync.ts`, `src/object/instance.ts`,
+    `src/worker/repositories.ts` and `src/frontend/Overview.tsx`.
+    The existing "Refresh listings" control refreshes installation-wide
+    discovery; it is not a single repository's PR refresh action.
+  - Add an owner-authenticated repository refresh action near its name or
+    in its menu. Reconcile the complete open PR set and current facts,
+    including newly opened and closed PRs; rereading only cached PR IDs
+    is insufficient. Respect access, monitoring and GitHub rate limits.
+  - Coalesce repeated clicks, show queued/running and success or failure
+    feedback tied to the requested work, and retain cached rows on failure.
+    Reuse scheduler budgets, continuations and observation guards so a
+    manual refresh cannot regress newer webhook or sweep results.
+    Keep normal visible-overview sweeps and hidden-page webhook handling.
+  - Verify that only the selected repository is requested by the action,
+    including an empty repository, missed open/close events, concurrent
+    background work, duplicate requests, permission loss and rate limits.
+
+- [PRODUCT] `mute-repositories` — **Move muted repos out of the main view.**
+  Quiet repositories should remain monitored without cluttering the work
+  the owner is actively following.
+  - Source: owner discussion of refresh and muting, 2026-11-03
+  - Starting point: `src/frontend/Overview.tsx`,
+    `src/frontend/Repositories.tsx`, `src/object/repository-selection.ts`,
+    `src/object/repository-discovery-store.ts` and
+    `src/shared/overview/protocol.ts`.
+  - Store mute independently from monitoring. Move muted PRs into a
+    collapsed "Muted repositories" section below the regular buckets,
+    retaining their bucket labels. Exclude them from the main "Needs you"
+    and "Waiting" counts; show separate muted repository and PR counts.
+  - Keep webhook reads, scheduled reconciliation and freshness reporting
+    working at the normal frequency. Muting must not delete cached PRs;
+    turning monitoring off currently does, so do not reuse that operation.
+  - Provide Mute/Unmute in repository controls and an Unmute action in
+    the muted section. Persist the preference across sessions, discovery
+    refreshes and repository renames, scoped to repository and owner IDs
+    so ownership transfers do not silently inherit it. New activity does
+    not automatically unmute a repository.
+  - Verify persisted choices, active/muted counts and empty states,
+    continued updates while collapsed, explicit unmute, monitoring
+    changes, renames and ownership transfers, plus keyboard operation.
