@@ -259,6 +259,12 @@ try {
   await page.addInitScript(() => {
     window.acceptanceVisibility = "visible";
     Object.defineProperty(document, "visibilityState", { get: () => window.acceptanceVisibility });
+    // Retain the real browser socket so an out-of-order test message can
+    // exercise the production handler without adding a deployed test route.
+    const BrowserSocket = window.WebSocket;
+    window.WebSocket = class extends BrowserSocket {
+      constructor(...args) { super(...args); window.acceptanceSocket = this; }
+    };
   });
   await page.clock.install({ time: now });
   await page.goto(origin);
@@ -437,7 +443,7 @@ try {
   const beforeSelectedCalls = calls.length;
   const beforeSelectedPosts = manualPosts;
   const request = await clickRefresh(selectedControl, 12);
-  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Requested refresh: queued." }).waitFor();
+  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Refresh queued." }).waitFor();
   await selectedControl.evaluate((button) => { button.click(); button.click(); });
   assert.equal(manualPosts, beforeSelectedPosts + 1, "Disabled repeated clicks send no extra requests");
   const reading = drain(1);
@@ -447,7 +453,7 @@ try {
       entryTimeout = setTimeout(() => reject(new Error("Targeted refresh did not begin its repository read")), 10_000);
     })]);
   } finally { clearTimeout(entryTimeout); }
-  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Requested refresh: running;" }).waitFor();
+  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Refresh running." }).waitFor();
   const duplicate = await page.evaluate(async () => {
     const response = await fetch("/api/repositories/refresh-one", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -466,9 +472,19 @@ try {
   assert.equal(afterManual.buckets.flatMap((bucket) => bucket.rows).some((row) => row.pr.nodeId === "PR_1"), false);
   await page.locator('[data-pr="PR_8"]').waitFor();
   await page.locator('[data-pr="PR_1"]').waitFor({ state: "detached" });
-  await page.locator('[data-pr="PR_8"] .repository-refresh [role=status]').filter({ hasText: "Requested refresh: completed;" }).waitFor();
+  await page.locator('[data-pr="PR_8"] .repository-refresh [role=status]').filter({ hasText: "Refresh completed." }).waitFor();
   selectedOnly(beforeSelectedCalls, "R_example");
-  manualChecks.push("selected repository only", "queued and running feedback", "duplicate request coalescing", "missed open and close reconciliation");
+  for (const result of ["queued", "running"]) {
+    const stale = structuredClone(afterManual);
+    stale.freshness.repositoryRefreshes["12"].latestAttempt.result = result;
+    await page.evaluate((data) => window.acceptanceSocket.dispatchEvent(new MessageEvent("message", { data })),
+      JSON.stringify({ type: "snapshot", snapshot: stale }));
+    await page.waitForTimeout(50);
+    assert.ok((await page.locator('[data-pr="PR_8"] .repository-refresh [role=status]').innerText()).includes("Refresh completed."),
+      "A delayed pending snapshot must not regress completed requested work");
+    assert.equal(await page.locator('[data-pr="PR_8"] .repository-refresh button').isEnabled(), true);
+  }
+  manualChecks.push("selected repository only", "queued and running feedback", "duplicate request coalescing", "missed open and close reconciliation", "terminal feedback survives delayed pending snapshots");
   await page.screenshot({ path: path.join(evidence, "manual-refresh-completed.png"), fullPage: true });
   prs = originalPrs;
   await clickRefresh(page.locator('[data-pr="PR_8"] .repository-refresh button'), 12);
@@ -491,7 +507,7 @@ try {
   failing = false;
   await clickRefresh(page.locator('[data-pr="PR_1"] .repository-refresh button'), 12);
   await drain();
-  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Requested refresh: completed;" }).waitFor();
+  await page.locator('[data-pr="PR_1"] .repository-refresh [role=status]').filter({ hasText: "Refresh completed." }).waitFor();
   manualChecks.push("failed request preserves cached rows", "explicit recovery confirms a new request");
   await visibility(true);
 
@@ -650,7 +666,7 @@ try {
   const emptyCalls = calls.length;
   const emptyRequest = await clickRefresh(emptyRefresh.getByRole("button", { name: "Refresh example/new-repository", exact: true }), 13);
   await drain();
-  await emptyRefresh.locator(".repository-refresh [role=status]").filter({ hasText: "Requested refresh: completed;" }).waitFor();
+  await emptyRefresh.locator(".repository-refresh [role=status]").filter({ hasText: "Refresh completed." }).waitFor();
   const emptySnapshot = await command("snapshot");
   assert.equal(emptySnapshot.freshness.repositoryRefreshes["13"].latestAttempt.id, emptyRequest.id);
   assert.equal(emptySnapshot.freshness.repositoryRefreshes["13"].latestAttempt.result, "success");

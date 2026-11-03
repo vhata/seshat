@@ -427,10 +427,10 @@ describe("repository refresh integration", () => {
     expect(html).toContain('aria-label="Refresh example/empty"');
     expect(html).toContain('aria-label="Refresh example/quiet"');
     expect(html).not.toContain('aria-label="Refresh example/off"');
-    expect(html).toContain("Requested refresh: running; completion has not been confirmed.");
+    expect(html).toContain("Refresh running.");
     const mutedSection = html.split('<details class="muted-repositories">')[1]!;
     expect(mutedSection).toContain('aria-label="Refresh example/quiet"');
-    expect(mutedSection).toContain("Requested refresh: completed; all open PRs reconciled.");
+    expect(mutedSection).toContain("Refresh completed.");
     expect(html).toContain("● Live");
     expect(html).toContain("Last full check:");
   });

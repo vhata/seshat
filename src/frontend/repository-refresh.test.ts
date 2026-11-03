@@ -35,6 +35,22 @@ describe("repository refresh requests", () => {
     }
   });
 
+  it("retains observed terminal progress across an out-of-order snapshot sequence", () => {
+    let observed: CheckAttempt | null = null;
+    for (const result of ["queued", "running", "success", "queued", "running"] as const) {
+      observed = repositoryRefreshAttempt(observed, { ...receipt, result });
+    }
+    expect(observed).toEqual({ ...receipt, result: "success" });
+    const next = { ...receipt, id: receipt.id + 1, result: "queued" as const };
+    observed = repositoryRefreshAttempt(observed, next);
+    expect(observed).toEqual(next);
+    observed = repositoryRefreshAttempt(observed, { ...receipt, result: "success" });
+    expect(observed).toEqual(next);
+    observed = repositoryRefreshAttempt(observed, { ...next, result: "failed", reason: "rate-limited" });
+    observed = repositoryRefreshAttempt(observed, { ...next, result: "running" });
+    expect(observed).toEqual({ ...next, result: "failed", reason: "rate-limited" });
+  });
+
   it("waits for the acknowledged work rather than accepting an older completion", () => {
     const old = { ...receipt, id: 7, result: "success" as const };
     expect(repositoryRefreshAttempt(receipt, old)).toEqual(receipt);

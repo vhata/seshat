@@ -21,7 +21,12 @@ export function RepositoryRefresh({ repository, status, now }: {
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<{ text: string; afterAttemptId: number } | null>(null);
   const inFlight = useRef(false);
-  const attempt = repositoryRefreshAttempt(receipt, status?.latestAttempt ?? null);
+  const [observed, setObserved] = useState<CheckAttempt | null>(null);
+  // Concurrent publications may arrive out of order. Keep the furthest
+  // observed progress, including terminal snapshots, until identity remounts.
+  const reported = repositoryRefreshAttempt(observed, status?.latestAttempt ?? null);
+  if (reported !== observed) setObserved(reported);
+  const attempt = repositoryRefreshAttempt(receipt, reported);
   const error = failure && (attempt?.id ?? 0) <= failure.afterAttemptId ? failure.text : null;
   const pending = attempt?.result === "queued" || attempt?.result === "running";
   async function refresh() {
@@ -38,6 +43,7 @@ export function RepositoryRefresh({ repository, status, now }: {
       type="button"
       disabled={sending || pending}
       aria-label={`Refresh ${repository.fullName}`}
+      title={`Reconcile all open pull requests in ${repository.fullName}`}
       onClick={() => void refresh()}
     >
       {sending ? "Requesting refresh…" : pending ? "Refresh requested" : "Refresh"}
@@ -45,10 +51,10 @@ export function RepositoryRefresh({ repository, status, now }: {
     {sending && <span role="status">Sending refresh request.</span>}
     {error && <span role="alert">{error}</span>}
     {attempt && !sending && !error && <span role={attempt.result === "failed" || attempt.result === "interrupted" ? "alert" : "status"}>
-      {"Requested refresh: "}
+      {"Refresh "}
       {attempt.result === "queued" && "queued."}
-      {attempt.result === "running" && "running; completion has not been confirmed."}
-      {attempt.result === "success" && "completed; all open PRs reconciled."}
+      {attempt.result === "running" && "running."}
+      {attempt.result === "success" && "completed."}
       {attempt.result === "failed" && `failed. ${attempt.reason ? REASONS[attempt.reason] : "GitHub data could not be read."} Cached data retained.`}
       {attempt.result === "interrupted" && "interrupted before completion. Cached data retained."}
       {" Requested "}<time dateTime={new Date(attempt.startedAt).toISOString()} title={new Date(attempt.startedAt).toLocaleString()}>{relativeTime(attempt.startedAt, now)} ago</time>.
