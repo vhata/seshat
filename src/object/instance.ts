@@ -79,7 +79,12 @@ export class InstanceObject extends DurableObject<Env> {
   /** Owner-gated by the Worker; diagnostics never expose the underlying jobs. */
   async monitoringStatus(now: number): Promise<MonitoringStatus> {
     this.ensureSchema();
-    return this.syncScheduler().monitoringStatus(now);
+    const alarmAt = await this.ctx.storage.getAlarm();
+    const sync = this.syncScheduler();
+    return {
+      ...sync.monitoringStatus(now),
+      scheduler: { ...sync.schedulerStatus(), alarmAt },
+    };
   }
 
   /**
@@ -109,11 +114,11 @@ export class InstanceObject extends DurableObject<Env> {
     return expiresAt;
   }
 
-  /** The session's expiry if it exists and has not expired; reads only. */
-  async sessionExpiry(key: string, nowMs: number, ownerId = this.configuredOwner()): Promise<number | null> {
+  /** Session expiry; monitoring opts out of ordinary alarm repair. */
+  async sessionExpiry(key: string, nowMs: number, ownerId = this.configuredOwner(), readOnly = false): Promise<number | null> {
     if (ownerId === null || ownerId !== this.configuredOwner()) return null;
     this.ensureSchema();
-    await this.syncScheduler().rearm(nowMs);
+    if (!readOnly) await this.syncScheduler().rearm(nowMs);
     const [row] = this.ctx.storage.sql
       .exec<{ expires_at: number }>(
         "SELECT expires_at FROM sessions WHERE key = ? AND expires_at > ? AND owner_id = ?",

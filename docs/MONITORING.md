@@ -53,8 +53,11 @@ The command requests public `/api/health` and owner-only
 returns aggregate diagnostic state with private, no-store caching. It
 contains no repository or installation identifiers, PR content, GitHub
 tokens, session material or raw upstream errors. Reading diagnostics does
-not report a page visible or request a new sweep. It does not keep a
-dormant instance synchronizing.
+not report a page visible, request a new sweep, or repair its alarm. The
+monitoring route's session lookup also skips alarm repair, so it preserves
+the scheduler evidence being inspected. Ordinary session and application
+requests retain their normal alarm repair behavior. Monitoring does not
+keep a dormant instance synchronizing.
 
 Owner sessions expire seven days after sign-in and are not extended by
 checks. A refused or expired session requires signing in and replacing the
@@ -74,6 +77,34 @@ oldest pending event, discovery or installation-guard job
 `lastSuccessfulSweepAt`, `latestAttempt` (or `null`), `intervalMs` and
 `slowedByRateLimit`; an attempt has `startedAt`, `result` and an optional
 bounded `reason`. All diagnostic timestamps are epoch milliseconds.
+
+Newer version-1 responses also contain an optional `scheduler` object.
+Its absence on an older deployment is not evidence of an empty queue or
+missing alarm. These fields provide current observations:
+
+| Field | Meaning |
+| --- | --- |
+| `alarmAt` | Actual stored alarm time, or `null`; distinct from the scheduler's intended sweep time. |
+| `running` | Whether this object's scheduler invocation is currently running. This volatile flag is false after a restart. |
+| `nextSweepAt` | Scheduler's saved next sweep time, or `null`. It does not prove an alarm exists. |
+| `sweep` | Saved sweep's `phase` (`listing`, `count`, `read`), `startedAt`, and zero-based `retry`, or `null`. |
+| `rereadActive` | Whether saved event-read continuation work exists; not whether an upstream request is currently executing. |
+| `rereadCachedResponseCount` | Number of cached response entries in that continuation, without cache keys or contents. |
+| `rereadSelectedItemCount` | Number of selected event-read items, without their identities. |
+| `pending` | Aggregate counts for queued `guard`, `refresh`, and `marks` work. |
+| `selectionConfigured` | Whether repository selection is configured in this object; this does not verify GitHub credentials or permissions. |
+
+Cloudflare's [`getAlarm` documentation](https://developers.cloudflare.com/durable-objects/api/alarms/#getalarm)
+says the alarm time can be `null` while an alarm handler is running, unless
+it has scheduled another alarm. Interpret `alarmAt` alongside `running`,
+the pending counts, visibility and repeated observations. A missing alarm
+with overdue work and no running invocation warrants investigation; a
+single sample does not establish the cause or prove that work is lost.
+Saved sweep and reread state survive restarts and can describe unfinished
+work rather than current activity. Cache counts and live instance updates
+are not progress or successful-sync evidence. Diagnostics contain neither
+job identities nor cache content and do not change scheduling to test a
+hypothesis.
 
 | Code | Alert condition | Recovery |
 | --- | --- | --- |

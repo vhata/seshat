@@ -35,6 +35,7 @@ import { signInReady } from "../shared/config";
 import { clearCookie, readCookie, serializeCookie } from "../shared/cookies";
 import { hex, sha256, utf8, randomToken, secretsEqual } from "../shared/encoding";
 import { PATHS } from "../shared/manifest";
+import { MONITORING_PATH } from "../shared/monitoring";
 import { redirect, type RouteContext } from "./context";
 import { instanceStub } from "./instance-stub";
 import {
@@ -164,7 +165,7 @@ export async function signOut(context: RouteContext): Promise<Response> {
   return redirect("/", [clearCookie(SESSION_COOKIE, secure)]);
 }
 
-/** Looks up the owner's session from the request's cookie; reads only. */
+/** Monitoring authenticates without repairing the scheduler it observes. */
 export async function findSession(
   request: Request,
   env: Env,
@@ -176,6 +177,7 @@ export async function findSession(
   const token = readCookie(request.headers.get("cookie"), SESSION_COOKIE, secure);
   if (!isSessionToken(token)) return null;
   const key = await sessionKey(token);
-  const expiresAt = await instanceStub(env).sessionExpiry(key, now, ownerId);
+  const readOnly = new URL(request.url).pathname === MONITORING_PATH;
+  const expiresAt = await instanceStub(env).sessionExpiry(key, now, ownerId, readOnly);
   return expiresAt === null ? null : { key, expiresAt };
 }

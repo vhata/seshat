@@ -60,6 +60,33 @@ async function object(name: string) {
 }
 
 describe("durable overview reconciliation", () => {
+  it("reports volatile running state independently of persisted scheduler progress", async () => {
+    const stub = await object("scheduler-running-diagnostics");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage);
+      let release = (_result: boolean) => {};
+      const guardResult = new Promise<boolean>((resolve) => { release = resolve; });
+      const context = { storage: state.storage, store, selection: null,
+        installations: () => INSTALLATIONS, visible: () => false,
+        guard: () => guardResult, publish: async () => {} };
+      const sync = new OverviewSync(context);
+      sync.requestGuard(NOW);
+      await sync.rearm(NOW);
+      const invocation = sync.alarm(NOW);
+      expect(sync.schedulerStatus()).toMatchObject({ running: true, selectionConfigured: false });
+      const saved = state.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key='overview-sync-work-v1'").one().value;
+      const restarted = new OverviewSync(context);
+      expect(restarted.schedulerStatus()).toMatchObject({
+        running: false, pending: { guard: 1, refresh: 0, marks: 0 },
+        rereadActive: false, rereadCachedResponseCount: 0, rereadSelectedItemCount: 0,
+      });
+      expect(state.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key='overview-sync-work-v1'").one().value).toBe(saved);
+      release(false);
+      await invocation;
+      expect(sync.schedulerStatus().running).toBe(false);
+    });
+  });
+
   it("keeps monitoring job age through retries and visibility through restart", async () => {
     const stub = await object("monitoring-job-age");
     await runInDurableObject(stub, async (_instance, state) => {
