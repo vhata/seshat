@@ -6,7 +6,7 @@ import type { PermissionCacheEntry } from "../worker/github-permissions";
 import type { OverviewStore } from "./overview-store";
 import type { RepositorySelection } from "./repository-selection";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
-import type { MonitoringStatus } from "../shared/monitoring";
+import type { MonitoringStatus, SchedulerStatus } from "../shared/monitoring";
 import { reportGithubFailure } from "../worker/github-http";
 
 const KEY = "overview-sync-work-v1";
@@ -111,6 +111,28 @@ export class OverviewSync {
       githubRateLimited: this.state.rates.some(({ installationId, rate }) => this.accepted(installationId)
         && rate.resetAt > now && rate.limit !== undefined && rate.remaining < rate.limit / 10),
       cloudflareCapacity: "unknown",
+    };
+  }
+
+  /** Observe the current scheduler without normalizing, saving or rearming it. */
+  schedulerStatus(): Omit<SchedulerStatus, "alarmAt"> {
+    const sweep = this.state.sweep;
+    const reread = this.state.reread;
+    return {
+      running: this.running,
+      nextSweepAt: this.state.nextSweep,
+      sweep: sweep === null ? null : {
+        phase: sweep.stage, startedAt: sweep.startedAt, retry: sweep.retry,
+      },
+      rereadActive: reread !== null,
+      rereadCachedResponseCount: reread?.continuation?.responses.length ?? 0,
+      rereadSelectedItemCount: reread?.ids.length ?? 0,
+      pending: {
+        guard: this.state.guard === null ? 0 : 1,
+        refresh: this.state.refresh.length,
+        marks: this.state.marks.length,
+      },
+      selectionConfigured: this.context.selection !== null,
     };
   }
 
