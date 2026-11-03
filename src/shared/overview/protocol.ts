@@ -60,6 +60,23 @@ export type SyncFailureReason =
   | "installation-suspended"
   | "installation-removed"
   | "cloudflare-quota";
+/** One durable logical read. Continuations retain its token and start time. */
+export interface CheckAttempt {
+  readonly id: number;
+  readonly startedAt: number;
+  readonly result: "queued" | "running" | "success" | "failed" | "interrupted";
+  readonly reason?: SyncFailureReason;
+}
+export interface CheckStatus {
+  /** Conservative observation time, never the time a cached result replayed. */
+  readonly lastSuccessfulCheckAt: number | null;
+  readonly latestAttempt: CheckAttempt | null;
+}
+export type CheckScope = "repository" | "pr";
+export interface FreshnessEvidence {
+  readonly repositories: Readonly<Record<string, CheckStatus>>;
+  readonly pullRequests: Readonly<Record<string, CheckStatus>>;
+}
 export type SweepAttempt =
   | { readonly startedAt: number; readonly result: "running" | "success" }
   | {
@@ -113,6 +130,8 @@ export interface OverviewSnapshot {
   readonly repositories: readonly RepositoryRecord[];
   readonly buckets: readonly OverviewBucketDto[];
   readonly sync: SyncStatus;
+  /** Absent on legacy snapshots: listedAt is not complete-check evidence. */
+  readonly freshness?: FreshnessEvidence;
 }
 export type ServerMessage =
   | { readonly type: "snapshot"; readonly snapshot: OverviewSnapshot }
@@ -165,6 +184,7 @@ export function buildSnapshot(
   sync: SyncStatus,
   ownerId: number,
   now: number,
+  freshness?: FreshnessEvidence,
 ): OverviewSnapshot {
   const monitored = new Set(repositories.filter((repo) => repo.monitored).map((repo) => repo.id));
   return {
@@ -181,6 +201,7 @@ export function buildSnapshot(
         })),
       })),
     sync,
+    ...(freshness === undefined ? {} : { freshness }),
   };
 }
 
@@ -280,6 +301,18 @@ function syncStatus(value: unknown): boolean {
       && oneOf(attempt.reason, ["github-unavailable", "rate-limited", "installation-suspended", "installation-removed", "cloudflare-quota"])
       && array(attempt.unreadableRepositoryIds, id))));
 }
+export function isCheckStatus(value: unknown): value is CheckStatus {
+  if (!object(value) || !time(value.lastSuccessfulCheckAt)) return false;
+  const attempt = value.latestAttempt;
+  return attempt === null || (object(attempt) && id(attempt.id) && number(attempt.startedAt)
+    && oneOf(attempt.result, ["queued", "running", "success", "failed", "interrupted"])
+    && (attempt.reason === undefined || oneOf(attempt.reason, ["github-unavailable", "rate-limited", "installation-suspended", "installation-removed", "cloudflare-quota"])));
+}
+function freshnessEvidence(value: unknown): boolean {
+  return object(value) && object(value.repositories) && object(value.pullRequests)
+    && Object.values(value.repositories).every(isCheckStatus)
+    && Object.values(value.pullRequests).every(isCheckStatus);
+}
 function bucket(value: unknown): boolean {
   return object(value) && object(value.bucket) && oneOf(value.bucket.id, ["ready-to-land", "broken", "awaiting-your-review", "changes-requested-on-yours", "ci-running", "waiting-on-the-author", "draft"])
     && oneOf(value.bucket.group, ["needs-you", "waiting"]) && typeof value.bucket.title === "string"
@@ -299,7 +332,8 @@ export function parseServerMessage(data: unknown): ServerMessage | null {
       const snapshot = message.snapshot;
       if (!object(snapshot) || snapshot.version !== 1 || !id(snapshot.ownerId) || !number(snapshot.serverTime)
         || !array(snapshot.repositories, repositoryRecord) || !array(snapshot.buckets, bucket)
-        || !syncStatus(snapshot.sync)) return null;
+        || !syncStatus(snapshot.sync)
+        || (snapshot.freshness !== undefined && !freshnessEvidence(snapshot.freshness))) return null;
     } else if (message.type === "pr-changes") {
       if (!number(message.serverTime) || !array(message.buckets, bucket)
         || !array(message.removed, (entry) => typeof entry === "string")) return null;

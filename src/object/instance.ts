@@ -369,7 +369,7 @@ export class InstanceObject extends DurableObject<Env> {
     const store = this.overviewStore();
     await this.syncScheduler().rearm(nowMs);
     const ownerId = readConfig(this.env as unknown as Record<string, unknown>).ownerId;
-    return buildSnapshot(store.repositories(), store.pullRequests(), store.syncStatus(), ownerId ?? 0, nowMs);
+    return buildSnapshot(store.repositories(), store.pullRequests(), store.syncStatus(), ownerId ?? 0, nowMs, store.checkFreshness());
   }
 
   /** Only the Worker forwards this request after its owner session gate. */

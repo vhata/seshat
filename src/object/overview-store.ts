@@ -3,10 +3,15 @@ import {
   type PullRequestRecord, type RepositoryRecord, type SyncStatus,
 } from "../shared/overview/protocol";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
+import { OverviewCheckStore } from "./overview-check-store";
 
 /** Typed persistence boundary. The caller brings the schema up to date. */
-export class OverviewStore {
-  constructor(private readonly storage: DurableObjectStorage) {}
+export class OverviewStore extends OverviewCheckStore {
+  constructor(private readonly storage: DurableObjectStorage) { super(storage); }
+
+  checkFreshness() {
+    return this.evidence(this.repositories().filter((repo) => repo.monitored).map((repo) => repo.id), this.pullRequests().map((pr) => pr.nodeId));
+  }
 
   repositories(installationId?: number): RepositoryRecord[] {
     const rows = installationId === undefined
@@ -21,6 +26,11 @@ export class OverviewStore {
     const before = this.storage.sql.exec<{ data: string }>("SELECT data FROM repositories WHERE id = ?", repository.id).toArray()[0];
     if (before?.data === data) return false;
     this.storage.transactionSync(() => {
+      const previous = before ? JSON.parse(before.data) as RepositoryRecord : null;
+      if (!repository.monitored || previous && (previous.ownerAccountId !== repository.ownerAccountId || previous.installationId !== repository.installationId)) {
+        this.forget("repository", String(repository.id));
+        this.removeRepositoryPrs(repository.id);
+      }
       this.storage.sql.exec(
         `INSERT INTO repositories (id, installation_id, monitored, data) VALUES (?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET installation_id = excluded.installation_id,
@@ -40,6 +50,7 @@ export class OverviewStore {
       const repository = JSON.parse(before.data) as RepositoryRecord;
       new RepositoryDiscoveryStore(this.storage).migrateMonitoringOverride(repositoryId, repository.ownerAccountId, repository.monitorOverride);
       this.removeRepositoryPrs(repositoryId);
+      this.forget("repository", String(repositoryId));
       this.storage.sql.exec("DELETE FROM repositories WHERE id = ?", repositoryId);
     });
     return true;
@@ -86,6 +97,7 @@ export class OverviewStore {
   }
 
   removePullRequest(nodeId: string): boolean {
+    this.forget("pr", nodeId);
     const exists = this.storage.sql.exec("SELECT 1 FROM pull_requests WHERE node_id = ?", nodeId).toArray().length > 0;
     if (!exists) return false;
     this.storage.sql.exec("DELETE FROM pull_requests WHERE node_id = ?", nodeId);
@@ -121,6 +133,7 @@ export class OverviewStore {
   }
 
   private removeRepositoryPrs(repositoryId: number): void {
+    for (const pr of this.pullRequests(repositoryId)) this.forget("pr", pr.nodeId);
     if (this.storage.sql.exec("SELECT 1 FROM pull_requests WHERE repository_id = ? LIMIT 1", repositoryId).toArray().length > 0) {
       this.storage.sql.exec("DELETE FROM pull_requests WHERE repository_id = ?", repositoryId);
     }
