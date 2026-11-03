@@ -428,15 +428,22 @@ button:disabled {
   list-style: none;
   margin: 8px 0;
   padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
+  display: grid;
+  gap: 6px;
 }
 .repository-checks li {
+  position: relative;
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 4px;
+}
+.repository-checks .check-indicator {
+  position: static;
+}
+.repository-checks li > a {
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 .pr-row {
   position: relative;
