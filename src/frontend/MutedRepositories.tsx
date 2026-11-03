@@ -26,7 +26,7 @@ export function MutedRepositories({ repositories, buckets, renderRow }: {
     } finally { setBusy(false); }
   }
   return <details className="muted-repositories">
-    <summary ref={summary}>Muted repositories · {repositories.length} repositories · {count} PRs</summary>
+    <summary ref={summary}>Muted repositories · {repositories.length} {repositories.length === 1 ? "repository" : "repositories"} · {count} {count === 1 ? "PR" : "PRs"}</summary>
     <p>Muted repositories keep updating at the normal frequency. New activity keeps them muted until you choose Unmute.</p>
     {feedback && <p role={feedback.error ? "alert" : "status"}>{feedback.text}</p>}
     {repositories.length === 0 ? <p>No muted repositories are monitored.</p> : <>

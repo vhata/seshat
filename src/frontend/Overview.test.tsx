@@ -53,7 +53,7 @@ describe("overview presentation", () => {
     expect(active).toContain("Waiting · 0");
     expect(active).toContain("1 open PRs · 1 repositories");
     expect(active).toContain("Checked with GitHub");
-    expect(hidden).toContain("Muted repositories · 2 repositories · 1 PRs");
+    expect(hidden).toContain("Muted repositories · 2 repositories · 1 PR");
     expect(hidden).toContain("Quiet work");
     expect(hidden).toContain('aria-label="Muted: Draft"');
     expect(hidden).toContain('aria-label="Unmute example/empty"');
@@ -72,7 +72,7 @@ describe("overview presentation", () => {
     expect(allMuted).toContain("0 open PRs · 0 repositories");
     expect(allMuted).not.toContain("No repositories monitored yet");
     const emptyMuted = render(snapshot([]));
-    expect(emptyMuted).toContain("Muted repositories · 1 repositories · 0 PRs");
+    expect(emptyMuted).toContain("Muted repositories · 1 repository · 0 PRs");
     expect(emptyMuted).toContain("No open pull requests in muted repositories.");
     expect(emptyMuted).toContain('aria-label="Unmute example/observatory"');
     expect(render(fixtureSnapshot())).toContain("No muted repositories are monitored.");
