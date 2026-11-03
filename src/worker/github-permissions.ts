@@ -1,5 +1,5 @@
 import type { RepositoryPermission } from "../shared/overview/types";
-import { githubRequest, rateLimited, record, responseJson } from "./github-http";
+import { githubRequest, githubRetryAt, rateLimited, record, responseJson } from "./github-http";
 
 /** Safe to persist separately from tokens, keyed by repository and account ID. */
 export interface PermissionCacheEntry {
@@ -14,6 +14,7 @@ export type PermissionRead = {
   readonly ok: boolean;
   readonly entry: PermissionCacheEntry | null;
   readonly reason?: "rate-limited";
+  readonly retryAt?: number;
 };
 
 /**
@@ -37,7 +38,7 @@ export async function readReviewerPermission(
   if (response?.status === 404) {
     return { ok: true, entry: { repositoryId: repository.id, accountId: account.id, login: account.login, permission: "none", etag: null } };
   }
-  if (rateLimited(response)) return { ok: false, entry: matching, reason: "rate-limited" };
+  if (rateLimited(response)) return { ok: false, entry: matching, reason: "rate-limited", retryAt: githubRetryAt(response!) };
   if (!response?.ok) return { ok: false, entry: matching };
   const body = record(await responseJson(response));
   if (record(body?.user)?.id !== account.id) return { ok: false, entry: matching };

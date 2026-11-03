@@ -50,6 +50,7 @@ interface State {
   rates: { installationId: number; rate: RateLimit }[];
 }
 interface Context {
+  ownerId?: number;
   storage: DurableObjectStorage;
   store: OverviewStore;
   selection: RepositorySelection | null;
@@ -489,20 +490,25 @@ export class OverviewSync {
   private interval(now: number): number {
     return this.state.rates.some(({ rate }) => rate.resetAt > now && rate.limit !== undefined && rate.remaining < rate.limit / 10) ? 4 * MINUTE : 2 * MINUTE;
   }
+  private updateRate(id: number, incoming: RateLimit): void {
+    const previous = this.state.rates.find((entry) => entry.installationId === id)?.rate;
+    // A continuation can replay an older GraphQL response after a newer
+    // event read. Never replenish its budget from that cached sample.
+    const sample = previous && previous.resetAt > incoming.resetAt ? previous
+      : previous && previous.resetAt === incoming.resetAt ? { ...incoming,
+        remaining: Math.min(previous.remaining, incoming.remaining),
+        ...(previous.limit === undefined && incoming.limit === undefined ? {} : { limit: Math.max(previous.limit ?? 0, incoming.limit ?? 0) }),
+      } : incoming;
+    // HTTP secondary throttles can expire before a healthy primary window.
+    // Preserve both observations instead of discarding the earlier deadline
+    // or treating a one-minute throttle as an hour-long primary exhaustion.
+    const retryAt = Math.max(previous?.retryAt ?? 0, incoming.retryAt ?? 0);
+    const rate = retryAt > 0 ? { ...sample, retryAt } : sample;
+    this.state.rates = this.state.rates.filter((entry) => entry.installationId !== id);
+    this.state.rates.push({ installationId: id, rate });
+  }
   private updateMeta(id: number, meta: ReadMeta, now: number): void {
-    if (meta.rateLimit) {
-      const previous = this.state.rates.find((entry) => entry.installationId === id)?.rate;
-      const incoming = meta.rateLimit;
-      // A continuation can replay an older GraphQL response after a newer
-      // event read. Never replenish its budget from that cached sample.
-      const rate = previous && previous.resetAt > incoming.resetAt ? previous
-        : previous && previous.resetAt === incoming.resetAt ? { ...incoming,
-          remaining: Math.min(previous.remaining, incoming.remaining),
-          ...(previous.limit === undefined && incoming.limit === undefined ? {} : { limit: Math.max(previous.limit ?? 0, incoming.limit ?? 0) }),
-        } : incoming;
-      this.state.rates = this.state.rates.filter((entry) => entry.installationId !== id);
-      this.state.rates.push({ installationId: id, rate });
-    }
+    if (meta.rateLimit) this.updateRate(id, meta.rateLimit);
     const permissions = new Map(this.state.permissions.map((entry) => [`${entry.repositoryId}:${entry.accountId}`, entry]));
     for (const entry of meta.permissionCache) permissions.set(`${entry.repositoryId}:${entry.accountId}`, entry);
     this.state.permissions = [...permissions.values()];
@@ -521,12 +527,24 @@ export class OverviewSync {
     const last = this.context.store.syncStatus().lastSuccessfulSweepAt;
     if (!this.state.sweep && last !== null && this.state.nextSweep === last + previous) this.state.nextSweep = last + interval;
   }
-  private async reader(id: number, now: number, continuation: ReaderContinuation | null, sweep: boolean, shouldContinue?: () => boolean): Promise<GithubPrReader | null> {
+  private async reader(id: number, now: number, continuation: ReaderContinuation | null, sweep: boolean, shouldContinue?: () => boolean, manualRepositoryIds?: readonly number[]): Promise<GithubPrReader | null> {
     if (!this.accepted(id) || !this.context.selection) return null;
+    if (manualRepositoryIds && !this.context.ownerId) throw new SyncReadError("github-unavailable");
+    if (manualRepositoryIds && this.state.rates.some((entry) => entry.installationId === id
+      && (entry.rate.remaining === 0 && entry.rate.resetAt > now || (entry.rate.retryAt ?? 0) > now))) throw new SyncReadError("rate-limited");
     const token = await this.context.selection.tokens.get(id, now);
-    if (!token.ok) throw new SyncReadError(token.reason === "rate-limited" || token.reason === "installation-suspended" || token.reason === "installation-removed" ? token.reason : "github-unavailable");
+    if (!token.ok) {
+      if (manualRepositoryIds && token.reason === "rate-limited") {
+        const retryAt = token.retryAt ?? now + MINUTE;
+        this.updateRate(id, { remaining: 0, resetAt: retryAt, retryAt, cost: 0 });
+      }
+      throw new SyncReadError(token.reason === "rate-limited" || token.reason === "installation-suspended" || token.reason === "installation-removed" ? token.reason : "github-unavailable");
+    }
     return new GithubPrReader(token.token, { requestLimit: 40, refreshPermissions: sweep, verifyMergeability: sweep,
-      permissionCache: this.state.permissions, headCommitDates: this.state.headDates, continuation, shouldContinue });
+      permissionCache: this.state.permissions, headCommitDates: this.state.headDates, continuation, shouldContinue,
+      ...(manualRepositoryIds ? { repositoryAccess: { ownerId: this.context.ownerId!, repositoryOwners: this.context.store.repositories(id)
+        .filter((repository) => manualRepositoryIds.includes(repository.id)).map((repository) => ({ repositoryId: repository.id, ownerAccountId: repository.ownerAccountId })) } } : {}),
+    });
   }
   private async refreshRepositories(id: number, now: number): Promise<void> {
     const job = this.state.refresh.find((entry) => entry.id === id)!;
@@ -616,8 +634,10 @@ export class OverviewSync {
     this.save();
     if (selected.some((mark) => mark.refreshCheck)) await this.context.publish(now);
     const abandon = () => this.abandonReread(progress, now);
+    if (!current()) { abandon(); return; }
     let reader: GithubPrReader | null;
-    try { reader = await this.reader(installationId, now, progress.continuation, selected.some((mark) => mark.refreshCheck !== undefined), current); }
+    const manualRepositoryIds = selected.filter((mark) => mark.refreshCheck).map((mark) => mark.repositoryId);
+    try { reader = await this.reader(installationId, now, progress.continuation, manualRepositoryIds.length > 0, current, manualRepositoryIds.length > 0 ? manualRepositoryIds : undefined); }
     catch (error) {
       if (!current()) { abandon(); return; }
       if (!(error instanceof SyncReadError)) throw error;
@@ -701,6 +721,10 @@ export class OverviewSync {
     }
     mark.retry++;
     mark.due = Math.max(now + 1, mark.firstRead + offset);
+    if (mark.refreshCheck && reason === "rate-limited") {
+      const rate = this.state.rates.find((entry) => entry.installationId === mark.installationId)?.rate;
+      if (rate) mark.due = Math.max(mark.due, rate.remaining === 0 ? rate.resetAt : 0, rate.retryAt ?? 0);
+    }
   }
   private applyPr(pr: PullRequestRecord, installationId: number, visibility: RepositoryRecord["visibility"], now: number): void {
     if (!this.accepted(installationId)) return;

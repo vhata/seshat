@@ -18,7 +18,7 @@ const OTHER = { ...FIXTURE_REPOSITORY, id: 13, nodeId: "R_other", fullName: "exa
 function context(storage: DurableObjectStorage, visible = false) {
   const selection = { tokens: { get: vi.fn(async () => ({ ok: true, token: "synthetic-token", expiresAt: NOW + 7_200_000 })) },
     refreshInstallation: vi.fn(async () => ({ ok: true, changed: false, repositoryIds: [12, 13], requestsUsed: 2 })), discardRefreshProgress: vi.fn() } as unknown as RepositorySelection;
-  return { storage, store: new OverviewStore(storage), selection, installations: () => [INSTALLATION],
+  return { ownerId: 1001, storage, store: new OverviewStore(storage), selection, installations: () => [INSTALLATION],
     visible: () => visible, guard: async () => true, publish: vi.fn(async (_now: number) => {}) };
 }
 function read(prs = [fixturePr()], complete = true) {
@@ -182,6 +182,30 @@ describe("requested single repository refresh", () => {
     });
   });
 
+  it("rejects an older in-flight sweep's empty count after a manual request supersedes it", async () => {
+    let release = (_result: Awaited<ReturnType<GithubPrReader["countOpenPrs"]>>) => {};
+    let enter = () => {};
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    const pending = new Promise<Awaited<ReturnType<GithubPrReader["countOpenPrs"]>>>((resolve) => { release = resolve; });
+    vi.spyOn(GithubPrReader.prototype, "countOpenPrs").mockImplementationOnce(() => { enter(); return pending; });
+    vi.spyOn(GithubPrReader.prototype, "readRepositories").mockResolvedValue(read([fixturePr({ headSha: "manual-head" })]));
+    const stub = await object("sweep-race");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const ctx = context(state.storage, true); ctx.store.putRepository(FIXTURE_REPOSITORY); ctx.store.putPullRequest(fixturePr());
+      const sync = new OverviewSync(ctx); await sync.visibility(NOW, false); await sync.alarm(NOW);
+      const sweeping = sync.alarm(NOW + 1); await entered;
+      await sync.refreshRepository(12, 1001, NOW + 2);
+      release({ ...META, repositories: [{ repositoryId: 12, nodeId: "R_example", visibility: "public", count: 0 }] }); await sweeping;
+      expect(ctx.store.pullRequests()).toHaveLength(1);
+      expect(receipt(ctx.store)?.latestAttempt?.result).toBe("queued");
+      await sync.alarm(NOW + 2);
+      expect(ctx.store.pullRequests()[0]?.headSha).toBe("manual-head");
+      expect(receipt(ctx.store)?.latestAttempt?.result).toBe("success");
+      expect(ctx.store.syncStatus().lastSuccessfulSweepAt).toBeNull();
+      expect(sync.schedulerStatus().sweep).not.toBeNull();
+    });
+  });
+
   it("interrupts pending work on installation loss without leaving a permanent running receipt", async () => {
     const stub = await object("installation-loss");
     await runInDurableObject(stub, async (_instance, state) => {
@@ -191,6 +215,57 @@ describe("requested single repository refresh", () => {
       await sync.refreshRepository(12, 1001, NOW); installed = false; await sync.alarm(NOW);
       expect(receipt(ctx.store)?.latestAttempt?.result).toBe("interrupted");
       expect(ctx.selection.tokens.get).not.toHaveBeenCalled();
+    });
+  });
+
+  it("honors a secondary throttle beside a healthy primary budget without waiting for its whole window", async () => {
+    const resetAt = NOW + 3_600_000;
+    const retryAt = NOW + 60_001;
+    const reader = vi.spyOn(GithubPrReader.prototype, "readRepositories")
+      .mockResolvedValueOnce({ ...read(), rateLimit: { remaining: 4900, limit: 5000, cost: 1, resetAt } })
+      .mockResolvedValueOnce({ ...META, status: "failed", repositories: [], issues: [{ nodeId: "R_example", reason: "rate-limited" }],
+        rateLimit: { remaining: 0, resetAt: retryAt, retryAt, cost: 0 } })
+      .mockResolvedValue(read());
+    const stub = await object("secondary-throttle");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const ctx = context(state.storage); ctx.store.putRepository(FIXTURE_REPOSITORY); ctx.store.putRepository(OTHER);
+      const sync = new OverviewSync(ctx); await sync.refreshRepository(12, 1001, NOW); await sync.alarm(NOW);
+      const requested = await sync.refreshRepository(12, 1001, NOW + 1); await sync.alarm(NOW + 1);
+      const tokensBefore = vi.mocked(ctx.selection.tokens.get).mock.calls.length;
+      expect(await sync.refreshRepository(12, 1001, NOW + 2)).toMatchObject({ ok: true, attempt: { id: requested.ok && requested.attempt.id } });
+      // Another explicit action cannot bypass the installation's throttle.
+      await sync.refreshRepository(13, 1001, NOW + 3); await sync.alarm(NOW + 3);
+      await sync.alarm(NOW + 5_001); await sync.alarm(retryAt - 1);
+      expect(reader).toHaveBeenCalledTimes(2);
+      expect(ctx.selection.tokens.get).toHaveBeenCalledTimes(tokensBefore);
+      await sync.alarm(retryAt);
+      expect(reader).toHaveBeenCalledTimes(3);
+      expect(receipt(ctx.store)?.latestAttempt).toMatchObject({ id: requested.ok && requested.attempt.id, result: "success" });
+    });
+  });
+
+  it("persists cold token throttle deadlines through eviction and defers retries without more mints", async () => {
+    const reader = vi.spyOn(GithubPrReader.prototype, "readRepositories").mockResolvedValue(read());
+    const retryAt = NOW + 120_000;
+    const stub = await object("token-throttle");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const ctx = context(state.storage); ctx.store.putRepository(FIXTURE_REPOSITORY);
+      vi.mocked(ctx.selection.tokens.get).mockResolvedValue({ ok: false, reason: "rate-limited", retryAt });
+      const sync = new OverviewSync(ctx); await sync.refreshRepository(12, 1001, NOW); await sync.alarm(NOW);
+      expect(ctx.selection.tokens.get).toHaveBeenCalledTimes(1);
+      expect(reader).not.toHaveBeenCalled();
+    });
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const ctx = context(state.storage); const sync = new OverviewSync(ctx);
+      for (const delta of [5000, 15000, 30000, 119999]) {
+        expect((await sync.refreshRepository(12, 1001, NOW + delta)).ok).toBe(true);
+        await sync.alarm(NOW + delta);
+      }
+      expect(ctx.selection.tokens.get).not.toHaveBeenCalled(); expect(reader).not.toHaveBeenCalled();
+      await sync.alarm(retryAt);
+      expect(ctx.selection.tokens.get).toHaveBeenCalledTimes(1);
+      expect(receipt(ctx.store)?.latestAttempt?.result).toBe("success");
     });
   });
 });

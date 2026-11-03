@@ -47,6 +47,11 @@ describe("server message decoder", () => {
     const evidence = { repositories: { "12": { lastSuccessfulCheckAt: 10, latestAttempt: { id: 1, startedAt: 10, result: "success" } } }, pullRequests: {} };
     const encoded = (freshness: unknown) => JSON.stringify({ type: "snapshot", snapshot: { ...snapshot, freshness } });
     expect(parseServerMessage(encoded(evidence))).toMatchObject({ snapshot: { freshness: evidence } });
+    const requested = { ...evidence, repositoryRefreshes: { "12": { lastSuccessfulCheckAt: null, latestAttempt: { id: 2, startedAt: 20, result: "queued" } } } };
+    expect(parseServerMessage(encoded(requested))).toMatchObject({ snapshot: { freshness: requested } });
+    for (const repositoryRefreshes of [null, [], { "12": { lastSuccessfulCheckAt: null, latestAttempt: { id: 0, startedAt: 20, result: "queued" } } }]) {
+      expect(parseServerMessage(encoded({ ...evidence, repositoryRefreshes }))).toBeNull();
+    }
     for (const invalid of [null, {}, { ...evidence, pullRequests: [] }, { ...evidence, repositories: { "12": { lastSuccessfulCheckAt: "today", latestAttempt: null } } }, { ...evidence, repositories: { "12": { lastSuccessfulCheckAt: null, latestAttempt: { id: 0, startedAt: 10, result: "success" } } } }]) {
       expect(parseServerMessage(encoded(invalid))).toBeNull();
     }

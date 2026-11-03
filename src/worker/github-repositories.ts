@@ -1,5 +1,5 @@
 import type { RepositoryRecord } from "../shared/overview/protocol";
-import { githubRequest, rateLimited, record, responseJson } from "./github-http";
+import { githubRequest, githubRetryAt, rateLimited, record, responseJson } from "./github-http";
 import { readReviewerPermission, type PermissionCacheEntry, type PermissionRead } from "./github-permissions";
 
 export const REPOSITORY_PAGES = 10;
@@ -87,9 +87,9 @@ export class GitHubRepositoryListing {
     return readReviewerPermission(token, repository, { id: ownerId, login }, previous);
   }
 
-  async readOwnerLogin(token: string, ownerId: number): Promise<{ ok: true; login: string } | { ok: false; reason: "rate-limited" | "github-unavailable" }> {
+  async readOwnerLogin(token: string, ownerId: number): Promise<{ ok: true; login: string } | { ok: false; reason: "rate-limited" | "github-unavailable"; retryAt?: number }> {
     const response = await githubRequest(token, `/user/${ownerId}`);
-    if (rateLimited(response)) return { ok: false, reason: "rate-limited" };
+    if (rateLimited(response)) return { ok: false, reason: "rate-limited", retryAt: githubRetryAt(response!) };
     const body = record(await responseJson(response));
     return response?.ok && body?.id === ownerId && typeof body.login === "string" && body.login
       ? { ok: true, login: body.login } : { ok: false, reason: "github-unavailable" };

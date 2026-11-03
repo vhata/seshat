@@ -59,14 +59,36 @@ into the private owner snapshot.
   The repository disclosure also exposes checks for empty repositories.
   Global connection status and prominent failure/overdue warnings remain.
 
-The later `refresh-single-repository` task should queue a complete
-repository reconciliation through `queueRepositoryRead`, rather than
-rereading cached PR IDs. It should reuse these tokens, scheduler budgets,
-continuations and observation guards, and tie action feedback to its own
-work. This change adds no manual refresh action. Muting stays independent
-of monitoring and does not alter these checks. Muted PR rows receive the
-same scoped details, and collapsed muted repositories continue to record
-webhook reads and complete scheduled reconciliations.
+## Refresh one repository
+
+The owner can choose **Refresh** beside a repository name in the overview
+or in **Repository checks**, including empty and muted repositories. This
+queues a complete open-PR reconciliation through `queueRepositoryRead`;
+it does not refresh installation discovery or merely reread cached PR IDs.
+Missed opens and closes are reconciled with current PR facts, reviewer
+permissions and mergeability. The selected numeric repository owner is
+checked, and organization repositories require a fresh check of the
+instance owner's access before applying even an empty result.
+
+Explicit requests use the same `CheckStatus` lifecycle in the
+`repository-refresh` namespace. The optional `repositoryRefreshes` map in
+freshness evidence exposes these tokens independently of background
+checks. Queued and running requests coalesce without restarting their
+budgets. One token follows the requested work through continuations,
+observation invalidation and the scheduler's bounded retries; only that
+work completes or fails it. Running means the logical request is still
+pending, including retry waits. Successful times conservatively use the
+request time. Failed requests preserve cached rows and previous successful
+evidence. Removal, monitoring changes and identity changes clear the old
+identity's evidence.
+
+Manual reads share the scheduler's request budgets, permission and head
+caches, continuations and observation guards. They honor known primary
+rate resets and HTTP retry deadlines, including secondary throttles that
+expire before a healthy primary rate window. Repeated requests cannot
+bypass those waits. Normal visible sweeps and hidden webhook processing
+continue independently. Muting stays independent of monitoring; collapsed
+muted repositories receive the same reads and scoped evidence.
 
 ## Validation and evidence limits
 
@@ -78,7 +100,12 @@ persistence and accessible details. The local assembled scenario in
 Durable Object code with real Chromium sockets and synthetic GitHub data.
 It checks keyboard focus, hover and Escape, separate PR/repository times,
 empty repository evidence, inactivity flags and eviction persistence.
+Targeted refresh tests cover request attribution, access denial, bounded
+authorization continuations, retry deadlines, coalescing, missed events
+and observation races. The assembled scenario also clicks refresh
+controls and checks queued/running/completion/failure feedback, targeted
+reads, cached-row retention and empty muted repository refreshes.
 
 These are local and synthetic checks. They do not establish hosted GitHub
 permissions, production data behavior or live delivery timing. No
-production deployment or manual refresh is part of this change.
+production deployment is part of these checks.

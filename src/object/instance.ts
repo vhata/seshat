@@ -339,6 +339,7 @@ export class InstanceObject extends DurableObject<Env> {
   private syncScheduler(): OverviewSync {
     if (this.sync) return this.sync;
     this.sync = new OverviewSync({
+      ownerId: readConfig(this.env as unknown as Record<string, unknown>).ownerId ?? undefined,
       storage: this.ctx.storage, store: this.overviewStore(),
       selection: this.repositorySelection(),
       installations: () => this.storedInstallations(),
