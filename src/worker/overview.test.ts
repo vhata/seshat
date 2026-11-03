@@ -103,7 +103,11 @@ describe("owner overview boundary", () => {
     await evictDurableObject(stub);
     await runInDurableObject(stub, (_instance, state) => {
       expect((state.getWebSockets()[0]!.deserializeAttachment() as SocketAttachment).visibility?.visible).toBe(true);
+      expect(state.getWebSocketAutoResponse()?.request).toBe(KEEP_ALIVE_REQUEST);
     });
+    const resumedPong = nextMessage(client);
+    client.send(KEEP_ALIVE_REQUEST);
+    expect((await resumedPong).data).toBe(KEEP_ALIVE_RESPONSE);
     const update = nextMessage(client);
     await stub.publishOverview({ type: "sync", sync: SYNC_FIXTURES.live, serverTime: Date.now() });
     expect(parseServerMessage((await update).data)?.type).toBe("sync");
@@ -115,6 +119,32 @@ describe("owner overview boundary", () => {
       client.send(message);
       expect((await closed).code).toBe(1008);
     }
+  });
+  it.each([undefined, 1000, 4000])("finishes a client close with code %s and updates scheduler visibility", async (code) => {
+    const { client } = await connect(await ownerSession());
+    const visibility = vi.spyOn(OverviewSync.prototype, "visibility").mockResolvedValue(undefined);
+    const closed = nextClose(client);
+    if (code === undefined) client.close();
+    else client.close(code, "finished");
+    const event = await closed;
+    expect(event.code).toBe(code ?? 1005);
+    expect(event.reason).toBe(code === undefined ? "" : "finished");
+    await vi.waitFor(() => expect(visibility).toHaveBeenCalledWith(expect.any(Number), false));
+  });
+  it.each([1004, 1006, 1015])("does not send reserved close code %s back to a peer", async (code) => {
+    await instanceStub(env).health();
+    const visibility = vi.spyOn(OverviewSync.prototype, "visibility").mockResolvedValue(undefined);
+    await runInDurableObject(instanceStub(env), async (instance) => {
+      const pair = new WebSocketPair();
+      pair[0].accept(); pair[1].accept();
+      const closed = nextClose(pair[0]);
+      await instance.webSocketClose(pair[1], code, "local condition");
+      const event = await closed;
+      expect(event.code).toBe(1005);
+      expect(event.reason).toBe("");
+      pair[0].close();
+    });
+    expect(visibility).toHaveBeenCalledWith(expect.any(Number), false);
   });
   it("closes all sockets for a signed-out session before publishing more private data", async () => {
     const cookie = await ownerSession();

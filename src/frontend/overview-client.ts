@@ -16,12 +16,17 @@ export interface ChangeNote {
   at: number;
   text: string;
 }
+export interface RetryRequest {
+  requestedAt: number;
+  phase: "checking-session" | "connecting" | "sent";
+}
 export interface OverviewState {
   snapshot: OverviewSnapshot | null;
   connected: boolean;
   now: number;
   visibleSince: number;
   lastMessageAt: number | null;
+  retry: RetryRequest | null;
   changes: ReadonlyMap<string, ChangeNote>;
 }
 export interface SocketLike {
@@ -123,23 +128,39 @@ export function startOverviewClient(
   let lastTick = env.clock();
   let lastVisibilityReport = -Infinity;
   let overdueSent = false;
+  let retryPending = false;
+  let retryDuringSessionCheck = false;
+  let successBeforeRetry: number | null | undefined;
   let state: OverviewState = {
     snapshot: null,
     connected: false,
     now: lastTick,
     visibleSince: lastTick,
     lastMessageAt: null,
+    retry: null,
     changes: new Map(),
   };
   const publish = () => emit({ ...state });
   const send = (type: ClientMessage["type"]) => {
-    if (state.connected)
-      connection?.send(
+    if (!state.connected || !connection) return false;
+    try {
+      connection.send(
         JSON.stringify({
           type,
           visible: env.visible(),
         } satisfies ClientMessage),
       );
+      return true;
+    } catch {
+      connection?.close();
+      return false;
+    }
+  };
+  const sendRetry = () => {
+    if (!retryPending || !state.retry) return;
+    const sent = send("retry-now");
+    retryPending = !sent;
+    state.retry = { ...state.retry, phase: sent ? "sent" : "connecting" };
   };
   const reportVisibility = () => {
     lastVisibilityReport = env.clock();
@@ -168,6 +189,7 @@ export function startOverviewClient(
       receivedAt = env.clock();
       reconnectAttempt = 0;
       reportVisibility();
+      sendRetry();
       publish();
     };
     socket.onmessage = ({ data }) => {
@@ -183,6 +205,10 @@ export function startOverviewClient(
       const oldOffset = offset;
       offset = serverTime - env.clock();
       state.visibleSince += offset - oldOffset;
+      if (state.retry) state.retry = {
+        ...state.retry,
+        requestedAt: state.retry.requestedAt + offset - oldOffset,
+      };
       state.now = serverTime;
       state.lastMessageAt = serverTime;
       const next =
@@ -214,6 +240,12 @@ export function startOverviewClient(
           ...next,
           sync: retainUnresolvedFailure(state.snapshot?.sync, next.sync),
         };
+        const success = next.sync.lastSuccessfulSweepAt;
+        if (state.retry?.phase === "sent" && success !== null &&
+          success >= state.retry.requestedAt &&
+          (successBeforeRetry == null || success > successBeforeRetry)) {
+          state.retry = null;
+        }
       }
       publish();
     };
@@ -230,17 +262,31 @@ export function startOverviewClient(
       // 1006, so confirm authorization before treating it as an outage.
       const controller = new AbortController();
       sessionCheck = controller;
+      if (retryPending && state.retry) {
+        state.retry = { ...state.retry, phase: "checking-session" };
+        publish();
+      }
       void env.session(controller.signal)
         .catch(() => "unavailable" as const)
         .then((session) => {
           if (stopped || sessionCheck !== controller) return;
           sessionCheck = null;
           if (session === "signed-out") endSession();
-          else
+          else if (retryDuringSessionCheck) {
+            retryDuringSessionCheck = false;
+            if (state.retry) state.retry = { ...state.retry, phase: "connecting" };
+            connect();
+            publish();
+          } else {
+            if (retryPending && state.retry) {
+              state.retry = { ...state.retry, phase: "connecting" };
+              publish();
+            }
             cancelReconnect = env.later(
               connect,
               Math.min(30_000, 1000 * 2 ** reconnectAttempt++),
             );
+          }
         });
     };
     socket.onerror = () => {
@@ -293,7 +339,10 @@ export function startOverviewClient(
       snapshot: null,
       lastMessageAt: null,
       changes: new Map(),
+      retry: null,
     };
+    retryPending = false;
+    retryDuringSessionCheck = false;
     publish();
     onSessionEnded();
   }
@@ -301,12 +350,23 @@ export function startOverviewClient(
   publish();
   return {
     retry() {
-      if (stopped || sessionCheck) return;
-      if (state.connected) send("retry-now");
-      else {
-        cancelReconnect();
-        connect();
+      if (stopped) return;
+      state.now = env.clock() + offset;
+      state.retry = {
+        requestedAt: state.now,
+        phase: sessionCheck ? "checking-session" : "connecting",
+      };
+      successBeforeRetry = state.snapshot?.sync.lastSuccessfulSweepAt;
+      retryPending = true;
+      retryDuringSessionCheck = sessionCheck !== null;
+      if (!sessionCheck) {
+        if (state.connected) sendRetry();
+        else {
+          cancelReconnect();
+          connect();
+        }
       }
+      publish();
     },
     stop,
   };

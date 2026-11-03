@@ -400,7 +400,10 @@ export class InstanceObject extends DurableObject<Env> {
   }
 
   override async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
-    socket.close(code, reason);
+    // Reserved codes cannot be sent in a close frame. In particular, a
+    // browser's close() without a status can arrive as 1005.
+    if ([1004, 1005, 1006, 1015].includes(code)) socket.close();
+    else socket.close(code, reason);
     await this.syncScheduler().visibility(Date.now(), false);
   }
 

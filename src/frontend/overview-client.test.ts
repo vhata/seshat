@@ -119,6 +119,84 @@ async function settleSessionCheck() {
   await Promise.resolve();
 }
 describe("overview socket lifecycle", () => {
+  it("immediately reports a sent retry and waits for a newer successful check", () => {
+    const h = harness();
+    h.socket.onopen?.();
+    snapshot(h, fixtureSnapshot(SYNC_FIXTURES.overdue));
+    h.client.retry();
+    expect(h.state.retry).toEqual({ requestedAt: FIXTURE_NOW, phase: "sent" });
+    expect(messages(h).at(-1)?.type).toBe("retry-now");
+    // Neither a heartbeat nor an old success confirms recovery.
+    h.socket.onmessage?.({ data: "pong" });
+    snapshot(h, fixtureSnapshot(SYNC_FIXTURES.overdue));
+    expect(h.state.retry?.phase).toBe("sent");
+    h.advance(2000);
+    snapshot(h, { ...fixtureSnapshot({
+      ...SYNC_FIXTURES.live,
+      lastSuccessfulSweepAt: FIXTURE_NOW + 1000,
+    }), serverTime: FIXTURE_NOW + 2000 });
+    expect(h.state.retry).toBeNull();
+    h.client.stop();
+  });
+  it("queues retry through authorization and sends it once the replacement opens", async () => {
+    const h = harness();
+    let resolve!: (value: "signed-in") => void;
+    h.session.mockImplementation(() => new Promise((done) => { resolve = done; }));
+    h.socket.onclose?.({ code: 1006, reason: "" });
+    h.client.retry();
+    expect(h.state.retry?.phase).toBe("checking-session");
+    expect(h.sockets).toHaveLength(1);
+    resolve("signed-in");
+    await settleSessionCheck();
+    expect(h.state.retry?.phase).toBe("connecting");
+    expect(h.sockets).toHaveLength(2);
+    h.socket.onopen?.();
+    expect(messages(h).filter((m) => m.type === "retry-now")).toHaveLength(1);
+    expect(h.state.retry?.phase).toBe("sent");
+    h.client.stop();
+  });
+  it("does not attribute a sweep started before the click to the retry", () => {
+    const h = harness();
+    h.socket.onopen?.();
+    snapshot(h, fixtureSnapshot(SYNC_FIXTURES.overdue));
+    h.advance(10_000);
+    h.client.retry();
+    h.advance(5000);
+    snapshot(h, { ...fixtureSnapshot({
+      ...SYNC_FIXTURES.live,
+      lastSuccessfulSweepAt: FIXTURE_NOW + 5000,
+    }), serverTime: FIXTURE_NOW + 15_000 });
+    expect(h.state.retry?.phase).toBe("sent");
+    h.client.stop();
+  });
+  it("does not treat a reconnect's old success as completion of the queued retry", () => {
+    const h = harness();
+    h.client.retry();
+    expect(h.state.retry?.phase).toBe("connecting");
+    h.socket.onopen?.();
+    snapshot(h);
+    expect(h.state.retry?.phase).toBe("sent");
+    // The first server time corrects both page and retry clocks.
+    expect(h.state.retry?.requestedAt).toBe(FIXTURE_NOW);
+    h.client.stop();
+  });
+  it("keeps a retry queued if sending fails and forwards it after reconnecting", async () => {
+    const h = harness();
+    h.socket.onopen?.();
+    snapshot(h);
+    h.socket.send = () => { throw new Error("socket closed"); };
+    h.client.retry();
+    expect(h.state.retry?.phase).toBe("connecting");
+    h.socket.onclose?.({ code: 1006, reason: "" });
+    await settleSessionCheck();
+    expect(h.delays).toEqual([1000]);
+    expect(h.state.retry?.phase).toBe("connecting");
+    h.reconnect();
+    h.socket.onopen?.();
+    expect(messages(h).at(-1)?.type).toBe("retry-now");
+    expect(h.state.retry?.phase).toBe("sent");
+    h.client.stop();
+  });
   it.each(["snapshot", "pr-changes"] as const)(
     "updates the seven-day stale flag without a GitHub notice or flash via %s",
     (type) => {

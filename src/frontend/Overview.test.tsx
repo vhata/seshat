@@ -26,6 +26,7 @@ function render(
         now,
         visibleSince: now - 120_000,
         lastMessageAt: now,
+        retry: null,
         changes: new Map(),
         ...overrides,
       }}
@@ -34,6 +35,42 @@ function render(
   );
 }
 describe("overview presentation", () => {
+  it("acknowledges retry immediately and briefly disables duplicate clicks", () => {
+    const snapshot = fixtureSnapshot(SYNC_FIXTURES.overdue);
+    const html = render(snapshot, {
+      retry: { requestedAt: now, phase: "sent" },
+    });
+    expect(html).toContain("Retry request sent.");
+    expect(html).toContain("Requested <time");
+    expect(html).toContain("0s ago");
+    expect(html).toContain('disabled=""');
+    expect(html).toContain(">Retry requested</button>");
+    const later = render(snapshot, {
+      retry: { requestedAt: now - 15_000, phase: "sent" },
+    });
+    expect(later).not.toContain('disabled=""');
+    expect(later).toContain(">Retry now</button>");
+    expect(later).toContain("15s ago");
+    const failed = render(fixtureSnapshot({
+      ...SYNC_FIXTURES.failed,
+      latestAttempt: { result: "failed", startedAt: now, reason: "github-unavailable", unreadableRepositoryIds: [] },
+    }), { retry: { requestedAt: now - 1000, phase: "sent" } });
+    expect(failed).toContain("Sync failed");
+    expect(failed).toContain("Retry request sent.");
+    expect(failed).not.toContain("Waiting for a GitHub check result");
+  });
+  it("distinguishes queued retries from sent requests", () => {
+    for (const phase of ["checking-session", "connecting"] as const) {
+      const html = render(null, {
+        connected: false,
+        retry: { requestedAt: now, phase },
+      });
+      expect(html).toContain("Retry queued");
+      expect(html).toContain(phase === "checking-session"
+        ? "checking your session" : "reconnecting to the instance");
+      expect(html).not.toContain("Retry request sent.");
+    }
+  });
   it("annotates the owner's latest submitted review regardless of input ordering", () => {
     const owner = { id: FIXTURE_OWNER_ID, login: "example", isBot: false };
     const review = {
