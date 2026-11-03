@@ -204,6 +204,13 @@ export function OverviewPage({
       (status === "Disconnected" && isOverdue(snapshot.sync, state.now)));
   const lastSuccess = snapshot?.sync.lastSuccessfulSweepAt ?? null;
   const attempt = snapshot?.sync.latestAttempt;
+  const retryCoolingDown = state.retry !== null &&
+    state.now - state.retry.requestedAt < 15_000;
+  const retryButton = (
+    <button type="button" onClick={onRetry} disabled={retryCoolingDown}>
+      {retryCoolingDown ? "Retry requested" : "Retry now"}
+    </button>
+  );
   return (
     <>
       <header className="app-header">
@@ -293,9 +300,7 @@ export function OverviewPage({
                 )}
             </p>
           </div>
-          <button type="button" onClick={onRetry}>
-            Retry now
-          </button>
+          {retryButton}
         </aside>
       )}
       {status === "Checking" && (
@@ -304,6 +309,19 @@ export function OverviewPage({
           {snapshot?.sync.lastSuccessfulSweepAt === null
             ? " — loading the first overview…"
             : "…"}
+        </p>
+      )}
+      {state.retry && (
+        <p className="retry-feedback" role="status">
+          {state.retry.phase === "checking-session" ? (
+            <>Retry queued — checking your session before reconnecting.</>
+          ) : state.retry.phase === "connecting" ? (
+            <>Retry queued — reconnecting to the instance.</>
+          ) : (
+            <>Retry request sent.</>
+          )}
+          {" "}Requested <Time value={state.retry.requestedAt} now={state.now} />.
+          {state.retry.phase === "sent" && " Sending a request does not confirm that the check has completed."}
         </p>
       )}
       {status !== "Live" && (
@@ -345,7 +363,7 @@ export function OverviewPage({
             . An update does not by itself mean a GitHub check completed.
           </p>
           {status === "Checking" && (
-            <button type="button" onClick={onRetry}>Retry now</button>
+            retryButton
           )}
           <details>
             <summary>Why is this taking so long?</summary>
@@ -592,6 +610,7 @@ export function Overview({ onSessionEnded }: { onSessionEnded: () => void }) {
     now: Date.now(),
     visibleSince: Date.now(),
     lastMessageAt: null,
+    retry: null,
     changes: new Map(),
   });
   const client = useRef<ReturnType<typeof startOverviewClient> | null>(null);

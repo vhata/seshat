@@ -246,6 +246,14 @@ starts that grace period again. A previous failed attempt remains visible
 in the details until a successful check confirms recovery. An instance
 update or a quiet log does not prove a GitHub check is progressing.
 
+Retry now immediately reports whether the request was sent or is queued
+while reconnecting or checking the session. Duplicate clicks are disabled
+for 15 to 30 seconds, until the next periodic status update. A queued retry
+is sent when the connection opens; sending
+it does not confirm that GitHub work has started or completed. The instance
+may already be checking or waiting for its catch-up interval. Existing
+failures remain visible until a newer successful check arrives.
+
 Start a short live tail against the confirmed target, reproduce the issue,
 then stop with Ctrl-C:
 
