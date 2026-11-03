@@ -27,6 +27,12 @@ export async function refreshRepositories(context: RouteContext): Promise<Respon
   const result = await instanceStub(context.env).refreshInstallation(data.installationId, context.now);
   return jsonResponse(result, result.ok ? 200 : result.reason === "continuation" ? 202 : 502);
 }
+export async function refreshRepository(context: RouteContext): Promise<Response> {
+  const data = await body(context);
+  if (!data || !id(data.repositoryId) || !id(data.ownerAccountId)) return jsonResponse({ error: "invalid request" }, 400);
+  const result = await instanceStub(context.env).refreshRepository(data.repositoryId, data.ownerAccountId, context.now);
+  return jsonResponse(result, result.ok ? 202 : result.reason === "not-found" ? 404 : 403);
+}
 export async function changeMonitoring(context: RouteContext): Promise<Response> {
   const data = await body(context);
   if (!data || !id(data.repositoryId) || !(data.override === null || typeof data.override === "boolean")) {

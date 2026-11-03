@@ -20,7 +20,7 @@ import { OverviewStore } from "./overview-store";
 import { RepositorySelection } from "./repository-selection";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 import type { RepositorySettings } from "../shared/repositories";
-import type { InstallationRefreshResult, MonitoringMutationResult } from "../shared/overview/protocol";
+import type { InstallationRefreshResult, MonitoringMutationResult, RepositoryRefreshResult } from "../shared/overview/protocol";
 import { MIGRATIONS } from "./schema";
 import { OverviewSync } from "./overview-sync";
 import type { ReducedDelivery } from "../shared/overview/webhook-marks";
@@ -271,6 +271,10 @@ export class InstanceObject extends DurableObject<Env> {
     else if (result.reason === "continuation") this.syncScheduler().refresh(installationId, now, false);
     await this.syncScheduler().rearm(now);
     return result;
+  }
+
+  async refreshRepository(repositoryId: number, ownerAccountId: number, now: number): Promise<RepositoryRefreshResult> {
+    return this.syncScheduler().refreshRepository(repositoryId, ownerAccountId, now);
   }
 
   async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {

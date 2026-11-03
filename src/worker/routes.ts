@@ -18,7 +18,7 @@ import { monitoring } from "./monitoring";
 import { overviewSnapshot, overviewSocket, SNAPSHOT_PATH, SOCKET_PATH } from "./overview";
 import { checkInstallation, finishRegistration, setupForm, startRegistration } from "./setup";
 import { receiveWebhook } from "./webhook";
-import { repositorySettings, refreshInstallations, refreshRepositories, changeMonitoring, changeMute, decideOrganization, REPOSITORIES_PATH } from "./repositories";
+import { repositorySettings, refreshInstallations, refreshRepositories, refreshRepository, changeMonitoring, changeMute, decideOrganization, REPOSITORIES_PATH } from "./repositories";
 
 type Handler = (context: RouteContext) => Promise<Response>;
 
@@ -31,6 +31,7 @@ export const ROUTES: Readonly<Record<string, Readonly<Record<string, Handler>>>>
   [REPOSITORIES_PATH]: { GET: repositorySettings },
   [`${REPOSITORIES_PATH}/installations`]: { POST: refreshInstallations },
   [`${REPOSITORIES_PATH}/refresh`]: { POST: refreshRepositories },
+  [`${REPOSITORIES_PATH}/refresh-one`]: { POST: refreshRepository },
   [`${REPOSITORIES_PATH}/monitoring`]: { POST: changeMonitoring },
   [`${REPOSITORIES_PATH}/mute`]: { POST: changeMute },
   [`${REPOSITORIES_PATH}/organization`]: { POST: decideOrganization },
