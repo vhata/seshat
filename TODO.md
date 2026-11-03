@@ -223,4 +223,3 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
   - Verify that only the selected repository is requested by the action,
     including an empty repository, missed open/close events, concurrent
     background work, duplicate requests, permission loss and rate limits.
-
