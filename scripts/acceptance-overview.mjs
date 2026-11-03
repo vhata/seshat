@@ -297,6 +297,24 @@ try {
   }
   assert.equal(await page.locator(".badge.stale").count(), 7);
   assert.equal(await page.locator("a a").count(), 0);
+  await page.locator(".last-check").filter({ hasText: "Last full check:" }).waitFor();
+  const initialChecks = (await command("snapshot")).freshness;
+  assert.ok(initialChecks.repositories["12"].lastSuccessfulCheckAt !== null);
+  assert.ok(initialChecks.pullRequests.PR_1.lastSuccessfulCheckAt !== null);
+  const checkTrigger = page.locator('[data-pr="PR_1"] .check-trigger');
+  const checkDetails = page.locator('[data-pr="PR_1"] [role="tooltip"]');
+  await checkTrigger.focus();
+  await checkDetails.waitFor({ state: "visible" });
+  assert.ok((await checkDetails.innerText()).includes("Repository fully checked"));
+  assert.ok((await checkDetails.innerText()).includes("This PR checked"));
+  assert.equal(await checkTrigger.getAttribute("aria-describedby"), await checkDetails.getAttribute("id"));
+  await checkTrigger.press("Escape");
+  await checkDetails.waitFor({ state: "hidden" });
+  await checkTrigger.blur();
+  await checkTrigger.hover();
+  await checkDetails.waitFor({ state: "visible" });
+  await page.screenshot({ path: path.join(evidence, "freshness-details.png") });
+  await page.mouse.move(0, 0);
   await page.screenshot({ path: path.join(evidence, "desktop.png"), fullPage: true });
 
   const transitions = [];
@@ -316,6 +334,12 @@ try {
   }
   await webhook("edited", { title: "Title updated through a real socket" });
   await page.getByRole("link", { name: "Title updated through a real socket" }).waitFor();
+  const webhookChecks = (await command("snapshot")).freshness;
+  assert.equal(webhookChecks.repositories["12"].lastSuccessfulCheckAt, initialChecks.repositories["12"].lastSuccessfulCheckAt,
+    "An individual PR reread cannot claim a full repository check");
+  assert.ok(webhookChecks.pullRequests.PR_1.lastSuccessfulCheckAt > initialChecks.pullRequests.PR_1.lastSuccessfulCheckAt);
+  assert.equal(await page.locator('[data-pr="PR_1"] .badge.stale').count(), 1,
+    "Fresh GitHub evidence must not clear the independent inactivity flag");
   await webhook("converted_to_draft", { isDraft: true });
   assert.equal(await page.locator('#rows-draft [data-pr="PR_1"]').count(), 1);
   await webhook("ready_for_review", { isDraft: false });
@@ -341,6 +365,14 @@ try {
   listing = [...listing, created];
   await sendDelivery("repository", { action: "created", repository: created });
   assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 13)?.monitored, true, "A newly created owned repository must become monitored automatically");
+  assert.ok((await command("snapshot")).freshness.repositories["13"].lastSuccessfulCheckAt !== null,
+    "A complete empty repository read supplies freshness evidence");
+  await page.locator(".repository-checks summary").click();
+  const emptyRepositoryDetails = page.locator(".repository-checks li").filter({ hasText: "example/new-repository" });
+  await emptyRepositoryDetails.locator(".check-trigger").focus();
+  await emptyRepositoryDetails.getByRole("tooltip").waitFor({ state: "visible" });
+  assert.ok((await emptyRepositoryDetails.getByRole("tooltip").innerText()).includes("Repository fully checked"));
+  await page.locator(".repository-checks summary").click();
   listing = listing.map((repo) => repo.id === 13 ? { ...repo, archived: true } : repo);
   await sendDelivery("repository", { action: "archived", repository: { ...created, archived: true } });
   assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 13)?.monitored, false, "Archiving must stop monitoring without owner action");
@@ -395,6 +427,9 @@ try {
   const muted = page.locator("details.muted-repositories");
   const mutedSummary = muted.locator("summary");
   await mutedSummary.waitFor();
+  // Finish the repository read queued by Refresh listings before isolating
+  // the later PR-only webhook observation from concurrent reconciliation.
+  await drain();
   assert.equal(await muted.getAttribute("open"), null, "Muted repositories start collapsed");
   assert.equal(await page.locator(".buckets .pr-row").count(), 0, "Muted rows leave the regular buckets");
   assert.equal(await muted.locator(".pr-row").count(), 7, "Muting retains every cached PR");
@@ -414,12 +449,24 @@ try {
   for (const bucket of beforeMute.buckets.filter((bucket) => bucket.rows.length)) {
     assert.ok((await muted.getByRole("heading", { name: bucket.bucket.title, exact: false }).count()) > 0, `Muted PRs retain ${bucket.bucket.title}`);
   }
+  const mutedFreshnessTrigger = muted.locator('[data-pr="PR_1"] .check-trigger');
+  await mutedFreshnessTrigger.focus();
+  const mutedFreshnessDetails = muted.locator('[data-pr="PR_1"] [role=tooltip]');
+  await mutedFreshnessDetails.waitFor({ state: "visible" });
+  assert.ok((await mutedFreshnessDetails.innerText()).includes("Repository fully checked"));
+  assert.ok((await mutedFreshnessDetails.innerText()).includes("This PR checked"));
+  await mutedFreshnessTrigger.press("Escape");
   await page.screenshot({ path: path.join(evidence, "muted-expanded.png"), fullPage: true });
   await mutedSummary.focus();
   await page.keyboard.press("Space");
   assert.equal(await muted.evaluate((element) => element.open), false, "Space collapses the native muted disclosure");
 
   await webhook("edited", { title: "Muted webhook update stays collapsed" });
+  const mutedWebhookChecks = (await command("snapshot")).freshness;
+  assert.equal(mutedWebhookChecks.repositories["12"].lastSuccessfulCheckAt,
+    mutedSnapshot.freshness.repositories["12"].lastSuccessfulCheckAt);
+  assert.ok(mutedWebhookChecks.pullRequests.PR_1.lastSuccessfulCheckAt >
+    mutedSnapshot.freshness.pullRequests.PR_1.lastSuccessfulCheckAt);
   await page.waitForFunction(() => document.querySelector(".muted-repositories")?.textContent.includes("Muted webhook update stays collapsed"));
   assert.equal(await muted.evaluate((element) => element.open), false, "New activity must not expand or unmute");
   assert.equal(await page.locator(".buckets .pr-row").count(), 0);
@@ -431,6 +478,8 @@ try {
   mutedSnapshot = await command("snapshot");
   assert.ok(calls.length > collapsedCalls, "Collapsed muted PRs still receive scheduled GitHub reads");
   assert.ok(mutedSnapshot.sync.lastSuccessfulSweepAt > lastMutedSweep, "Muted repository reads retain freshness reporting");
+  assert.ok(mutedSnapshot.freshness.repositories["12"].lastSuccessfulCheckAt >
+    mutedWebhookChecks.repositories["12"].lastSuccessfulCheckAt);
   assert.equal(mutedSnapshot.repositories.find((repo) => repo.id === 12)?.muted, true);
   assert.equal(await muted.evaluate((element) => element.open), false);
   await page.screenshot({ path: path.join(evidence, "muted-collapsed.png"), fullPage: true });
@@ -502,13 +551,25 @@ try {
   await page.waitForTimeout(100);
   await drain();
   await page.locator(".status-live").waitFor();
+  const beforeRestart = (await command("snapshot")).freshness;
   await mf.unsafeEvictDurableObject("app", "AcceptanceInstance", { name: "instance", webSockets: "close" });
   await page.getByText("Disconnected — reconnecting to the instance").waitFor();
   await advance(1200, { alarm: false });
   await page.locator(".status-live").waitFor();
+  assert.deepEqual((await command("snapshot")).freshness, beforeRestart,
+    "Restart and reconnect must retain check evidence without inventing a read");
   const widths = [];
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
+    await page.locator(".repository-checks summary").click();
+    const repositoryTrigger = page.locator(".repository-checks .check-trigger").last();
+    await repositoryTrigger.focus();
+    const tooltip = page.locator(".repository-checks [role=tooltip]").last();
+    await tooltip.waitFor({ state: "visible" });
+    const bounds = await tooltip.boundingBox();
+    assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width,
+      `Freshness details exceed the ${width}px viewport: ${JSON.stringify(bounds)}`);
+    await page.locator(".repository-checks summary").click();
     const dimensions = await page.evaluate(() => ({ viewport: innerWidth, width: document.documentElement.scrollWidth }));
     assert.ok(dimensions.width <= width, `Phone horizontal overflow: ${JSON.stringify(dimensions)}`);
     widths.push(dimensions);
@@ -532,7 +593,7 @@ try {
   await page.waitForTimeout(1500);
   assert.equal(sockets.length, endedSockets, "Ended sessions must stop reconnecting");
   await page.screenshot({ path: path.join(evidence, "session-ended.png") });
-  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in"] };
+  const summary = { rows: 7, buckets: 7, transitions, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in", "scoped repository and PR evidence", "hover and keyboard freshness details", "PR reread preserves repository check time", "empty repository check", "object restart retains check evidence"] };
   await writeFile(path.join(evidence, "results.json"), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary));
   }

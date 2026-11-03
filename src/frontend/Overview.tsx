@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import type { BucketId } from "../shared/overview/buckets";
 import {
   INITIAL_SYNC,
+  type CheckStatus,
   type OverviewRowDto,
   type OverviewSnapshot,
   type SyncFailureReason,
 } from "../shared/overview/protocol";
 import { freshness, isOverdue, relativeTime } from "./freshness";
+import { CheckFreshness } from "./CheckFreshness";
 import {
   browserEnvironment,
   startOverviewClient,
@@ -107,12 +109,18 @@ function PrRow({
   ownerId,
   note,
   outdated,
+  repositoryStatus,
+  prStatus,
+  visibleSince,
 }: {
   row: OverviewRowDto;
   now: number;
   ownerId: number;
   note?: ChangeNote;
   outdated: boolean;
+  repositoryStatus?: CheckStatus;
+  prStatus?: CheckStatus;
+  visibleSince: number;
 }) {
   const { pr, facts } = row;
   const review = {
@@ -134,18 +142,25 @@ function PrRow({
   const annotation = ownerReview(row, ownerId);
   return (
     <li className={`pr-row${note ? " changed" : ""}`} data-pr={pr.nodeId}>
-      <a
-        className="repository mono"
-        href={`https://github.com/${pr.repository.fullName}`}
-      >
-        {pr.repository.fullName}
-      </a>
+      <div className="repository mono">
+        <a href={`https://github.com/${pr.repository.fullName}`}>
+          {pr.repository.fullName}
+        </a>
+        <CheckFreshness
+          repositoryName={pr.repository.fullName}
+          repositoryStatus={repositoryStatus}
+          prStatus={prStatus}
+          prNumber={pr.number}
+          now={now}
+          visibleSince={visibleSince}
+        />
+      </div>
       <div className="pr-title">
         <a href={pr.url}>{pr.title}</a>{" "}
         <span className="muted mono">#{pr.number}</span>
         <span className="badge">{pr.isDraft ? "draft" : "open"}</span>
         {row.stale && (
-          <span className="badge stale">
+          <span className="badge stale" title="Inactivity: time since PR activity, independent of GitHub check freshness.">
             ◷ stale {relativeTime(row.lastActivityAt, now)}
           </span>
         )}
@@ -239,10 +254,10 @@ export function OverviewPage({
       </header>
       <div className="last-check">
         {lastSuccess === null ? (
-          "Checked with GitHub: never"
+          "Last full check: never"
         ) : (
           <>
-            Checked with GitHub <Time value={lastSuccess} now={state.now} />
+            Last full check: <Time value={lastSuccess} now={state.now} />
           </>
         )}
         {snapshot?.sync.slowedByRateLimit && (
@@ -369,8 +384,8 @@ export function OverviewPage({
           <details>
             <summary>Why is this taking so long?</summary>
             <p>
-              Check progress and the current cause of a delay are not reported
-              to this page. To investigate, run <code>seshat site logs</code>{" "}
+              Repository and PR details show their own checks. To investigate
+              a delay, run <code>seshat site logs</code>{" "}
               from your configured checkout, then keep this overview visible
               and choose Retry now. Logs show new events only; look for{" "}
               <code>seshat.github.failure</code> for a failure reason and the
@@ -387,15 +402,48 @@ export function OverviewPage({
             <p>Waiting for the instance to send its snapshot.</p>
           </div>
         ) : (
-          <SnapshotContent
-            snapshot={snapshot}
-            state={state}
-            outdated={outdated}
-          />
+          <>
+            <RepositoryChecks snapshot={snapshot} now={state.now} visibleSince={state.visibleSince} />
+            <SnapshotContent
+              snapshot={snapshot}
+              state={state}
+              outdated={outdated}
+            />
+          </>
         )}
       </main>
       <footer>Pull requests and status come from GitHub's API.</footer>
     </>
+  );
+}
+function RepositoryChecks({ snapshot, now, visibleSince }: {
+  snapshot: OverviewSnapshot;
+  now: number;
+  visibleSince: number;
+}) {
+  const monitored = snapshot.repositories.filter((repo) => repo.monitored);
+  if (monitored.length === 0) return null;
+  const failed = monitored.filter((repo) => snapshot.freshness?.repositories[String(repo.id)]?.latestAttempt?.result === "failed").length;
+  return (
+    <details className="repository-checks">
+      <summary>
+        Repository checks · {monitored.length} monitored{failed > 0 ? ` · ${failed} failed` : ""}
+      </summary>
+      <p>Complete repository checks include repositories with no open PRs.</p>
+      <ul>
+        {monitored.map((repo) => (
+          <li key={repo.id}>
+            <a href={`https://github.com/${repo.fullName}`} className="mono">{repo.fullName}</a>
+            <CheckFreshness
+              repositoryName={repo.fullName}
+              repositoryStatus={snapshot.freshness?.repositories[String(repo.id)]}
+              now={now}
+              visibleSince={visibleSince}
+            />
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 function SnapshotContent({
@@ -600,6 +648,9 @@ function SnapshotContent({
                             now={state.now}
                             note={state.changes.get(row.pr.nodeId)}
                             outdated={outdated}
+                            repositoryStatus={snapshot.freshness?.repositories[String(row.pr.repositoryId)]}
+                            prStatus={snapshot.freshness?.pullRequests[row.pr.nodeId]}
+                            visibleSince={state.visibleSince}
                           />
                         ))}
                       </ul>
@@ -621,6 +672,9 @@ function SnapshotContent({
           now={state.now}
           note={state.changes.get(row.pr.nodeId)}
           outdated={outdated}
+          repositoryStatus={snapshot.freshness?.repositories[String(row.pr.repositoryId)]}
+          prStatus={snapshot.freshness?.pullRequests[row.pr.nodeId]}
+          visibleSince={state.visibleSince}
         />}
       />
     </>

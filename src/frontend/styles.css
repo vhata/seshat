@@ -348,8 +348,102 @@ button:disabled {
   margin: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible;
   background: #16232e;
+}
+.check-indicator {
+  position: relative;
+  display: inline-block;
+  font: 10px system-ui, sans-serif;
+  color: var(--muted);
+}
+.repository .check-indicator {
+  display: block;
+  width: fit-content;
+}
+.check-trigger {
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 2px 3px;
+  text-align: left;
+  font: inherit;
+}
+.check-checking,
+.check-overdue {
+  color: var(--amber);
+}
+.check-failed {
+  color: var(--coral);
+}
+.check-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: min(330px, calc(100vw - 64px));
+  z-index: 5;
+  visibility: hidden;
+  background: #101820;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  box-shadow: 0 4px 15px #0006;
+  color: #dbe5ec;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.check-indicator:not(.check-dismissed):hover .check-tooltip,
+.check-indicator:not(.check-dismissed):focus-within .check-tooltip {
+  visibility: visible;
+}
+.check-scope,
+.check-scope > span,
+.check-scope > strong,
+.check-explanation {
+  display: block;
+}
+.check-scope + .check-scope,
+.check-explanation {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+.check-explanation {
+  color: var(--muted);
+}
+.repository-checks {
+  margin: 10px 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.repository-checks summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.repository-checks summary:focus-visible {
+  outline: 2px solid var(--sky);
+  outline-offset: 3px;
+}
+.repository-checks ul {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.repository-checks li {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.repository-checks .check-indicator {
+  position: static;
+}
+.repository-checks li > a {
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 .pr-row {
   position: relative;

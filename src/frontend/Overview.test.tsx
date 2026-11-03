@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   buildSnapshot,
+  type CheckStatus,
   type OverviewSnapshot,
 } from "../shared/overview/protocol";
 import {
@@ -44,7 +45,10 @@ describe("overview presentation", () => {
       [fixturePr({ title: "Active work" }), fixturePr({
         nodeId: "PR_muted", repositoryId: muted.id, title: "Quiet work", isDraft: true,
       })],
-      SYNC_FIXTURES.live, FIXTURE_OWNER_ID, now,
+      SYNC_FIXTURES.live, FIXTURE_OWNER_ID, now, {
+        repositories: { "42": { lastSuccessfulCheckAt: now - 60_000, latestAttempt: null } },
+        pullRequests: { PR_muted: { lastSuccessfulCheckAt: now - 20_000, latestAttempt: null } },
+      },
     ));
     const [active, hidden] = html.split('<details class="muted-repositories">');
     expect(active).toContain("Active work");
@@ -52,9 +56,13 @@ describe("overview presentation", () => {
     expect(active).toContain("Needs you · 1");
     expect(active).toContain("Waiting · 0");
     expect(active).toContain("1 open PRs · 1 repositories");
-    expect(active).toContain("Checked with GitHub");
+    expect(active).toContain("Last full check:");
     expect(hidden).toContain("Muted repositories · 2 repositories · 1 PR");
     expect(hidden).toContain("Quiet work");
+    expect(hidden).toContain("Repository fully checked");
+    expect(hidden).toContain("This PR checked");
+    expect(hidden).toContain("1m ago");
+    expect(hidden).toContain("20s ago");
     expect(hidden).toContain('aria-label="Muted: Draft"');
     expect(hidden).toContain('aria-label="Unmute example/empty"');
     expect(hidden).not.toContain("example/off");
@@ -373,7 +381,7 @@ describe("overview presentation", () => {
     expect(stale).toContain("more than five minutes old");
   });
   it("always shows check time, masks old failure during catch-up and flags stale rows", () => {
-    expect(render(fixtureSnapshot())).toContain("Checked with GitHub");
+    expect(render(fixtureSnapshot())).toContain("Last full check:");
     expect(render(fixtureSnapshot(SYNC_FIXTURES.failed))).toContain(
       "Could not read: example/observatory",
     );
@@ -396,5 +404,81 @@ describe("overview presentation", () => {
     expect(render(fixtureSnapshot(SYNC_FIXTURES.rateLimited))).toContain(
       "Checking every 4 minutes",
     );
+  });
+});
+
+describe("granular freshness presentation", () => {
+  const checked = (at: number): CheckStatus => ({
+    lastSuccessfulCheckAt: at,
+    latestAttempt: { id: 1, startedAt: at, result: "success" },
+  });
+  it("distinguishes complete repository checks from newer individual PR checks", () => {
+    const base = fixtureSnapshot();
+    const row = base.buckets.flatMap((bucket) => bucket.rows)[0]!;
+    const html = render({ ...base, freshness: {
+      repositories: { [String(FIXTURE_REPOSITORY.id)]: checked(now - 600_000) },
+      pullRequests: { [row.pr.nodeId]: checked(now - 20_000) },
+    } });
+    expect(html).toContain("Repository fully checked");
+    expect(html).toContain("This PR checked");
+    expect(html).toContain("10m ago");
+    expect(html).toContain("20s ago");
+    expect(html).toContain("Check overdue");
+    expect(html).toContain('role="tooltip"');
+    expect(html).toContain('aria-describedby="');
+    expect(html).toContain("does not confirm the repository&#x27;s complete PR list");
+    expect(html).toContain("● Live");
+    expect(html).toContain("Last full check:");
+  });
+  it("keeps scope failures visible beside the repository name and retains successful times", () => {
+    const base = fixtureSnapshot();
+    const row = base.buckets.flatMap((bucket) => bucket.rows)[0]!;
+    const html = render({ ...base, freshness: {
+      repositories: { [String(FIXTURE_REPOSITORY.id)]: checked(now - 30_000) },
+      pullRequests: { [row.pr.nodeId]: {
+        lastSuccessfulCheckAt: now - 120_000,
+        latestAttempt: { id: 2, startedAt: now - 10_000, result: "failed", reason: "rate-limited" },
+      } },
+    } });
+    expect(html).toContain("Checked · PR check failed");
+    expect(html).toContain("2m ago");
+    expect(html).toContain("The GitHub App has reached its rate limit.");
+    expect(html).toContain("● Live");
+  });
+  it("exposes empty repository evidence even before a full sweep succeeds", () => {
+    const snapshot = buildSnapshot([FIXTURE_REPOSITORY], [], SYNC_FIXTURES.initial, FIXTURE_OWNER_ID, now);
+    const html = render({ ...snapshot, freshness: {
+      repositories: { [String(FIXTURE_REPOSITORY.id)]: checked(now - 20_000) },
+      pullRequests: {},
+    } });
+    expect(html).toContain('class="repository-checks"');
+    expect(html).toContain("Repository checks · 1 monitored");
+    expect(html).toContain("example/observatory");
+    expect(html).toContain("Repository fully checked");
+    expect(html).toContain("20s ago");
+    expect(html).not.toContain("This PR checked");
+    expect(html).toContain("Loading your first overview");
+  });
+  it("does not infer granular success from discovery or the aggregate timestamp", () => {
+    const html = render(fixtureSnapshot());
+    expect(html).toContain("Not yet confirmed");
+    expect(html).toContain("Check overdue");
+    expect(html).toContain("● Live");
+  });
+  it("keeps PR inactivity separate from successful GitHub freshness", () => {
+    const pr = fixturePr({ activity: {
+      openedAt: now - 10 * 86400_000,
+      lastCommitAt: null, lastCommentAt: null, lastStateChangeAt: null,
+    } });
+    const snapshot = buildSnapshot([FIXTURE_REPOSITORY], [pr], SYNC_FIXTURES.live, FIXTURE_OWNER_ID, now);
+    const html = render({ ...snapshot, freshness: {
+      repositories: { [String(FIXTURE_REPOSITORY.id)]: checked(now - 20_000) },
+      pullRequests: { [pr.nodeId]: checked(now - 20_000) },
+    } });
+    expect(html).toContain("stale 10d");
+    expect(html).toContain("Inactivity: time since PR activity");
+    expect(html).toContain(" Checked</button>");
+    expect(html).not.toContain("Check overdue");
+    expect(html).not.toContain("Check failed");
   });
 });

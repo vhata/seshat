@@ -116,6 +116,8 @@ overview's browser scenario runs separately with
 `node scripts/acceptance-overview.mjs`; its runtime, browser requirements and
 evidence boundary are recorded in
 [OVERVIEW_ACCEPTANCE.md](OVERVIEW_ACCEPTANCE.md).
+Scoped repository and PR check evidence, its lifecycle and reuse points
+are described in [granular freshness](GRANULAR_FRESHNESS.md).
 The offline recovery experiment runs separately with
 `node scripts/acceptance-recovery.mjs`; its state isolation, procedure and
 hosted evidence limits are recorded in [instance recovery](INSTANCE_RECOVERY.md).

@@ -40,6 +40,17 @@ describe("overview protocol", () => {
 });
 
 describe("server message decoder", () => {
+  it("accepts legacy unknown evidence and validates additive scoped evidence", async () => {
+    const { fixtureSnapshot } = await import("./fixtures");
+    const { parseServerMessage } = await import("./protocol");
+    const snapshot = fixtureSnapshot();
+    const evidence = { repositories: { "12": { lastSuccessfulCheckAt: 10, latestAttempt: { id: 1, startedAt: 10, result: "success" } } }, pullRequests: {} };
+    const encoded = (freshness: unknown) => JSON.stringify({ type: "snapshot", snapshot: { ...snapshot, freshness } });
+    expect(parseServerMessage(encoded(evidence))).toMatchObject({ snapshot: { freshness: evidence } });
+    for (const invalid of [null, {}, { ...evidence, pullRequests: [] }, { ...evidence, repositories: { "12": { lastSuccessfulCheckAt: "today", latestAttempt: null } } }, { ...evidence, repositories: { "12": { lastSuccessfulCheckAt: null, latestAttempt: { id: 0, startedAt: 10, result: "success" } } } }]) {
+      expect(parseServerMessage(encoded(invalid))).toBeNull();
+    }
+  });
   it("round-trips snapshots, authoritative bucket changes, and sync updates", async () => {
     const { fixtureSnapshot, SYNC_FIXTURES } = await import("./fixtures");
     const { parseServerMessage } = await import("./protocol");
