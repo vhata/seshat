@@ -155,18 +155,28 @@ export class OverviewSync {
       const discovery = new RepositoryDiscoveryStore(this.context.storage);
       if (previous && (metadata.transferred || metadata.ownerId !== null && metadata.ownerId !== previous.ownerAccountId)) {
         discovery.forgetMonitoringOverride(metadata.id);
+        // A delayed destination-installation delivery may arrive after its
+        // owner has already chosen to mute. Only a changed or unknown owner
+        // invalidates that owner's preference.
+        if (metadata.ownerId === null || metadata.ownerId !== previous.ownerAccountId) discovery.forgetRepositoryMute(metadata.id);
       } else if (metadata.transferred) {
         // A delayed old-installation delivery must preserve a choice already
         // made for the destination owner, even if its row is currently absent.
-        if (metadata.ownerId !== null) discovery.monitoringOverride(metadata.id, metadata.ownerId);
-        else discovery.forgetMonitoringOverride(metadata.id, this.context.installations().find((installation) => installation.id === delivery.installationId)!.accountId);
+        if (metadata.ownerId !== null) {
+          discovery.monitoringOverride(metadata.id, metadata.ownerId);
+          discovery.repositoryMuted(metadata.id, metadata.ownerId);
+        } else {
+          const oldOwner = this.context.installations().find((installation) => installation.id === delivery.installationId)!.accountId;
+          discovery.forgetMonitoringOverride(metadata.id, oldOwner);
+          discovery.forgetRepositoryMute(metadata.id, oldOwner);
+        }
       }
       if (!previous && !metadata.deleted && !delivery.refresh) this.refresh(delivery.installationId, now);
       if (previous) {
         if (metadata.deleted) this.context.store.removeRepository(previous.id);
         else this.context.store.putRepository({ ...previous, visibility: metadata.visibility, visibilityReportedAt: now,
           ...(metadata.transferred || metadata.ownerId !== null && metadata.ownerId !== previous.ownerAccountId
-            ? { monitored: false, monitorOverride: null, ownerAccountId: metadata.ownerId ?? previous.ownerAccountId } : {}),
+            ? { monitored: false, monitorOverride: null, muted: metadata.ownerId === previous.ownerAccountId && previous.muted === true, ownerAccountId: metadata.ownerId ?? previous.ownerAccountId } : {}),
         });
       }
     }
@@ -506,8 +516,10 @@ export class OverviewSync {
     const repository = this.context.store.repositories(installationId).find((repo) => repo.id === pr.repositoryId);
     if (!repository || !repository.monitored) return;
     if (repository.ownerAccountId !== pr.repository.ownerAccountId) {
-      new RepositoryDiscoveryStore(this.context.storage).forgetMonitoringOverride(repository.id);
-      this.context.store.putRepository({ ...repository, monitored: false, monitorOverride: null, ownerAccountId: pr.repository.ownerAccountId, visibility, listedAt: now, visibilityReportedAt: now });
+      const discovery = new RepositoryDiscoveryStore(this.context.storage);
+      discovery.forgetMonitoringOverride(repository.id);
+      discovery.forgetRepositoryMute(repository.id);
+      this.context.store.putRepository({ ...repository, monitored: false, monitorOverride: null, muted: false, ownerAccountId: pr.repository.ownerAccountId, visibility, listedAt: now, visibilityReportedAt: now });
       this.refresh(installationId, now);
       return;
     }

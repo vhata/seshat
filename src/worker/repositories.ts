@@ -35,6 +35,14 @@ export async function changeMonitoring(context: RouteContext): Promise<Response>
   const result = await instanceStub(context.env).setMonitoringOverride(data.repositoryId, data.override, context.now);
   return jsonResponse(result, result.ok ? 200 : result.reason === "not-found" ? 404 : 403);
 }
+export async function changeMute(context: RouteContext): Promise<Response> {
+  const data = await body(context);
+  if (!data || !id(data.repositoryId) || !id(data.ownerAccountId) || typeof data.muted !== "boolean") {
+    return jsonResponse({ error: "invalid request" }, 400);
+  }
+  const result = await instanceStub(context.env).setRepositoryMuted(data.repositoryId, data.ownerAccountId, data.muted, context.now);
+  return jsonResponse(result, result.ok ? 200 : result.reason === "not-found" ? 404 : 403);
+}
 export async function decideOrganization(context: RouteContext): Promise<Response> {
   const data = await body(context);
   if (!data || !id(data.installationId) || typeof data.accept !== "boolean") return jsonResponse({ error: "invalid request" }, 400);

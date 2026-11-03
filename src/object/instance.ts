@@ -281,6 +281,11 @@ export class InstanceObject extends DurableObject<Env> {
     return result;
   }
 
+  async setRepositoryMuted(repositoryId: number, ownerAccountId: number, muted: boolean, now: number): Promise<MonitoringMutationResult> {
+    const selection = this.repositorySelection();
+    return selection ? selection.setRepositoryMuted(repositoryId, ownerAccountId, muted, now) : { ok: false, reason: "not-allowed" };
+  }
+
   async decideOrganization(installationId: number, accept: boolean, now: number): Promise<{ ok: boolean }> {
     await this.syncScheduler().rearm(now);
     if (this.installationDecisions.has(installationId)) return { ok: false };
