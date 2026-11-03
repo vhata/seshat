@@ -457,6 +457,7 @@ try {
   await unmute.focus();
   await page.keyboard.press("Space");
   await page.waitForFunction(() => document.querySelectorAll(".buckets .pr-row").length === 7);
+  await page.waitForFunction(() => document.activeElement === document.querySelector(".muted-repositories summary"));
   assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 12)?.muted, false, "Explicit keyboard unmute restores the regular buckets");
 
   // An empty muted repository contributes to the repository count, with no

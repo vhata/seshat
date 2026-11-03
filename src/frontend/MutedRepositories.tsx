@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { OverviewSnapshot, OverviewRowDto, RepositoryRecord } from "../shared/overview/protocol";
 import { setRepositoryMuted } from "./repository-muting";
 
@@ -9,6 +9,7 @@ export function MutedRepositories({ repositories, buckets, renderRow }: {
   renderRow: (row: OverviewRowDto) => ReactNode;
 }) {
   const [busy, setBusy] = useState(false);
+  const summary = useRef<HTMLElement>(null);
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
   const count = buckets.reduce((total, bucket) => total + bucket.rows.length, 0);
   async function unmute(repository: RepositoryRecord) {
@@ -17,12 +18,15 @@ export function MutedRepositories({ repositories, buckets, renderRow }: {
     try {
       await setRepositoryMuted(repository, false);
       setFeedback({ error: false, text: `Unmuted ${repository.fullName}.` });
+      // The socket removes this repository's button; keep keyboard focus in
+      // the disclosure instead of losing it with the removed control.
+      summary.current?.focus();
     } catch (reason) {
       setFeedback({ error: true, text: reason instanceof Error ? reason.message : String(reason) });
     } finally { setBusy(false); }
   }
   return <details className="muted-repositories">
-    <summary>Muted repositories · {repositories.length} repositories · {count} PRs</summary>
+    <summary ref={summary}>Muted repositories · {repositories.length} repositories · {count} PRs</summary>
     <p>Muted repositories keep updating at the normal frequency. New activity keeps them muted until you choose Unmute.</p>
     {feedback && <p role={feedback.error ? "alert" : "status"}>{feedback.text}</p>}
     {repositories.length === 0 ? <p>No muted repositories are monitored.</p> : <>
