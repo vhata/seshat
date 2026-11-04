@@ -5,12 +5,18 @@ import {
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 import { OverviewCheckStore } from "./overview-check-store";
 
+function storedPullRequest(data: string): PullRequestRecord {
+  const dto: unknown = JSON.parse(data);
+  if (!isPrDto(dto)) throw new Error("invalid stored PR DTO");
+  return fromPrDto(dto);
+}
+
 /** Typed persistence boundary. The caller brings the schema up to date. */
 export class OverviewStore extends OverviewCheckStore {
   constructor(private readonly storage: DurableObjectStorage) { super(storage); }
 
-  checkFreshness() {
-    return this.evidence(this.repositories().filter((repo) => repo.monitored).map((repo) => repo.id), this.pullRequests().map((pr) => pr.nodeId));
+  checkFreshness(repositories: readonly RepositoryRecord[] = this.repositories(), prs: readonly PullRequestRecord[] = this.pullRequests()) {
+    return this.evidence(repositories.filter((repo) => repo.monitored).map((repo) => repo.id), prs.map((pr) => pr.nodeId));
   }
 
   repositories(installationId?: number): RepositoryRecord[] {
@@ -18,6 +24,15 @@ export class OverviewStore extends OverviewCheckStore {
       ? this.storage.sql.exec<{ data: string }>("SELECT data FROM repositories ORDER BY id")
       : this.storage.sql.exec<{ data: string }>("SELECT data FROM repositories WHERE installation_id = ? ORDER BY id", installationId);
     return rows.toArray().map(({ data }) => JSON.parse(data) as RepositoryRecord);
+  }
+
+  /** Read one current identity without scanning the installation's rows. */
+  repository(id: number, installationId?: number): RepositoryRecord | undefined {
+    const rows = installationId === undefined
+      ? this.storage.sql.exec<{ data: string }>("SELECT data FROM repositories WHERE id = ?", id)
+      : this.storage.sql.exec<{ data: string }>("SELECT data FROM repositories WHERE id = ? AND installation_id = ?", id, installationId);
+    const row = rows.toArray()[0];
+    return row ? JSON.parse(row.data) as RepositoryRecord : undefined;
   }
 
   /** A monitoring change removes hidden PRs in the same transaction. */
@@ -75,11 +90,16 @@ export class OverviewStore extends OverviewCheckStore {
     const rows = repositoryId === undefined
       ? this.storage.sql.exec<{ data: string }>("SELECT data FROM pull_requests ORDER BY node_id")
       : this.storage.sql.exec<{ data: string }>("SELECT data FROM pull_requests WHERE repository_id = ? ORDER BY node_id", repositoryId);
-    return rows.toArray().map(({ data }) => {
-      const dto: unknown = JSON.parse(data);
-      if (!isPrDto(dto)) throw new Error("invalid stored PR DTO");
-      return fromPrDto(dto);
-    });
+    return rows.toArray().map(({ data }) => storedPullRequest(data));
+  }
+
+  /** Preserve the repository boundary when reading one pending PR. */
+  pullRequest(nodeId: string, repositoryId?: number): PullRequestRecord | undefined {
+    const rows = repositoryId === undefined
+      ? this.storage.sql.exec<{ data: string }>("SELECT data FROM pull_requests WHERE node_id = ?", nodeId)
+      : this.storage.sql.exec<{ data: string }>("SELECT data FROM pull_requests WHERE node_id = ? AND repository_id = ?", nodeId, repositoryId);
+    const row = rows.toArray()[0];
+    return row ? storedPullRequest(row.data) : undefined;
   }
 
   /** Returns false for unchanged data or a repository no longer monitored. */
