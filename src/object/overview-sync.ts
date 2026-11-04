@@ -2,7 +2,10 @@ import type { StoredInstallation } from "../shared/installations";
 import type { CheckAttempt, PullRequestRecord, RepositoryRecord, RepositoryRefreshResult, SyncFailureReason } from "../shared/overview/protocol";
 import { coalesceFacts, factObserved, type DeliveryFact, type PrMark, type ReducedDelivery } from "../shared/overview/webhook-marks";
 import { GithubPrReader, type HeadCommitDate, type RateLimit, type ReadMeta, type ReaderContinuation } from "../worker/github-pr-reader";
-import type { PermissionCacheEntry } from "../worker/github-permissions";
+import { readReviewerPermission, type PermissionCacheEntry } from "../worker/github-permissions";
+import { GitHubRepositoryListing } from "../worker/github-repositories";
+import { readRepositoryCi, type RepositoryCiContinuation } from "../worker/github-repository-ci";
+import type { RepositoryCiIssue } from "../shared/overview/repository-ci";
 import type { OverviewStore } from "./overview-store";
 import type { RepositorySelection } from "./repository-selection";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
@@ -17,6 +20,12 @@ interface PendingSha { installationId: number; repositoryId: number; sha: string
 interface TrackedCheck { scope: "repository" | "pr"; key: string; attempt: CheckAttempt }
 interface PendingRefresh { id: number; due: number; revision: number; queuedAt?: number; checks?: TrackedCheck[] }
 interface ReadProgress { installationId: number; generation: number; ids: string[]; revisions: [string, number][]; continuation: ReaderContinuation | null; checks?: TrackedCheck[]; startedAt?: number }
+interface PendingCi {
+  repositoryId: number; installationId: number; ownerAccountId: number; fullName: string;
+  due: number; queuedAt: number; revision: number; retry: number; check: CheckAttempt;
+  continuation: RepositoryCiContinuation | null;
+  visibleOnly: boolean;
+}
 interface Sweep {
   generation: number;
   startedAt: number;
@@ -48,6 +57,8 @@ interface State {
   permissions: PermissionCacheEntry[];
   headDates: HeadCommitDate[];
   rates: { installationId: number; rate: RateLimit }[];
+  ci?: PendingCi[];
+  lastJobWasCi?: boolean;
 }
 interface Context {
   ownerId?: number;
@@ -81,6 +92,7 @@ export class OverviewSync {
     this.state.refreshGenerations ??= {};
     this.state.observationGenerations ??= {};
     this.state.activeSince ??= null;
+    this.state.ci ??= [];
   }
 
   private save(): void {
@@ -136,6 +148,7 @@ export class OverviewSync {
       ...(this.state.guard === null ? [] : [this.state.guardQueuedAt ?? this.state.guard]),
       ...this.state.refresh.map((job) => job.queuedAt ?? job.due),
       ...this.state.marks.map((mark) => mark.queuedAt ?? mark.due),
+      ...this.state.ci!.filter((job) => this.ciRepository(job)).map((job) => job.queuedAt),
     ];
     const failure = this.state.lastEventFailureAt ?? null;
     return {
@@ -152,7 +165,7 @@ export class OverviewSync {
       oldestPendingAt: queued.length ? Math.min(...queued) : null,
       lastEventFailureAt: failure !== null && (sync.lastSuccessfulSweepAt ?? -Infinity) < failure ? failure : null,
       githubRateLimited: this.state.rates.some(({ installationId, rate }) => this.accepted(installationId)
-        && rate.resetAt > now && rate.limit !== undefined && rate.remaining < rate.limit / 10),
+        && ((rate.retryAt ?? 0) > now || rate.resetAt > now && rate.limit !== undefined && rate.remaining < rate.limit / 10)),
       cloudflareCapacity: "unknown",
     };
   }
@@ -191,7 +204,7 @@ export class OverviewSync {
       await this.rearm(now);
       return false;
     }
-    this.invalidateReads(delivery.installationId);
+    if (delivery.repositoryCi === undefined || delivery.refresh || delivery.marks.length > 0 || delivery.sha) this.invalidateReads(delivery.installationId);
     const metadata = delivery.repository;
     if (metadata) {
       const previous = this.context.store.repository(metadata.id, delivery.installationId);
@@ -224,6 +237,10 @@ export class OverviewSync {
       }
     }
     if (delivery.refresh) this.refresh(delivery.installationId, now);
+    if (delivery.repositoryCi !== undefined) {
+      const repository = this.context.store.repositories(delivery.installationId).find((entry) => entry.id === delivery.repositoryCi);
+      if (repository?.monitored) this.queueCi(repository, now + 2_000, true);
+    }
     for (const mark of delivery.marks) this.mark(mark, now + 2_000, false, now);
     if (delivery.sha) {
       const sha = delivery.sha;
@@ -248,7 +265,7 @@ export class OverviewSync {
   }
   discoveryChanged(id: number, now: number): void {
     this.invalidateReads(id);
-    for (const repository of this.context.store.repositories(id)) if (repository.monitored) this.queueRepositoryRead(repository, now);
+    for (const repository of this.context.store.repositories(id)) if (repository.monitored) { this.queueRepositoryRead(repository, now); this.queueCi(repository, now); }
     this.save();
   }
 
@@ -352,6 +369,12 @@ export class OverviewSync {
   /** Ordinary requests repair missing or idle stale alarms without dropping jobs. */
   async rearm(now: number): Promise<void> {
     if (this.normalizeReread(now)) this.save();
+    const obsoleteCi = this.state.ci!.filter((job) => !this.ciRepository(job));
+    if (obsoleteCi.length > 0) {
+      for (const job of obsoleteCi) this.context.store.finishCheck("repository-ci", String(job.repositoryId), job.check, "interrupted");
+      this.state.ci = this.state.ci!.filter((job) => !obsoleteCi.includes(job));
+      this.save();
+    }
     const active = this.context.visible(now);
     const activeSince = active ? this.state.activeSince ?? now : null;
     if (this.state.activeSince !== activeSince) {
@@ -376,6 +399,11 @@ export class OverviewSync {
       this.state.nextSweep = null;
       this.save();
     }
+    if (!active && this.state.ci!.some((job) => job.visibleOnly)) {
+      for (const job of this.state.ci!.filter((entry) => entry.visibleOnly)) this.context.store.finishCheck("repository-ci", String(job.repositoryId), job.check, "interrupted");
+      this.state.ci = this.state.ci!.filter((job) => !job.visibleOnly);
+      this.save();
+    }
     if (this.state.rates.length > 0) {
       const sync = this.context.store.syncStatus();
       const intervalMs = this.interval(now);
@@ -390,7 +418,8 @@ export class OverviewSync {
         }
       }
     }
-    const times = [this.state.guard, ...this.state.refresh.map((job) => job.due), ...this.state.marks.filter((mark) => this.markRepository(mark)).map((mark) => mark.due), ...this.state.shas.map((sha) => sha.expires)];
+    const times = [this.state.guard, ...this.state.refresh.map((job) => job.due), ...this.state.marks.filter((mark) => this.markRepository(mark)).map((mark) => mark.due), ...this.state.shas.map((sha) => sha.expires),
+      ...this.state.ci!.filter((job) => this.ciRepository(job)).map((job) => job.due)];
     if (active && !this.state.reread) {
       if (this.state.sweep) times.push(this.state.nextSweep ?? now);
       else times.push(this.state.nextSweep);
@@ -424,6 +453,8 @@ export class OverviewSync {
         return keep;
       });
       this.normalizeReread(now);
+      this.state.ci = this.state.ci!.filter((job) => Boolean(this.ciRepository(job)));
+      const ci = this.state.ci.reduce<PendingCi | null>((first, job) => first === null || job.due < first.due ? job : first, null);
       const earliestRefresh = this.state.refresh.reduce<{ id: number; due: number; revision: number } | null>((first, job) => first === null || job.due < first.due ? job : first, null);
       const readMarks = this.state.marks.filter((mark) => this.markRepository(mark) && (!this.state.reread || this.state.reread.ids.includes(mark.nodeId)));
       const rereadDue = Math.min(...readMarks.map((mark) => mark.due));
@@ -434,9 +465,13 @@ export class OverviewSync {
         // Finish a continued event read before starting another reader that
         // would invalidate it. Ordinary marks retain oldest-deadline fairness.
         { kind: "sweep", due: !this.state.reread && this.context.visible(now) ? this.state.nextSweep ?? Infinity : Infinity },
+        { kind: "ci", due: ci?.due ?? Infinity },
       ].sort((left, right) => left.due - right.due);
-      const job = jobs[0]!;
+      // A large repository CI backlog may have an older common deadline than
+      // the next PR phase. Alternate classes whenever ordinary work is due.
+      const job = (this.state.lastJobWasCi ? jobs.find((entry) => entry.kind !== "ci" && entry.due <= now) : null) ?? jobs[0]!;
       if (job.due <= now) {
+        this.state.lastJobWasCi = job.kind === "ci";
         activeJob = job.kind;
         if (job.kind === "guard") {
           this.state.guard = null;
@@ -446,6 +481,7 @@ export class OverviewSync {
           } else this.state.guard = now + 15_000;
         } else if (job.kind === "refresh") { activeRefreshId = earliestRefresh!.id; await this.refreshRepositories(activeRefreshId, now); }
         else if (job.kind === "reread") await this.reread(now);
+        else if (job.kind === "ci") await this.readCi(ci!, now);
         else await this.sweep(now);
       }
     } catch (error) {
@@ -484,6 +520,153 @@ export class OverviewSync {
       this.running = false;
       this.save();
       await this.rearm(now);
+    }
+  }
+
+  private ciRepository(job: PendingCi): RepositoryRecord | undefined {
+    const repository = this.context.store.repositories(job.installationId).find((entry) => entry.id === job.repositoryId);
+    return this.accepted(job.installationId) && repository?.monitored && repository.ownerAccountId === job.ownerAccountId
+      && repository.fullName === job.fullName
+      && this.context.store.checkStatus("repository-ci", String(job.repositoryId)).latestAttempt?.id === job.check.id ? repository : undefined;
+  }
+
+  private ciWait(installationId: number, now: number): number {
+    return Math.max(now, ...this.state.rates.filter((entry) => entry.installationId === installationId)
+      .map(({ rate }) => Math.max(rate.retryAt ?? 0, rate.remaining === 0 ? rate.resetAt : 0)));
+  }
+
+  /** Visible sweeps coalesce with event/manual work instead of resetting it. */
+  private queueCi(repository: RepositoryRecord, now: number, invalidate = false, visibleOnly = false): void {
+    if (!this.context.ownerId || !this.context.selection || !repository.monitored || !this.accepted(repository.installationId)) return;
+    const existing = this.state.ci!.find((job) => job.repositoryId === repository.id && this.ciRepository(job));
+    if (existing) {
+      existing.visibleOnly &&= visibleOnly;
+      if (invalidate) {
+        existing.revision++;
+        existing.continuation = null;
+        existing.retry = 0;
+        existing.queuedAt = now;
+        existing.check = this.context.store.beginCheck("repository-ci", String(repository.id), now);
+        existing.due = this.ciWait(repository.installationId, Math.min(existing.due, now));
+      }
+      return;
+    }
+    this.state.ci = this.state.ci!.filter((job) => job.repositoryId !== repository.id);
+    this.state.ci.push({ repositoryId: repository.id, installationId: repository.installationId,
+      ownerAccountId: repository.ownerAccountId, fullName: repository.fullName, due: this.ciWait(repository.installationId, now), queuedAt: now,
+      revision: 0, retry: 0, check: this.context.store.beginCheck("repository-ci", String(repository.id), now), continuation: null, visibleOnly });
+  }
+
+  private failCi(job: PendingCi, issue: RepositoryCiIssue, now: number, retryAt?: number, defaultBranch?: string | null): void {
+    const repository = this.ciRepository(job);
+    if (!repository) return;
+    let before = this.context.store.repositoryCi(repository.id)[0]!;
+    if (defaultBranch !== undefined && defaultBranch !== before.defaultBranch) {
+      // Last-good evidence and freshness from a different branch cannot be
+      // reused as proof about the newly configured default branch.
+      this.context.store.clearRepositoryCi(repository.id);
+      job.check = this.context.store.beginCheck("repository-ci", String(repository.id), job.check.startedAt, "running");
+      before = this.context.store.repositoryCi(repository.id)[0]!;
+    }
+    this.context.store.putRepositoryCi(repository, { ...before, defaultBranch: defaultBranch === undefined ? before.defaultBranch : defaultBranch }, job.check, issue);
+    this.context.store.finishCheck("repository-ci", String(repository.id), job.check, "failed", issue === "rate-limited" ? "rate-limited" : "github-unavailable");
+    job.continuation = null;
+    if (issue === "rate-limited") {
+      const deadline = Math.max(now + 1, retryAt ?? now + MINUTE);
+      this.updateRate(job.installationId, { remaining: 1, cost: 0, resetAt: deadline, retryAt: deadline });
+      job.due = this.ciWait(job.installationId, deadline);
+    } else if (issue === "github-unavailable" && job.retry < RETRIES.length) job.due = now + RETRIES[job.retry++]!;
+    else this.state.ci = this.state.ci!.filter((entry) => entry !== job);
+  }
+
+  private async readCi(job: PendingCi, now: number): Promise<void> {
+    const repository = this.ciRepository(job);
+    if (!repository || !this.context.selection || !this.context.ownerId) return;
+    const wait = this.ciWait(job.installationId, now);
+    if (wait > now) { job.due = wait; return; }
+    const latest = this.context.store.checkStatus("repository-ci", String(repository.id)).latestAttempt;
+    if (latest?.result === "failed" || latest?.result === "interrupted") job.check = this.context.store.beginCheck("repository-ci", String(repository.id), now, "running");
+    else this.context.store.runCheck("repository-ci", String(repository.id), job.check);
+    const revision = job.revision;
+    const current = () => this.state.ci!.includes(job) && job.revision === revision && Boolean(this.ciRepository(job))
+      && (!job.visibleOnly || this.context.visible(Date.now()));
+    // Save the observation token before any network request or continuation.
+    this.save();
+    try {
+      const authorization = await this.context.selection.tokens.get(job.installationId, now);
+      if (!current()) return;
+      if (!authorization.ok) {
+        this.failCi(job, authorization.reason === "rate-limited" ? "rate-limited"
+          : authorization.reason === "installation-removed" || authorization.reason === "installation-suspended" ? "permission-required" : "github-unavailable", now,
+          authorization.reason === "rate-limited" ? authorization.retryAt : undefined);
+        await this.context.publish(now); return;
+      }
+      let ownerLogin: string | null = null;
+      if (repository.ownerAccountId !== this.context.ownerId) {
+        const login = await new GitHubRepositoryListing().readOwnerLogin(authorization.token, this.context.ownerId);
+        if (!current()) return;
+        if (!login.ok) { this.failCi(job, login.reason, now, login.retryAt); await this.context.publish(now); return; }
+        ownerLogin = login.login;
+        const access = await readReviewerPermission(authorization.token, repository, { id: this.context.ownerId, login: ownerLogin });
+        if (!current()) return;
+        if (!access.ok || !access.entry || access.entry.permission === "none") {
+          if (access.ok && access.entry?.permission === "none") {
+            this.context.store.clearRepositoryCi(repository.id);
+            job.check = this.context.store.beginCheck("repository-ci", String(repository.id), now, "running");
+          }
+          this.failCi(job, access.reason === "rate-limited" ? "rate-limited"
+            : access.ok && access.entry?.permission === "none" ? "permission-required" : "github-unavailable", now, access.retryAt);
+          await this.context.publish(now); return;
+        }
+      }
+      const result = await readRepositoryCi(authorization.token, repository, {
+        // Reserve one mint, owner login and two permission calls: <=40 total.
+        requestLimit: 35, continuation: job.continuation, previous: this.context.store.repositoryCi(repository.id)[0], shouldContinue: current, now,
+      });
+      if (!current()) return;
+      if (result.kind === "continuation") {
+        job.continuation = result.continuation;
+        job.due = now + 1;
+      } else if (result.kind === "failed") this.failCi(job, result.issue, now, result.retryAt, result.defaultBranch);
+      else {
+        if (ownerLogin !== null) {
+          // A long logical read may span several alarms. Reauthorize before
+          // publishing the result; do not expose old facts after access loss.
+          const access = await readReviewerPermission(authorization.token, repository, { id: this.context.ownerId, login: ownerLogin });
+          if (!current()) return;
+          if (!access.ok || !access.entry || access.entry.permission === "none") {
+            if (access.ok && access.entry?.permission === "none") {
+              this.context.store.clearRepositoryCi(repository.id);
+              job.check = this.context.store.beginCheck("repository-ci", String(repository.id), now, "running");
+            }
+            this.failCi(job, access.reason === "rate-limited" ? "rate-limited"
+              : access.ok && access.entry?.permission === "none" ? "permission-required" : "github-unavailable", now, access.retryAt);
+            await this.context.publish(now); return;
+          }
+        }
+        let previous = this.context.store.repositoryCi(repository.id)[0]!;
+        if (previous.defaultBranch !== null && previous.defaultBranch !== result.data.defaultBranch) {
+          this.context.store.clearRepositoryCi(repository.id);
+          job.check = this.context.store.beginCheck("repository-ci", String(repository.id), job.check.startedAt, "running");
+          previous = this.context.store.repositoryCi(repository.id)[0]!;
+        }
+        if (result.data.coverage === "incomplete") {
+          const streams = new Map(previous.streams.map((stream) => [`${stream.workflowId}:${stream.trigger}`, stream]));
+          for (const stream of result.data.streams) {
+            const key = `${stream.workflowId}:${stream.trigger}`;
+            streams.set(key, { ...stream, completed: stream.completed ?? streams.get(key)?.completed ?? null });
+          }
+          this.context.store.putRepositoryCi(repository, { ...result.data, streams: [...streams.values()] }, job.check, "history-limited");
+          this.context.store.finishCheck("repository-ci", String(repository.id), job.check, "failed", "github-unavailable");
+        } else {
+          this.context.store.putRepositoryCi(repository, result.data, job.check);
+          this.context.store.finishCheck("repository-ci", String(repository.id), job.check, "success");
+        }
+        this.state.ci = this.state.ci!.filter((entry) => entry !== job);
+      }
+      await this.context.publish(now);
+    } catch {
+      if (current()) { this.failCi(job, "github-unavailable", now); await this.context.publish(now); }
     }
   }
 
@@ -577,6 +760,7 @@ export class OverviewSync {
       for (const repository of this.context.store.repositories(id).filter((repo) => repo.monitored)) {
         // Read as a miniature sweep, separately from the visibility-gated sweep.
         this.queueRepositoryRead(repository, now);
+        this.queueCi(repository, now);
       }
       this.interruptChecks(checks);
     } else if (this.accepted(id)) {
@@ -828,6 +1012,7 @@ export class OverviewSync {
         return;
       }
       sweep.ids = this.context.store.repositories(id).filter((repo) => repo.monitored).map((repo) => repo.nodeId);
+      for (const repository of this.context.store.repositories(id).filter((repo) => repo.monitored)) this.queueCi(repository, now, false, true);
       this.queueSweepChecks(sweep, now);
       sweep.stage = "count";
       sweep.generation = this.generation(id);

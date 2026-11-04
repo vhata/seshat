@@ -1,7 +1,8 @@
 import {
-  fromPrDto, INITIAL_SYNC, isPrDto, toPrDto,
-  type PullRequestRecord, type RepositoryRecord, type SyncStatus,
+  fromPrDto, INITIAL_SYNC, isPrDto, isRepositoryCiRecord, toPrDto,
+  type CheckAttempt, type PullRequestRecord, type RepositoryRecord, type SyncStatus,
 } from "../shared/overview/protocol";
+import type { RepositoryCiData, RepositoryCiIssue, RepositoryCiRecord } from "../shared/overview/repository-ci";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
 import { OverviewCheckStore } from "./overview-check-store";
 
@@ -17,6 +18,38 @@ export class OverviewStore extends OverviewCheckStore {
 
   checkFreshness(repositories: readonly RepositoryRecord[] = this.repositories(), prs: readonly PullRequestRecord[] = this.pullRequests()) {
     return this.evidence(repositories.filter((repo) => repo.monitored).map((repo) => repo.id), prs.map((pr) => pr.nodeId));
+  }
+
+  /** Missing/legacy CI is unknown; discovery and PR checks never fill it in. */
+  repositoryCi(repositoryId?: number): RepositoryCiRecord[] {
+    return this.repositories().filter((repository) => repository.monitored && (repositoryId === undefined || repository.id === repositoryId))
+      .map((repository) => {
+        const row = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", `repository-ci:${repository.id}`).toArray()[0];
+        const data: unknown = row ? JSON.parse(row.value) : null;
+        const base = isRepositoryCiRecord(data) && data.installationId === repository.installationId && data.ownerAccountId === repository.ownerAccountId
+          ? data : { repositoryId: repository.id, installationId: repository.installationId, ownerAccountId: repository.ownerAccountId,
+            defaultBranch: null, streams: [], coverage: "incomplete" as const, issue: null };
+        return { ...base, check: this.checkStatus("repository-ci", String(repository.id)) };
+      });
+  }
+
+  /** Token and current identity must still own this observation after awaits. */
+  putRepositoryCi(repository: RepositoryRecord, data: RepositoryCiData, attempt: CheckAttempt, issue: RepositoryCiIssue | null = null): boolean {
+    const current = this.repositories().find((entry) => entry.id === repository.id);
+    const check = this.checkStatus("repository-ci", String(repository.id));
+    if (!current?.monitored || current.installationId !== repository.installationId || current.ownerAccountId !== repository.ownerAccountId
+      || current.fullName !== repository.fullName || check.latestAttempt?.id !== attempt.id
+      || !["queued", "running"].includes(check.latestAttempt.result)) return false;
+    const record: RepositoryCiRecord = { ...data, repositoryId: repository.id, installationId: repository.installationId,
+      ownerAccountId: repository.ownerAccountId, check, issue };
+    if (!isRepositoryCiRecord(record)) throw new Error("invalid repository CI evidence");
+    this.storage.sql.exec("INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", `repository-ci:${repository.id}`, JSON.stringify(record));
+    return true;
+  }
+
+  clearRepositoryCi(repositoryId: number): void {
+    this.storage.sql.exec("DELETE FROM settings WHERE key = ?", `repository-ci:${repositoryId}`);
+    this.forget("repository-ci", String(repositoryId));
   }
 
   repositories(installationId?: number): RepositoryRecord[] {
@@ -45,6 +78,7 @@ export class OverviewStore extends OverviewCheckStore {
       if (!repository.monitored || previous && (previous.ownerAccountId !== repository.ownerAccountId || previous.installationId !== repository.installationId)) {
         this.forget("repository", String(repository.id));
         this.forget("repository-refresh", String(repository.id));
+        this.clearRepositoryCi(repository.id);
         this.removeRepositoryPrs(repository.id);
       }
       this.storage.sql.exec(
@@ -68,6 +102,7 @@ export class OverviewStore extends OverviewCheckStore {
       this.removeRepositoryPrs(repositoryId);
       this.forget("repository", String(repositoryId));
       this.forget("repository-refresh", String(repositoryId));
+      this.clearRepositoryCi(repositoryId);
       this.storage.sql.exec("DELETE FROM repositories WHERE id = ?", repositoryId);
     });
     return true;

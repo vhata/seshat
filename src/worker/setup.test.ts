@@ -155,7 +155,7 @@ describe("registration", () => {
       setup_on_update: true,
       public: false,
       request_oauth_on_install: false,
-      default_permissions: { metadata: "read", pull_requests: "read", checks: "read", statuses: "read" },
+      default_permissions: { metadata: "read", pull_requests: "read", checks: "read", statuses: "read", actions: "read" },
       default_events: [
         "check_run",
         "check_suite",
@@ -164,6 +164,7 @@ describe("registration", () => {
         "pull_request_review_comment",
         "repository",
         "status",
+        "workflow_run",
       ],
     });
   });

@@ -19,6 +19,9 @@ describe("buildManifest", () => {
       const manifest = buildManifest(new URL(origin), "Seshat");
       expect(manifest.hook_attributes?.active).toBe(true);
       expect(manifest.default_events).toContain("pull_request");
+      expect(manifest.default_events).toContain("workflow_run");
+      expect(manifest.default_permissions.actions).toBe("read");
+      expect(Object.values(manifest.default_permissions).every((permission) => permission === "read")).toBe(true);
     }
   });
 

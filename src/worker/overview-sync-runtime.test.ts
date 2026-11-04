@@ -34,6 +34,8 @@ function github(current: () => ReturnType<typeof githubPr>, options: { failing?:
     if (options.failing?.()) return new Response(null, { status: 503 });
     if (address.endsWith("/access_tokens")) return Response.json({ token: "secret-installation-token", expires_at: new Date(clock + 3_600_000).toISOString() }, { status: 201 });
     if (address.includes("/installation/repositories?")) return Response.json({ total_count: 1, repositories: [{ id: 12, node_id: "R_example", full_name: "example/observatory", owner: { id: 1001, login: "example" }, visibility: "public", fork: false, archived: false }] });
+    if (address === "https://api.github.com/repos/example/observatory") return Response.json({ id: 12, full_name: "example/observatory", owner: { id: 1001 }, default_branch: "main" });
+    if (address.includes("/repos/example/observatory/actions/workflows?")) return Response.json({ total_count: 0, workflows: [] });
     if (address.endsWith("/graphql")) {
       const { query } = JSON.parse(String(init?.body)) as { query: string };
       const nodes = query.includes("SeshatPrCounts") ? [{ ...repo, pullRequests: { totalCount: 1 } }]
@@ -131,9 +133,9 @@ describe("Worker, durable scheduler and real owner sockets", () => {
 
   it("catches a dropped event through the visible sweep and stops without a grace tail", async () => {
     let draft = false; const calls = github(() => githubPr({ isDraft: draft })); const stub = await seed(); const { client, snapshots } = await openSocket();
-    await report(client, true); for (let i = 0; i < 4; i++) await alarm();
+    await report(client, true); for (let i = 0; i < 5; i++) await alarm();
     await vi.waitFor(() => expect(snapshots.at(-1)?.sync.lastSuccessfulSweepAt).toBe(START));
-    draft = true; clock = START + 120_000; for (let i = 0; i < 4; i++) await alarm();
+    draft = true; clock = START + 120_000; for (let i = 0; i < 5; i++) await alarm();
     await vi.waitFor(() => expect(snapshots.at(-1)?.buckets.flatMap((bucket) => bucket.rows)[0]?.pr.isDraft).toBe(true));
     expect(clock - START).toBeLessThan(300_000);
     const before = calls.mock.calls.length; await report(client, false);
@@ -144,7 +146,7 @@ describe("Worker, durable scheduler and real owner sockets", () => {
 
   it("hibernates visibility, expires a sleeping page after 15 minutes, and re-arms a broken alarm on the overdue report", async () => {
     const calls = github(() => githubPr()); const stub = await seed(); const { client } = await openSocket();
-    await report(client, true); for (let i = 0; i < 4; i++) await alarm();
+    await report(client, true); for (let i = 0; i < 5; i++) await alarm();
     await evictDurableObject(stub);
     await runInDurableObject(stub, (_instance, state) => { expect((state.getWebSockets()[0]!.deserializeAttachment() as SocketAttachment).visibility?.reportedAt).toBe(START); });
     clock = START + 900_001; const before = calls.mock.calls.length; await alarm();
@@ -154,7 +156,7 @@ describe("Worker, durable scheduler and real owner sockets", () => {
     await runInDurableObject(stub, async (_instance, state) => { expect(await state.storage.getAlarm()).toBe(clock); await state.storage.deleteAlarm(); });
     await report(client, true, "overdue");
     await runInDurableObject(stub, async (_instance, state) => { expect(await state.storage.getAlarm()).toBe(clock); });
-    for (let i = 0; i < 4; i++) await alarm();
+    for (let i = 0; i < 5; i++) await alarm();
     const successAt = (await stub.overviewSnapshot(clock)).sync.lastSuccessfulSweepAt!;
     expect(successAt).toBeGreaterThanOrEqual(START + 900_001);
     expect(successAt).toBeLessThanOrEqual(START + 900_002);
@@ -196,13 +198,13 @@ describe("Worker, durable scheduler and real owner sockets", () => {
     await vi.waitFor(() => expect(snapshots.at(-1)?.sync.latestAttempt).toMatchObject({ result: "failed", reason: "github-unavailable", unreadableRepositoryIds: [12] }));
     failing = false; clock = START + 60_000; await report(client, true, "retry-now");
     await alarm(); expect(snapshots.at(-1)?.sync.latestAttempt?.result).toBe("failed");
-    for (let index = 0; index < 3; index++) await alarm();
+    for (let index = 0; index < 4; index++) await alarm();
     await vi.waitFor(() => expect(snapshots.at(-1)?.sync.latestAttempt?.result).toBe("success"));
   });
 
   it("publishes the ordinary interval when the reported rate window resets", async () => {
     github(() => githubPr(), { remaining: 450, resetAt: START + 60_000 }); await seed(); const { client, snapshots } = await openSocket();
-    await report(client, true); for (let index = 0; index < 4; index++) await alarm();
+    await report(client, true); for (let index = 0; index < 5; index++) await alarm();
     await vi.waitFor(() => expect(snapshots.at(-1)?.sync).toMatchObject({ intervalMs: 240_000, slowedByRateLimit: true }));
     clock = START + 60_001; await report(client, true);
     await vi.waitFor(() => expect(snapshots.at(-1)?.sync).toMatchObject({ intervalMs: 120_000, slowedByRateLimit: false }));

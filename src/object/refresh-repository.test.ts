@@ -5,6 +5,7 @@ import type { StoredInstallation } from "../shared/installations";
 import { FIXTURE_REPOSITORY, fixturePr } from "../shared/overview/fixtures";
 import { reduceDelivery } from "../shared/overview/webhook-marks";
 import { GithubPrReader, type ReadMeta, type ReaderContinuation } from "../worker/github-pr-reader";
+import * as ciReader from "../worker/github-repository-ci";
 import { OverviewStore } from "./overview-store";
 import { OverviewSync } from "./overview-sync";
 import type { RepositorySelection } from "./repository-selection";
@@ -183,6 +184,7 @@ describe("requested single repository refresh", () => {
   });
 
   it("rejects an older in-flight sweep's empty count after a manual request supersedes it", async () => {
+    vi.spyOn(ciReader, "readRepositoryCi").mockResolvedValue({ kind: "complete", requestsUsed: 2, data: { defaultBranch: "main", streams: [], coverage: "complete" } });
     let release = (_result: Awaited<ReturnType<GithubPrReader["countOpenPrs"]>>) => {};
     let enter = () => {};
     const entered = new Promise<void>((resolve) => { enter = resolve; });
@@ -193,6 +195,7 @@ describe("requested single repository refresh", () => {
     await runInDurableObject(stub, async (_instance, state) => {
       const ctx = context(state.storage, true); ctx.store.putRepository(FIXTURE_REPOSITORY); ctx.store.putPullRequest(fixturePr());
       const sync = new OverviewSync(ctx); await sync.visibility(NOW, false); await sync.alarm(NOW);
+      await sync.alarm(NOW + 1); // independent CI work precedes the count phase
       const sweeping = sync.alarm(NOW + 1); await entered;
       await sync.refreshRepository(12, 1001, NOW + 2);
       release({ ...META, repositories: [{ repositoryId: 12, nodeId: "R_example", visibility: "public", count: 0 }] }); await sweeping;
