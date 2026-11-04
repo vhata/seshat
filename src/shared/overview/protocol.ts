@@ -1,6 +1,7 @@
 import type { BucketGroup, BucketId, PrFacts } from "./buckets";
 import { buildOverview } from "./overview";
 import type { PrInput, RepositoryPermission, ReviewSubmissionState } from "./types";
+import type { RepositoryCiRecord } from "./repository-ci";
 
 /** The private owner protocol. Non-public GitHub visibility stays private. */
 export type RepositoryVisibility = "public" | "private" | "internal";
@@ -137,6 +138,8 @@ export interface OverviewSnapshot {
   readonly sync: SyncStatus;
   /** Absent on legacy snapshots: listedAt is not complete-check evidence. */
   readonly freshness?: FreshnessEvidence;
+  /** Absent on legacy snapshots; Actions evidence is independent of PR CI. */
+  readonly repositoryCi?: readonly RepositoryCiRecord[];
 }
 export type ServerMessage =
   | { readonly type: "snapshot"; readonly snapshot: OverviewSnapshot }

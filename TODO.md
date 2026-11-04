@@ -59,6 +59,19 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
+- [PRODUCT] `show-repository-ci-health` — **Surface default-branch and scheduled CI failures independently of open PRs.** A green PR or an empty PR list does not establish that a repository's merged code and periodic jobs are healthy.
+  - Source: owner discussion on branch vhata/ci-failures-tracking, 2026-11-03
+  - Starting point: [proposed repository CI design](docs/specs/2026-11-03-repository-ci-health.md), `src/shared/manifest.ts`, `src/shared/overview/webhook-marks.ts`, `src/object/overview-sync.ts` and `src/frontend/Overview.tsx`.
+  - Proposed scope: owner-only Repository CI section, actual default branch,
+    latest outcomes per workflow and push/schedule trigger, run links and
+    timestamps, zero-PR repositories, muting, independent freshness and the
+    existing durable scheduler. Actions read and workflow-run subscriptions
+    need an existing-App upgrade path; no monitored workflows are changed.
+  - Triage: confirm the proposed display and conclusion semantics, including
+    cancellations and pending replacements. Detecting periodic jobs that
+    stop running needs separate cadence/grace rules; the first cut reports
+    observed runs and their age without promising schedule coverage.
+
 - [TOOLING] `accept-linux-site-workflow` — **Verify and document the site commands on Linux.** The initial operator workflow is supported on macOS; Linux browser launch, authentication and filesystem behavior need evidence before claiming support.
   - Source: operator setup discussion, branch vhata/operator-setup-commands-simplify, 2026-10-26
   - Starting point: [site commands and portability gaps](docs/SITE.md#local-development-and-linux), the `xdg-open` adapter and loopback App registration. Decide whether remote/headless browser approval is in scope, then exercise fresh setup, adoption, update and interrupted-operation recovery on Linux without introducing platform-specific secret storage.
