@@ -780,3 +780,22 @@ verify the actual uploaded version, clean source and anonymous gates.
 Do not automatically roll back application data or code on a failed smoke
 check. Configuration, pause/retry procedures and evidence limits live in
 [automatic deployment](SITE.md#automatic-deployment).
+
+## 2026-11-04 — Repository CI beside PR work
+
+The owner authorized implementing the repository CI proposal after its
+design and queue capture. The overview shows observed default-branch push
+and scheduled GitHub Actions results independently of open PRs, including
+repositories with no PRs. Each workflow and trigger retains its own outcome
+so a passing push build cannot hide a failing periodic run. Pending runs
+retain the preceding completed outcome. Cancellations and action-required
+results need attention with their actual wording.
+
+Add Actions read to the App manifest and subscribe new Apps to workflow-run
+events. Existing registrations and installations require their owners to
+update and approve access; this change does not modify a live App. Keep
+Contents and write permissions out. Evidence says latest observed run at a
+commit and time, without promising that the current branch head passed or
+that a periodic schedule fired. Missing-run detection needs separate
+cadence and grace-period rules. Behavior, access upgrades and evidence
+limits live in [Repository CI](REPOSITORY_CI.md).

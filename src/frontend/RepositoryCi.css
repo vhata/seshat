@@ -1,0 +1,122 @@
+.repository-ci {
+  margin: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow-wrap: anywhere;
+}
+.repository-ci-heading,
+.repository-ci-workflow-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px 14px;
+}
+.repository-ci-heading h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.repository-ci-heading > span,
+.repository-ci p,
+.repository-ci-trigger {
+  font-size: 12px;
+}
+.repository-ci-explanation,
+.repository-ci-freshness,
+.repository-ci-quiet,
+.repository-ci-trigger {
+  color: var(--muted);
+}
+.repository-ci p {
+  margin: 6px 0;
+}
+.repository-ci a:hover {
+  color: var(--sky);
+}
+.repository-ci-attention-group h3 {
+  margin: 16px 0 7px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.repository-ci-workflows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.repository-ci-workflow {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.repository-ci-workflow:first-child {
+  border-top: none;
+}
+.repository-ci-attention-group .repository-ci-workflows {
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #101820;
+}
+.repository-ci-repository {
+  color: var(--muted);
+}
+.repository-ci-outcome {
+  margin-left: auto;
+  color: var(--muted);
+}
+.repository-ci-attention .repository-ci-outcome {
+  color: var(--coral);
+  font-weight: 600;
+}
+.repository-ci-outcome.repository-ci-passed {
+  color: var(--green);
+}
+.repository-ci-pending {
+  color: var(--sky);
+}
+.repository-ci-warning {
+  color: var(--amber);
+}
+.repository-ci-access {
+  margin-top: 10px;
+  padding-left: 10px;
+  border-left: 2px solid var(--amber);
+}
+.repository-ci-other,
+.repository-ci-muted {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.repository-ci summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--muted);
+}
+.repository-ci summary:focus-visible {
+  outline: 2px solid var(--sky);
+  outline-offset: 3px;
+}
+.repository-ci-other-repository h4 {
+  margin: 14px 0 6px;
+  font-size: 12px;
+}
+.repository-ci-other-repository > .repository-ci-workflows {
+  padding-left: 12px;
+}
+@media (max-width: 600px) {
+  .repository-ci {
+    margin: 12px;
+    padding: 12px;
+  }
+  .repository-ci-workflow-heading {
+    gap: 5px 10px;
+  }
+  .repository-ci-repository {
+    flex-basis: 100%;
+  }
+  .repository-ci-outcome {
+    margin-left: 0;
+  }
+}

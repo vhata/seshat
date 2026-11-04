@@ -26,9 +26,11 @@ their personal account with access to all repositories.
   authorization is deleted on GitHub before the refusal page is shown. No user
   token or refresh token is stored for anyone, the owner included.
 - **Data** is read with short-lived installation tokens, minted on demand from
-  the app's private key. The app requests read-only access to four repository
-  permissions (Metadata, Pull requests, Checks, Commit statuses), and no
-  organization or account permissions.
+  the app's private key. The app requests read-only repository permissions
+  (Metadata, Pull requests, Checks, Commit statuses and Actions), and no
+  organization or account permissions. Actions read was added for
+  [repository CI](../REPOSITORY_CI.md); existing installations require an
+  owner-approved permission upgrade.
 - **Events** arrive on the app's single webhook, which covers every
   repository in every installation, including, as far as the documentation
   indicates, repositories created after setup (to be confirmed; see
@@ -425,6 +427,7 @@ dismissed reviews and bot authors still need filtering.
 | Pull requests (repository) | read | PRs, mergeability, reviews, PR comments | `pull_request`, `pull_request_review`, `pull_request_review_comment` |
 | Checks (repository) | read | Check runs on the head commit | `check_run` (`created`, `completed`), `check_suite` (`completed`) |
 | Commit statuses (repository) | read | Commit statuses on the head commit | `status` |
+| Actions (repository) | read | Default-branch and scheduled workflow outcomes | `workflow_run` |
 | Organization permissions | none | Keeps repository-admin installs possible on organizations | (none) |
 | Account permissions | none | Sign-in needs only `GET /user` | (none) |
 

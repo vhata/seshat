@@ -40,6 +40,21 @@ describe("overview protocol", () => {
 });
 
 describe("server message decoder", () => {
+  it("validates private repository CI records without rejecting legacy snapshots", async () => {
+    const { fixtureSnapshot } = await import("./fixtures");
+    const { parseServerMessage } = await import("./protocol");
+    const snapshot = fixtureSnapshot();
+    const ci = { repositoryId: 12, installationId: 9, ownerAccountId: 1001, defaultBranch: "trunk", coverage: "complete" as const, streams: [],
+      check: { lastSuccessfulCheckAt: NOW, latestAttempt: null }, issue: null };
+    const encode = (repositoryCi: unknown) => JSON.stringify({ type: "snapshot", snapshot: { ...snapshot, repositoryCi } });
+    expect(parseServerMessage(encode(undefined))).not.toBeNull();
+    expect(parseServerMessage(encode([ci]))).toMatchObject({ snapshot: { repositoryCi: [ci] } });
+    for (const repositoryCi of [null, {}, [{ ...ci, repositoryId: 0 }], [{ ...ci, issue: "raw secret" }], [{ ...ci, check: {} }], [{ ...ci, streams: [{ workflowId: 1, name: "CI", state: "active", trigger: "push", pending: null, completed: { id: 1, attempt: 1, number: 1, createdAt: NOW, updatedAt: NOW, startedAt: null, status: "completed", conclusion: "success", headSha: "head", url: "javascript:alert(1)" } }] }]]) {
+      expect(parseServerMessage(encode(repositoryCi))).toBeNull();
+    }
+    expect(buildSnapshot([repository], [], INITIAL_SYNC, 1001, NOW, undefined, [ci, { ...ci, repositoryId: 13 }]).repositoryCi).toEqual([ci]);
+    expect(buildSnapshot([{ ...repository, monitored: false }], [], INITIAL_SYNC, 1001, NOW, undefined, [ci]).repositoryCi).toEqual([]);
+  });
   it("accepts legacy unknown evidence and validates additive scoped evidence", async () => {
     const { fixtureSnapshot } = await import("./fixtures");
     const { parseServerMessage } = await import("./protocol");

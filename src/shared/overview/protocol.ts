@@ -1,6 +1,7 @@
 import type { BucketGroup, BucketId, PrFacts } from "./buckets";
 import { buildOverview } from "./overview";
 import type { PrInput, RepositoryPermission, ReviewSubmissionState } from "./types";
+import type { RepositoryCiRecord } from "./repository-ci";
 
 /** The private owner protocol. Non-public GitHub visibility stays private. */
 export type RepositoryVisibility = "public" | "private" | "internal";
@@ -72,7 +73,7 @@ export interface CheckStatus {
   readonly lastSuccessfulCheckAt: number | null;
   readonly latestAttempt: CheckAttempt | null;
 }
-export type CheckScope = "repository" | "pr" | "repository-refresh";
+export type CheckScope = "repository" | "pr" | "repository-refresh" | "repository-ci";
 export interface FreshnessEvidence {
   readonly repositories: Readonly<Record<string, CheckStatus>>;
   readonly pullRequests: Readonly<Record<string, CheckStatus>>;
@@ -137,6 +138,8 @@ export interface OverviewSnapshot {
   readonly sync: SyncStatus;
   /** Absent on legacy snapshots: listedAt is not complete-check evidence. */
   readonly freshness?: FreshnessEvidence;
+  /** Absent on legacy snapshots; Actions evidence is independent of PR CI. */
+  readonly repositoryCi?: readonly RepositoryCiRecord[];
 }
 export type ServerMessage =
   | { readonly type: "snapshot"; readonly snapshot: OverviewSnapshot }
@@ -190,6 +193,7 @@ export function buildSnapshot(
   ownerId: number,
   now: number,
   freshness?: FreshnessEvidence,
+  repositoryCi?: readonly RepositoryCiRecord[],
 ): OverviewSnapshot {
   const monitored = new Set(repositories.filter((repo) => repo.monitored).map((repo) => repo.id));
   return {
@@ -207,6 +211,9 @@ export function buildSnapshot(
       })),
     sync,
     ...(freshness === undefined ? {} : { freshness }),
+    ...(repositoryCi === undefined ? {} : { repositoryCi: repositoryCi.filter((record) => repositories.some((repository) =>
+      repository.monitored && repository.id === record.repositoryId && repository.installationId === record.installationId
+      && repository.ownerAccountId === record.ownerAccountId)) }),
   };
 }
 
@@ -313,6 +320,30 @@ export function isCheckStatus(value: unknown): value is CheckStatus {
     && oneOf(attempt.result, ["queued", "running", "success", "failed", "interrupted"])
     && (attempt.reason === undefined || oneOf(attempt.reason, ["github-unavailable", "rate-limited", "installation-suspended", "installation-removed", "cloudflare-quota"])));
 }
+function githubRunUrl(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.origin === "https://github.com" && url.username === "" && url.password === ""
+      && /^\/[^/]+\/[^/]+\/actions\/runs\/\d+$/.test(url.pathname) && !url.search && !url.hash;
+  } catch { return false; }
+}
+function ciRun(value: unknown): boolean {
+  return value === null || object(value) && id(value.id) && id(value.attempt) && id(value.number)
+    && number(value.createdAt) && number(value.updatedAt) && time(value.startedAt)
+    && typeof value.headSha === "string" && value.headSha.length > 0 && githubRunUrl(value.url)
+    && typeof value.status === "string" && (value.conclusion === null || typeof value.conclusion === "string");
+}
+/** Shared database/socket boundary; unknown Actions conclusions stay explicit. */
+export function isRepositoryCiRecord(value: unknown): value is RepositoryCiRecord {
+  return object(value) && id(value.repositoryId) && id(value.installationId) && id(value.ownerAccountId)
+    && (value.defaultBranch === null || typeof value.defaultBranch === "string" && value.defaultBranch.length > 0)
+    && oneOf(value.coverage, ["complete", "incomplete"]) && isCheckStatus(value.check)
+    && (value.issue === null || oneOf(value.issue, ["permission-required", "history-limited", "github-unavailable", "rate-limited"]))
+    && array(value.streams, (stream) => object(stream) && id(stream.workflowId) && typeof stream.name === "string"
+      && typeof stream.state === "string" && oneOf(stream.trigger, ["push", "schedule"])
+      && ciRun(stream.completed) && ciRun(stream.pending));
+}
 function freshnessEvidence(value: unknown): boolean {
   return object(value) && object(value.repositories) && object(value.pullRequests)
     && Object.values(value.repositories).every(isCheckStatus)
@@ -340,7 +371,8 @@ export function parseServerMessage(data: unknown): ServerMessage | null {
       if (!object(snapshot) || snapshot.version !== 1 || !id(snapshot.ownerId) || !number(snapshot.serverTime)
         || !array(snapshot.repositories, repositoryRecord) || !array(snapshot.buckets, bucket)
         || !syncStatus(snapshot.sync)
-        || (snapshot.freshness !== undefined && !freshnessEvidence(snapshot.freshness))) return null;
+        || (snapshot.freshness !== undefined && !freshnessEvidence(snapshot.freshness))
+        || (snapshot.repositoryCi !== undefined && !array(snapshot.repositoryCi, isRepositoryCiRecord))) return null;
     } else if (message.type === "pr-changes") {
       if (!number(message.serverTime) || !array(message.buckets, bucket)
         || !array(message.removed, (entry) => typeof entry === "string")) return null;

@@ -21,6 +21,8 @@ export interface ReducedDelivery {
   refresh: boolean;
   marks: PrMark[];
   sha: { repositoryId: number; value: string; facts: DeliveryFact[] } | null;
+  /** Only requests an authoritative read; payload outcomes are never stored. */
+  repositoryCi?: number;
   repository: { id: number; visibility: "public" | "private" | "internal"; ownerId: number | null; deleted: boolean; transferred: boolean } | null;
 }
 function record(value: unknown): Record<string, unknown> {
@@ -38,7 +40,7 @@ function timestamp(value: unknown, fallback: number): number {
 export function reduceDelivery(event: string, input: unknown, now: number): ReducedDelivery | null {
   const payload = record(input);
   const installationId = id(record(payload.installation).id);
-  if (installationId === null || !["installation", "installation_repositories", "repository", "pull_request", "pull_request_review", "pull_request_review_comment", "check_run", "check_suite", "status"].includes(event)) return null;
+  if (installationId === null || !["installation", "installation_repositories", "repository", "pull_request", "pull_request_review", "pull_request_review_comment", "check_run", "check_suite", "status", "workflow_run"].includes(event)) return null;
   const repo = record(payload.repository);
   const repositoryId = id(repo.id);
   const action = payload.action;
@@ -51,6 +53,7 @@ export function reduceDelivery(event: string, input: unknown, now: number): Redu
     },
   };
   if (repositoryId === null) return result;
+  if (event === "workflow_run" || event === "repository") result.repositoryCi = repositoryId;
   const mark = (raw: unknown, facts: DeliveryFact[]) => {
     const nodeId = string(record(raw).node_id);
     if (nodeId) result.marks.push({ nodeId, repositoryId, installationId, facts });

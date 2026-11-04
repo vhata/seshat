@@ -86,6 +86,29 @@ const unexpected = [];
 const installation = { id: 9, account: { id: 1001, login: "example", type: "User" }, repository_selection: "all", suspended_at: null };
 const restRepository = { id: 12, node_id: "R_example", full_name: "example/observatory", owner: { id: 1001, login: "example" }, visibility: "public", fork: false, archived: false };
 let listing = [restRepository];
+let ciScheduledPending = false;
+let ciScheduledRecovered = false;
+let ciDenied = false;
+function ciRuns(repo, workflowId, event) {
+  if (workflowId === 102 && event === "schedule") return [];
+  const scheduled = event === "schedule";
+  const baseId = repo.id * 1000 + workflowId * 10 + (scheduled ? 2 : 1);
+  const metadata = { ...repo, default_branch: "main" };
+  const makeRun = (number, pending = false) => ({
+    id: baseId + (number - 1) * 100_000, workflow_id: workflowId, event,
+    head_branch: "main", head_sha: `repository-ci-head-${number}`,
+    status: pending ? "in_progress" : "completed",
+    conclusion: pending ? null : scheduled ? ciScheduledRecovered ? "success" : "failure" : workflowId === 102 ? "failure" : "success",
+    run_number: number, run_attempt: 1,
+    created_at: iso(number === 1 ? began - 3_600_000 : now - 60_000),
+    updated_at: iso(number === 1 ? began - 3_500_000 : now - 30_000),
+    run_started_at: iso(number === 1 ? began - 3_590_000 : now - 50_000),
+    html_url: `https://github.com/${repo.full_name}/actions/runs/${baseId + (number - 1) * 100_000}`,
+    repository: metadata,
+  });
+  return scheduled && ciScheduledPending ? [makeRun(2, true), makeRun(1)]
+    : [makeRun(scheduled && ciScheduledRecovered ? 2 : 1)];
+}
 async function github(request) {
   const url = new URL(request.url);
   const route = `${request.method} ${url.origin}${url.pathname}`;
@@ -118,6 +141,21 @@ async function github(request) {
   if (route === "GET https://api.github.com/installation/repositories") return Response.json({ total_count: listing.length, repositories: listing });
   if (route === "GET https://api.github.com/user/1001") return Response.json({ id: 1001, login: "example" });
   if (route === "GET https://api.github.com/repos/example/observatory/collaborators/example/permission") return Response.json({ permission: "admin", user: { id: 1001, login: "example" } });
+  const ciRepository = listing.find((repo) => url.pathname === `/repos/${repo.full_name}` || url.pathname.startsWith(`/repos/${repo.full_name}/actions/`));
+  if (request.method === "GET" && ciRepository) {
+    if (url.pathname === `/repos/${ciRepository.full_name}`) return Response.json({ ...ciRepository, default_branch: "main" });
+    if (ciDenied) return new Response(null, { status: 403 });
+    if (url.pathname.endsWith("/actions/workflows")) return Response.json({ total_count: 2, workflows: [
+      { id: 101, name: "Build and nightly", state: "active", path: ".github/workflows/build.yml" },
+      { id: 102, name: "Default branch check", state: "active", path: ".github/workflows/main.yml" },
+    ] });
+    const workflow = Number(url.pathname.match(/\/actions\/workflows\/(\d+)\/runs$/)?.[1]);
+    if (workflow === 101 || workflow === 102) {
+      const runs = ciRuns(ciRepository, workflow, url.searchParams.get("event"))
+        .filter((run) => !url.searchParams.has("status") || run.status === url.searchParams.get("status"));
+      return Response.json({ total_count: runs.length, workflow_runs: runs });
+    }
+  }
   if (route === "POST https://api.github.com/graphql") {
     const { query, variables } = await request.json();
     call.operation = query.match(/query\s+(\w+)/)?.[1];
@@ -365,6 +403,50 @@ try {
     prs[0] = { ...prs[0], ...change, updatedAt: iso() };
     await sendDelivery("pull_request", { action, pull_request: { node_id: "PR_1", head: { sha: prs[0].headRefOid }, updated_at: iso(), merged: prs[0].state === "MERGED" } });
   }
+  async function waitForCi(repositoryId = 12) {
+    for (let round = 0; round < 30; round++) {
+      const snapshot = await drain(2);
+      const ci = snapshot.repositoryCi?.find((record) => record.repositoryId === repositoryId);
+      if (ci?.check.latestAttempt?.result === "success") return ci;
+    }
+    throw new Error(`Repository CI did not complete for ${repositoryId}`);
+  }
+  await waitForCi();
+  const ciSection = page.locator(".repository-ci");
+  await ciSection.locator('[data-repository-ci="12:101:schedule"]').waitFor();
+  await ciSection.locator('[data-repository-ci="12:102:push"]').waitFor();
+  assert.equal(await ciSection.locator('.repository-ci-attention-group [data-repository-ci="12:101:push"]').count(), 0,
+    "A passing push must not hide or join the failing scheduled stream");
+  const otherCi = ciSection.locator(".repository-ci-other");
+  await otherCi.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await otherCi.evaluate((element) => element.open), true, "CI disclosure supports the keyboard");
+  await otherCi.locator('[data-repository-ci="12:101:push"]').waitFor({ state: "visible" });
+  await otherCi.locator("summary").press("Space");
+  assert.equal(await otherCi.evaluate((element) => element.open), false);
+  ciScheduledPending = true;
+  await sendDelivery("workflow_run", { action: "in_progress", workflow_run: ciRuns(restRepository, 101, "schedule")[0] });
+  await waitForCi();
+  const scheduledCi = ciSection.locator('.repository-ci-attention-group [data-repository-ci="12:101:schedule"]');
+  assert.ok((await scheduledCi.innerText()).includes("Failed"));
+  assert.ok((await scheduledCi.innerText()).includes("Replacement"));
+  assert.ok((await scheduledCi.innerText()).includes("is running"));
+  await ciSection.screenshot({ path: path.join(evidence, "repository-ci-section.png") });
+  await page.screenshot({ path: path.join(evidence, "repository-ci-pending.png"), fullPage: true });
+  ciScheduledPending = false;
+  ciScheduledRecovered = true;
+  await sendDelivery("workflow_run", { action: "completed", workflow_run: ciRuns(restRepository, 101, "schedule")[0] });
+  await waitForCi();
+  await scheduledCi.waitFor({ state: "detached" });
+  ciDenied = true;
+  await sendDelivery("workflow_run", { action: "completed", workflow_run: ciRuns(restRepository, 102, "push")[0] });
+  await ciSection.getByText("CI access needs approval.", { exact: false }).first().waitFor();
+  assert.equal(await ciSection.locator('.repository-ci-attention-group [data-repository-ci="12:102:push"]').count(), 1,
+    "Missing CI permission preserves cached outcomes");
+  ciDenied = false;
+  await sendDelivery("workflow_run", { action: "completed", workflow_run: ciRuns(restRepository, 102, "push")[0] });
+  await waitForCi();
+  await ciSection.getByText("CI access needs approval.", { exact: false }).first().waitFor({ state: "detached" });
   await webhook("edited", { title: "Title updated through a real socket" });
   await page.getByRole("link", { name: "Title updated through a real socket" }).waitFor();
   const webhookChecks = (await command("snapshot")).freshness;
@@ -400,6 +482,10 @@ try {
   assert.equal((await command("snapshot")).repositories.find((repo) => repo.id === 13)?.monitored, true, "A newly created owned repository must become monitored automatically");
   assert.ok((await command("snapshot")).freshness.repositories["13"].lastSuccessfulCheckAt !== null,
     "A complete empty repository read supplies freshness evidence");
+  await waitForCi(13);
+  await ciSection.locator('.repository-ci-attention-group [data-repository-ci="13:102:push"]').waitFor();
+  assert.equal((await command("snapshot")).buckets.flatMap((bucket) => bucket.rows).filter((row) => row.pr.repositoryId === 13).length, 0,
+    "Repository CI is visible independently of open PRs");
   await page.locator(".repository-checks summary").click();
   const emptyRepositoryDetails = page.locator(".repository-checks li").filter({ hasText: "example/new-repository" });
   await emptyRepositoryDetails.locator(".check-trigger").focus();
@@ -749,7 +835,7 @@ try {
   await page.waitForTimeout(1500);
   assert.equal(sockets.length, endedSockets, "Ended sessions must stop reconnecting");
   await page.screenshot({ path: path.join(evidence, "session-ended.png") });
-  const summary = { rows: 7, buckets: 7, transitions, manualChecks, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in", "scoped repository and PR evidence", "hover and keyboard freshness details", "PR reread preserves repository check time", "empty repository check", "object restart retains check evidence"] };
+  const summary = { rows: 7, buckets: 7, transitions, manualChecks, widths, sockets: sockets.length, githubCalls: calls.length, errors, external, unexpected, scenarios: ["owner-gated snapshot", "real WebSocket", "all seven buckets", "stale flags", "signed webhooks", "visible missed-event sweep", "dormancy without reads", "visibility catch-up", "repository routing and monitoring changes", "persistent repository mute through reload and discovery", "active and muted counts including empty repository", "keyboard mute disclosure and explicit unmute", "muted webhook and scheduled updates while collapsed", "mute independent from monitoring", "checking before overdue", "failed sync preserves rows", "retry recovers", "object restart and reconnect", "phone readability", "session revocation returns to sign-in", "scoped repository and PR evidence", "hover and keyboard freshness details", "PR reread preserves repository check time", "empty repository check", "object restart retains check evidence", "separate default-branch and scheduled CI", "keyboard CI disclosure", "pending CI replacement retains failure", "successful scheduled CI recovery", "Actions permission failure preserves cached CI", "repository CI without open PRs"] };
   await writeFile(path.join(evidence, "results.json"), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary));
   }

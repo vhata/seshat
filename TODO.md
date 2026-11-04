@@ -59,6 +59,14 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
+- [PRODUCT] `detect-missing-scheduled-ci-runs` — **Flag periodic CI that stops producing expected runs.** An old successful run can remain the latest observed result after GitHub delays, drops or disables a schedule.
+  - Source: repository CI design and implementation, branch vhata/ci-failures-tracking, 2026-11-04
+  - Starting point: [periodic work that stops running](docs/specs/2026-11-03-repository-ci-health.md#periodic-work-that-stops-running) and [Repository CI](docs/REPOSITORY_CI.md).
+  - Decide expected cadence and grace periods, configured by the owner or
+    read from workflow YAML, and distinguish disabled workflows, never-run
+    schedules and delayed runs. Reading a schedule from YAML changes the
+    Contents-permission story; observed run age alone is not schedule proof.
+
 - [TOOLING] `accept-linux-site-workflow` — **Verify and document the site commands on Linux.** The initial operator workflow is supported on macOS; Linux browser launch, authentication and filesystem behavior need evidence before claiming support.
   - Source: operator setup discussion, branch vhata/operator-setup-commands-simplify, 2026-10-26
   - Starting point: [site commands and portability gaps](docs/SITE.md#local-development-and-linux), the `xdg-open` adapter and loopback App registration. Decide whether remote/headless browser approval is in scope, then exercise fresh setup, adoption, update and interrupted-operation recovery on Linux without introducing platform-specific secret storage.

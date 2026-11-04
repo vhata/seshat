@@ -27,6 +27,12 @@ alert codes to the terminal.
 Project health classifications and a public view remain future capabilities.
 The hosted overview reports GitHub evidence only.
 
+[Repository CI](docs/REPOSITORY_CI.md) shows default-branch and scheduled
+GitHub Actions failures, including repositories with no open PRs. Workflow
+and trigger outcomes stay separate, with run links and independent check
+freshness. Existing Apps need the documented Actions read permission and
+workflow-run subscription update.
+
 The project also aims to replace a manually maintained `PROJECTS.md` index.
 Its [format](docs/INDEX_FORMAT.md) and
 [classifications](docs/specs/2026-10-15-project-classifications.md) are
@@ -146,9 +152,11 @@ credentials, diagnostics and macOS/Linux boundaries. The
 [instance operations runbook](docs/INSTANCE_OPERATIONS.md) remains the
 advanced reference for verification, secret changes and recovery.
 
-The App needs only Metadata, Pull requests, Checks and Commit statuses
-read permissions. Private review commit identities use the REST review
-endpoint; they do not require adding Contents access.
+The App uses Metadata, Pull requests, Checks, Commit statuses and Actions
+read permissions. Actions read supports repository CI; see the
+[existing-App upgrade](docs/REPOSITORY_CI.md#upgrade-an-existing-github-app).
+Private review commit identities use the REST review endpoint; they do
+not require adding Contents access.
 
 The code lives under `src/`: `worker/` for the Worker's routes, `object/`
 for the Durable Object and its schema, `shared/` for pure logic with tests

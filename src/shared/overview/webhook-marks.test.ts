@@ -24,6 +24,12 @@ describe("webhook reduction", () => {
     const completed: DeliveryFact = { kind: "check", id: "7", state: "completed", conclusion: "success", sha: "head", at: NOW };
     expect(coalesceFacts([completed], [{ ...completed, state: "in_progress", conclusion: null }])).toEqual([completed]);
   });
+  it("marks workflow runs by repository without copying outcomes or logs", () => {
+    const reduced = reduceDelivery("workflow_run", { ...base, action: "completed", workflow_run: { conclusion: "failure", name: "private workflow", logs_url: "private logs" } }, NOW);
+    expect(reduced).toMatchObject({ repositoryCi: 12, marks: [], sha: null, refresh: false });
+    expect(JSON.stringify(reduced)).not.toMatch(/private|conclusion|logs_url/);
+    expect(reduceDelivery("repository", { ...base, action: "edited" }, NOW)?.repositoryCi).toBe(12);
+  });
   it("accepts later check states, retired heads and dismissed reviews", () => {
     const pr = fixturePr({ headSha: "next", observations: { reviews: [{ id: "3", state: "dismissed", commitSha: null }], checks: [] } });
     expect(factObserved({ kind: "check", id: "7", state: "queued", conclusion: null, sha: "old", at: NOW }, { kind: "open", pr }, undefined)).toBe(true);

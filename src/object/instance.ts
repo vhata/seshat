@@ -376,7 +376,7 @@ export class InstanceObject extends DurableObject<Env> {
     const ownerId = readConfig(this.env as unknown as Record<string, unknown>).ownerId;
     const repositories = store.repositories();
     const prs = store.pullRequests();
-    return buildSnapshot(repositories, prs, store.syncStatus(), ownerId ?? 0, nowMs, store.checkFreshness(repositories, prs));
+    return buildSnapshot(repositories, prs, store.syncStatus(), ownerId ?? 0, nowMs, store.checkFreshness(repositories, prs), store.repositoryCi(undefined, repositories));
   }
 
   /** Only the Worker forwards this request after its owner session gate. */

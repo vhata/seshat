@@ -1,7 +1,8 @@
 /**
  * The GitHub App manifest that registers an instance's App, and the paths it
  * points GitHub at. Permissions and events follow the GitHub integration
- * decision: read-only Metadata, Pull requests, Checks and Commit statuses,
+ * decision and repository CI extension: read-only Metadata, Pull requests,
+ * Checks, Commit statuses and Actions,
  * no organization or account permissions, private to start with.
  */
 
@@ -66,6 +67,7 @@ export function buildManifest(origin: URL, name: string): AppManifest {
       pull_requests: "read",
       checks: "read",
       statuses: "read",
+      actions: "read",
     },
   };
   // GitHub refuses a manifest whose hook URL it cannot reach, even with the
@@ -85,6 +87,7 @@ export function buildManifest(origin: URL, name: string): AppManifest {
       "pull_request_review_comment",
       "repository",
       "status",
+      "workflow_run",
     ],
   };
 }
