@@ -82,14 +82,17 @@ version still cannot establish the source running remotely.
 
 The repository's [CI workflow](../.github/workflows/ci.yml) validates PRs
 and pushes to main. Its checks install dependencies, check queues/docs,
-type-check, test and build; they neither upload nor deploy. A green main
-run is not evidence of an updated hosted instance. Deployment is invoked
-explicitly with `seshat site update`, which bundles validation, release
-build, upload and automated smoke checks. Authenticated browser checks
-below remain necessary; deployment does not happen automatically on merge.
+type-check, test and build. When enabled,
+[automatic deployment](SITE.md#automatic-deployment) updates the existing
+production instance after both main checks pass, using the same validation,
+release build, upload and smoke verification as `seshat site update`.
+Check the deployment job and serving revision: green validation alone does
+not prove production was updated. The browser and GitHub checks below
+remain necessary after automatic or manual deployment.
 
-Every deployment, including secret uploads and rollback, requires explicit
-owner authorization for that operation. Before provisioning or changing
+The owner authorizes configured automatic main updates. Other deployments,
+including secret uploads and rollback, require explicit owner authorization
+for that operation. Before provisioning or changing
 billable resources, state the cost/provisioning implications and obtain
 confirmation. Free-tier-compatible bindings do not prove the target account
 is on Free or has spare quota; check its plan and usage before provisioning.

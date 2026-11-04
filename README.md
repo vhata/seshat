@@ -54,8 +54,9 @@ npm run dev             # serve the app locally at the printed URL
 
 `npm run dev` runs the Worker, the Durable Object and the page in the local
 Workers runtime; try `/` and `/api/health`. Local state lives in `.wrangler/`.
-Hosted operations use `./bin/seshat site`; deployments require an explicit
-operator invocation and confirmation.
+Hosted operations use `./bin/seshat site`. Manual deployments ask for
+confirmation; optional [automatic deployment](docs/SITE.md#automatic-deployment)
+updates the configured instance after successful main-push CI.
 Build and runtime version inspection are described in
 [running revision](docs/RUNNING_REVISION.md).
 

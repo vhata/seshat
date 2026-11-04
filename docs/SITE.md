@@ -56,6 +56,75 @@ For a command on your PATH, the existing
 how to link `bin/seshat`. A linked command manages the checkout containing
 that launcher, even when you run it from another project's directory.
 
+## Automatic deployment
+
+The owner authorizes CI to update the configured production instance when
+`SESHAT_AUTO_DEPLOY` is `true`. A push to `main` deploys only after both
+`check` and `Queue and PR hygiene` pass. Merging remains the owner's
+decision. PRs never run the deployment job or receive its token.
+
+Configure the GitHub `production` environment to allow deployments only
+from the `main` branch. Store these environment variables and secret in
+the repository running the instance:
+
+| Name | Kind | Value |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Environment secret | Dedicated API token restricted to the instance's account. |
+| `SESHAT_ACCOUNT_ID` | Environment variable | Existing Cloudflare account ID. |
+| `SESHAT_WORKER_NAME` | Environment variable | Existing Worker name. |
+| `SESHAT_ORIGIN` | Environment variable | Existing HTTPS origin, without a trailing slash. |
+| `SESHAT_NAMESPACE_ID` | Environment variable | Existing `INSTANCE` Durable Object namespace ID. |
+| `SESHAT_AUTO_DEPLOY` | Repository variable | `true` to enable; `false` to pause future jobs. |
+
+The enable switch must be a repository variable because the job condition
+is evaluated before the production environment is available. Do not
+enable it until the target and credential are configured. Example secret
+entry (interactive; do not put a token in a command argument):
+
+```sh
+gh secret set CLOUDFLARE_API_TOKEN --repo OWNER/REPO --env production
+gh variable set SESHAT_AUTO_DEPLOY --repo OWNER/REPO --body true
+```
+
+Start with Cloudflare's
+[Edit Cloudflare Workers token template](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/),
+restricted to the intended account. The update also reads account identity,
+Worker settings, domains/subdomain, secret names and versions; a token
+that can only upload is insufficient. Do not copy a personal Wrangler
+OAuth token into GitHub. The GitHub App secrets stay in Cloudflare.
+
+CI creates private, ephemeral site settings with the pinned namespace and
+uses the same `site update --yes` implementation as a manual update. It
+reruns validation, builds clean source and verifies the exact uploaded
+version at 100% traffic, schema, anonymous refusal, setup closure and
+namespace preservation. It never invokes setup or creates an instance.
+Changes to the expected Durable Object binding or class migration shape
+are refused for operator inspection.
+
+Deployments are serialized without cancelling an active upload. Source
+must still be current remote `main` at preflight and immediately before
+upload; rerunning an older workflow cannot redeploy superseded source.
+A main push during preparation can make an older deployment fail safely;
+the newest main run supplies the next candidate. Avoid simultaneous manual
+updates, secret writes or rollbacks while automatic deployment runs:
+GitHub concurrency cannot lock an operator's terminal. Remote checks catch
+changes during preparation but cannot make the final upload atomic with
+an external operator.
+
+The run summary records the attempted source, uploaded version and final
+operation state. `upload-outcome-unknown` or `deployed-unverified` can mean
+production already changed. Inspect the serving revision before retrying.
+There is no automatic rollback: code rollback does not restore object data
+or reverse database migrations. A forcibly cancelled runner may stop
+before writing its summary; inspect production after any interrupted job.
+
+To pause, set `SESHAT_AUTO_DEPLOY` to `false`; this does not stop a job
+that has already started. Wait for active deployments to finish before
+an authorized manual update or rollback. After correcting a transient
+failure, rerun the latest main CI run. A successful job proves the listed
+deployment checks, not real sign-in, socket recovery or GitHub freshness;
+those browser checks remain part of release acceptance.
+
 ## Local settings and credentials
 
 Site state belongs to the checkout's ignored `.seshat/` directory. It
@@ -114,7 +183,10 @@ Local development remains `npm run dev`, with its own `.dev.vars`, local
 storage and GitHub App. Do not reuse hosted credentials for development;
 see [local sign-in setup](../README.md#configuration-and-sign-in).
 
-macOS is the supported operator platform initially. Browser opening uses
+macOS is the supported interactive operator platform initially. The
+headless automatic update runs on GitHub's Ubuntu runner without opening
+a browser; its hosted acceptance must be established by a real main
+deployment. Browser opening uses
 the macOS `open` command and attempts `xdg-open` on Linux; Linux needs that
 program and a graphical browser session. The registration callback needs
 a browser on the same machine as the CLI, so remote/headless terminals

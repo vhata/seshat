@@ -65,13 +65,20 @@ runs `bash scripts/setup.sh` and `bash scripts/check.sh`. The hygiene job calls
 A full checkout supplies queue snapshots at the base and head. The PR body is
 also revalidated on edits. Superseded PR runs are cancelled; main runs are not.
 `check` has a ten-minute timeout and the hygiene job five; both have read-only
-permissions.
+permissions. When enabled, a separate `Deploy production` job runs only
+on pushes to main after both checks pass. It uses the production environment
+and reruns the full gate through the existing site update command before
+uploading. It has a fifteen-minute timeout, read-only repository permissions
+and a deployment concurrency group that never cancels an active job. See
+[automatic deployment](SITE.md#automatic-deployment) for configuration,
+the main-revision guard and post-upload verification.
 
 Run the app locally with `npm run dev`, which serves the page, the Worker and
 the Durable Object from the local Workers runtime, keeping local object state
 under `.wrangler/` and reading secrets from `.dev.vars`; trying sign-in needs
 the configuration in the [README](../README.md#configuration-and-sign-in). Nothing in the gates deploys or creates Cloudflare
-resources; deploying needs the owner's word each time
+resources. The owner authorizes the configured automatic main deployment;
+other deployments need explicit authorization
 ([AGENTS.md](../AGENTS.md#docket)).
 
 ## Review inputs

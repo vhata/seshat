@@ -29,9 +29,11 @@ nothing about the running build.
 
 ## Build and tag an upload
 
-Deployment still needs explicit owner authorization each time under
-[the workflow contract](../docket/CONTRACT.md). These commands do not grant
-that authorization. Run the full checks, commit the intended source, and
+The owner authorizes the configured
+[automatic main deployment](SITE.md#automatic-deployment). Other deployments
+still need explicit owner authorization under
+[the workflow contract](../docket/CONTRACT.md) and project settings. These
+commands do not grant that authorization. Run the full checks, commit the intended source, and
 build from that clean checkout:
 
 ```sh

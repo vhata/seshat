@@ -761,3 +761,22 @@ is deferred work rather than a prerequisite for this release. Personal
 installation reads have separate real-App evidence. The remaining overview
 acceptance requirements and the authorization rules for App visibility
 changes and deployment continue to apply.
+
+## 2026-11-03 — Automatic production updates after main CI
+
+The owner is ready for Seshat to deploy automatically. This authorizes the
+CI change and routine updates of the configured, existing production
+Worker after both main-push CI jobs pass, while merging remains the owner's
+decision. This narrows the per-deployment authorization rule above: other
+deployments, provisioning, release tags and publishing still need explicit
+authorization. No paid resource or plan is selected by this change.
+
+Reuse the existing site update checks rather than introducing another
+deployment implementation. Pin the account, Worker, HTTPS origin and
+Durable Object namespace; keep GitHub App credentials in Cloudflare and
+use a dedicated account-scoped deployment token in GitHub's production
+environment. Serialize uploads, refuse superseded main revisions and
+verify the actual uploaded version, clean source and anonymous gates.
+Do not automatically roll back application data or code on a failed smoke
+check. Configuration, pause/retry procedures and evidence limits live in
+[automatic deployment](SITE.md#automatic-deployment).
