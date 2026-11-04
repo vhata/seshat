@@ -62,7 +62,7 @@
   gap: 6px 12px;
   margin-bottom: 8px;
 }
-.repository-group-heading h2 {
+.repository-group-heading h3 {
   text-transform: uppercase;
   letter-spacing: 0.07em;
   font-size: 12px;
@@ -143,6 +143,32 @@ button.repository-reset {
 }
 .repository-footnote {
   font-size: 12px;
+}
+.repository-section {
+  margin-top: 24px;
+}
+.repository-section-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+}
+.repository-section-heading h2 {
+  font-size: 16px;
+  margin: 0;
+}
+.repository-section-heading span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.repository-section-note {
+  color: var(--muted);
+  margin: 0;
+}
+.repository-section > .repository-empty {
+  color: var(--muted);
+  padding: 12px 0 16px;
 }
 @media (max-width: 600px) {
   .repository-group {

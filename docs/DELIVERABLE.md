@@ -64,6 +64,11 @@ what the refusal requires.
   Organization repositories are opted in individually; nothing from an
   organization is monitored by default.
 - Turning a repository off removes its PRs from the overview.
+- Repository settings list monitored repositories under **Monitored**,
+  followed by unmonitored repositories under **Not monitored**. Changing
+  monitoring or muting updates the controls immediately but keeps rows in
+  their original section until the owner refreshes the listings or reloads
+  the page.
 
 ## PR overview
 
