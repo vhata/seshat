@@ -59,6 +59,14 @@ The PR overview's [parallel work plan](plans/2026-10-17-pr-overview-split.md) re
 
 ### Unprioritized
 
+- [PRODUCT] `detect-missing-scheduled-ci-runs` — **Flag periodic CI that stops producing expected runs.** An old successful run can remain the latest observed result after GitHub delays, drops or disables a schedule.
+  - Source: repository CI design and implementation, branch vhata/ci-failures-tracking, 2026-11-04
+  - Starting point: [periodic work that stops running](docs/specs/2026-11-03-repository-ci-health.md#periodic-work-that-stops-running) and [Repository CI](docs/REPOSITORY_CI.md).
+  - Decide expected cadence and grace periods, configured by the owner or
+    read from workflow YAML, and distinguish disabled workflows, never-run
+    schedules and delayed runs. Reading a schedule from YAML changes the
+    Contents-permission story; observed run age alone is not schedule proof.
+
 - [PRODUCT] `show-repository-ci-health` — **Surface default-branch and scheduled CI failures independently of open PRs.** A green PR or an empty PR list does not establish that a repository's merged code and periodic jobs are healthy.
   - Source: owner discussion on branch vhata/ci-failures-tracking, 2026-11-03
   - Starting point: [proposed repository CI design](docs/specs/2026-11-03-repository-ci-health.md), `src/shared/manifest.ts`, `src/shared/overview/webhook-marks.ts`, `src/object/overview-sync.ts` and `src/frontend/Overview.tsx`.

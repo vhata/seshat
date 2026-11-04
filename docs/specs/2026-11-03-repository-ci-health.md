@@ -1,14 +1,16 @@
 # Repository CI health
 
-Status: proposed, 2026-11-03. This describes future work, not implemented
-behavior or an amendment to the first deliverable.
+Status: accepted for implementation, 2026-11-04, after proposal capture on
+2026-11-03. [Repository CI](../REPOSITORY_CI.md) documents the resulting
+behavior and existing-App upgrade. This extends the overview without
+changing the PR bucket rules in the first deliverable.
 
 The owner wants to see failures on a repository's main branch and in
 periodic CI, including repositories with no open PRs. Today the overview
 reads checks and commit statuses on open PR heads. A successful PR check
 does not establish that the merged branch or its nightly jobs are healthy.
 
-## Proposed experience
+## Experience
 
 Add **Repository CI** above the PR buckets. Show failing workflows for
 monitored, unmuted repositories even when they have no open PRs. Each row
@@ -42,10 +44,9 @@ successful PR or push run does not.
   show that a replacement is running. Order runs by their creation/run
   sequence, not completion time: an old slow run finishing late must not
   replace a newer result. Within a run, reconcile its latest attempt.
-- A failure, timeout or startup failure needs attention. Show cancellation
-  and action-required outcomes with their own wording. Neutral, skipped
-  and unknown conclusions must not be reported as passing. Final aggregate
-  wording and cancellation prominence need confirmation during triage.
+- A failure, timeout or startup failure needs attention. Cancellation and
+  action-required outcomes also need attention, with their own wording.
+  Neutral, skipped and unknown conclusions must not be reported as passing.
 - Label evidence as the latest observed run, with its actual commit and
   run time. Current-head coverage is unknown unless independently verified;
   never imply the branch's current head passed. Preserve scheduled evidence
