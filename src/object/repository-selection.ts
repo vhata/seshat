@@ -150,7 +150,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
   }
 
   async setMonitoringOverride(repositoryId: number, override: boolean | null, now: number): Promise<MonitoringMutationResult> {
-    const repository = this.context.store.repositories().find((entry) => entry.id === repositoryId);
+    const repository = this.context.store.repository(repositoryId);
     if (!repository) return { ok: false, reason: "not-found" };
     const installation = this.acceptedInstallation(repository.installationId);
     if (!installation) return { ok: false, reason: "not-allowed" };
@@ -159,7 +159,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
       if (!authorization.ok) return { ok: false, reason: "not-allowed" };
       const login = await this.github.ownerLogin(authorization.token, this.context.ownerId);
       const permission = login ? await this.github.ownerPermission(authorization.token, repository, this.context.ownerId, login) : null;
-      const current = this.context.store.repositories().find((entry) => entry.id === repositoryId);
+      const current = this.context.store.repository(repositoryId);
       if (!permission || permission === "none" || !this.acceptedInstallation(installation.id)
         || JSON.stringify(current) !== JSON.stringify(repository)) return { ok: false, reason: "not-allowed" };
     }
@@ -176,7 +176,7 @@ export class RepositorySelection implements RepositorySelectionOperations {
   }
 
   async setRepositoryMuted(repositoryId: number, ownerAccountId: number, muted: boolean, now: number): Promise<MonitoringMutationResult> {
-    const repository = this.context.store.repositories().find((entry) => entry.id === repositoryId);
+    const repository = this.context.store.repository(repositoryId);
     if (!repository) return { ok: false, reason: "not-found" };
     if (repository.ownerAccountId !== ownerAccountId || !this.acceptedInstallation(repository.installationId)) {
       return { ok: false, reason: "not-allowed" };

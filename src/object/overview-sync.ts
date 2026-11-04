@@ -93,7 +93,7 @@ export class OverviewSync {
   private markScope(mark: PendingMark): "repository" | "pr" { return mark.nodeId.startsWith("repository:") ? "repository" : "pr"; }
   private markKey(mark: PendingMark): string { return this.markScope(mark) === "repository" ? String(mark.repositoryId) : mark.nodeId; }
   private markRepository(mark: PendingMark): RepositoryRecord | undefined {
-    const repository = this.context.store.repositories().find((repo) => repo.id === mark.repositoryId);
+    const repository = this.context.store.repository(mark.repositoryId);
     return repository?.monitored && repository.installationId === mark.installationId
       && (mark.repositoryOwnerAccountId === undefined || mark.repositoryOwnerAccountId === repository.ownerAccountId) ? repository : undefined;
   }
@@ -194,7 +194,7 @@ export class OverviewSync {
     this.invalidateReads(delivery.installationId);
     const metadata = delivery.repository;
     if (metadata) {
-      const previous = this.context.store.repositories().find((repo) => repo.id === metadata.id && repo.installationId === delivery.installationId);
+      const previous = this.context.store.repository(metadata.id, delivery.installationId);
       const discovery = new RepositoryDiscoveryStore(this.context.storage);
       if (previous && (metadata.transferred || metadata.ownerId !== null && metadata.ownerId !== previous.ownerAccountId)) {
         discovery.forgetMonitoringOverride(metadata.id);
@@ -254,7 +254,7 @@ export class OverviewSync {
 
   /** A manual request owns a token, while its reads use the ordinary queue. */
   async refreshRepository(repositoryId: number, ownerAccountId: number, now: number): Promise<RepositoryRefreshResult> {
-    const repository = this.context.store.repositories().find((repo) => repo.id === repositoryId);
+    const repository = this.context.store.repository(repositoryId);
     if (!repository) return { ok: false, reason: "not-found" };
     if (!this.context.selection || !repository.monitored || repository.ownerAccountId !== ownerAccountId
       || repository.ownerPermission === "none" || !this.accepted(repository.installationId)) return { ok: false, reason: "not-allowed" };
@@ -318,7 +318,7 @@ export class OverviewSync {
   }
 
   private mark(mark: PrMark, due: number, mergeability = false, queuedAt = due): void {
-    const repository = this.context.store.repositories().find((repo) => repo.id === mark.repositoryId);
+    const repository = this.context.store.repository(mark.repositoryId);
     if (repository && (!repository.monitored || repository.installationId !== mark.installationId)) return;
     let previous = this.state.marks.find((pending) => pending.nodeId === mark.nodeId && pending.installationId === mark.installationId);
     if (previous && repository && previous.repositoryOwnerAccountId !== undefined && previous.repositoryOwnerAccountId !== repository.ownerAccountId) {
@@ -418,7 +418,7 @@ export class OverviewSync {
       this.state.shas = this.state.shas.filter((sha) => sha.expires > now && this.accepted(sha.installationId));
       this.state.marks = this.state.marks.filter((mark) => {
         const keep = this.accepted(mark.installationId) && (this.markRepository(mark)
-          || mark.repositoryOwnerAccountId === undefined && !this.context.store.repositories().some((repo) => repo.id === mark.repositoryId)
+          || mark.repositoryOwnerAccountId === undefined && !this.context.store.repository(mark.repositoryId)
             && this.state.refresh.some((job) => job.id === mark.installationId));
         if (!keep && mark.refreshCheck) this.context.store.finishCheck("repository-refresh", String(mark.repositoryId), mark.refreshCheck, "interrupted");
         return keep;
@@ -687,7 +687,7 @@ export class OverviewSync {
       for (const mark of selected) {
         const attempt = progress.checks.find((check) => check.scope === "pr" && check.key === mark.nodeId)!.attempt;
         const node = result.nodes.find((node) => (node.kind === "open" ? node.pr.nodeId : node.nodeId) === mark.nodeId);
-        const previous = this.context.store.pullRequests(mark.repositoryId).find((pr) => pr.nodeId === mark.nodeId);
+        const previous = this.context.store.pullRequest(mark.nodeId, mark.repositoryId);
         if (node && node.kind !== "unavailable") {
           const checked = !result.issues.some((issue) => issue.nodeId === mark.nodeId);
           if (checked) this.context.store.recordCheckSuccess("pr", mark.nodeId, attempt);
@@ -728,7 +728,7 @@ export class OverviewSync {
   }
   private applyPr(pr: PullRequestRecord, installationId: number, visibility: RepositoryRecord["visibility"], now: number): void {
     if (!this.accepted(installationId)) return;
-    const repository = this.context.store.repositories(installationId).find((repo) => repo.id === pr.repositoryId);
+    const repository = this.context.store.repository(pr.repositoryId, installationId);
     if (!repository || !repository.monitored) return;
     if (repository.ownerAccountId !== pr.repository.ownerAccountId) {
       const discovery = new RepositoryDiscoveryStore(this.context.storage);
@@ -747,7 +747,7 @@ export class OverviewSync {
   }
   private applyRepository(repository: { repositoryId: number; visibility: RepositoryRecord["visibility"]; complete: boolean; prs: readonly PullRequestRecord[] }, installationId: number, now: number, checks: TrackedCheck[], startedAt: number, issues: readonly { nodeId: string; reason: string }[]): void {
     if (!this.accepted(installationId)) return;
-    const before = this.context.store.repositories(installationId).find((repo) => repo.id === repository.repositoryId);
+    const before = this.context.store.repository(repository.repositoryId, installationId);
     if (!before?.monitored) return;
     this.context.store.putRepository({ ...before, visibility: repository.visibility, listedAt: now, visibilityReportedAt: now });
     for (const pr of repository.prs) {
@@ -766,7 +766,7 @@ export class OverviewSync {
           ? latest : this.context.store.beginCheck("pr", pr.nodeId, now, "queued");
       }
     }
-    const current = this.context.store.repositories(installationId).find((repo) => repo.id === repository.repositoryId);
+    const current = this.context.store.repository(repository.repositoryId, installationId);
     if (repository.complete && current?.monitored) {
       this.context.store.reconcileCompleteRepository(repository.repositoryId, repository.prs);
       const attempt = this.track(checks, "repository", String(repository.repositoryId), startedAt);
@@ -882,7 +882,7 @@ export class OverviewSync {
         if (result.continuation) sweep.continuation = result.continuation;
         else {
           for (const repo of result.repositories) {
-            const previous = this.context.store.repositories(id).find((entry) => entry.id === repo.repositoryId);
+            const previous = this.context.store.repository(repo.repositoryId, id);
             if (previous && this.accepted(id)) {
               this.context.store.putRepository({ ...previous, visibility: repo.visibility, listedAt: now, visibilityReportedAt: now });
               if (repo.count === 0 && previous.monitored) {

@@ -15,8 +15,8 @@ function storedPullRequest(data: string): PullRequestRecord {
 export class OverviewStore extends OverviewCheckStore {
   constructor(private readonly storage: DurableObjectStorage) { super(storage); }
 
-  checkFreshness() {
-    return this.evidence(this.repositories().filter((repo) => repo.monitored).map((repo) => repo.id), this.pullRequests().map((pr) => pr.nodeId));
+  checkFreshness(repositories: readonly RepositoryRecord[] = this.repositories(), prs: readonly PullRequestRecord[] = this.pullRequests()) {
+    return this.evidence(repositories.filter((repo) => repo.monitored).map((repo) => repo.id), prs.map((pr) => pr.nodeId));
   }
 
   repositories(installationId?: number): RepositoryRecord[] {
