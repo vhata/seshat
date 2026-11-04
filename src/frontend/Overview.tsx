@@ -19,6 +19,7 @@ import {
 import { AppHeader } from "./AppHeader";
 import { MutedRepositories } from "./MutedRepositories";
 import { RepositoryRefresh } from "./RepositoryRefresh";
+import { RepositoryCi } from "./RepositoryCi";
 
 const RULES: Record<BucketId, string> = {
   "ready-to-land":
@@ -401,6 +402,7 @@ export function OverviewPage({
         ) : (
           <>
             <RepositoryChecks snapshot={snapshot} now={state.now} visibleSince={state.visibleSince} />
+            <RepositoryCi repositories={snapshot.repositories} records={snapshot.repositoryCi} now={state.now} />
             <SnapshotContent
               snapshot={snapshot}
               state={state}
