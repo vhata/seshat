@@ -431,6 +431,7 @@ try {
   assert.ok((await scheduledCi.innerText()).includes("Failed"));
   assert.ok((await scheduledCi.innerText()).includes("Replacement"));
   assert.ok((await scheduledCi.innerText()).includes("is running"));
+  await ciSection.screenshot({ path: path.join(evidence, "repository-ci-section.png") });
   await page.screenshot({ path: path.join(evidence, "repository-ci-pending.png"), fullPage: true });
   ciScheduledPending = false;
   ciScheduledRecovered = true;
