@@ -147,6 +147,20 @@ describe("repository CI reader", () => {
     expect(result.kind === "complete" && result.data.streams[0]?.pending).toMatchObject({ status: "queued", startedAt: null });
   });
 
+  it("does not roll a previously completed rerun back to an older successful attempt", async () => {
+    routes({ runs: (_id, trigger) => json({ total_count: trigger === "push" ? 1 : 0,
+      workflow_runs: trigger === "push" ? [run({ conclusion: "success", run_attempt: 1 })] : [] }) });
+    const result = await readRepositoryCi("test-token", REPO, { previous: previous([{ completed: selected(11, { attempt: 2 }) }]) });
+    expect(result.kind === "complete" && result.data.streams[0]).toMatchObject({ completed: { id: 11, attempt: 2, conclusion: "failure" }, pending: null });
+  });
+
+  it("does not erase a known pending rerun when the API replays its older completed attempt", async () => {
+    routes({ runs: (_id, trigger) => json({ total_count: trigger === "push" ? 1 : 0,
+      workflow_runs: trigger === "push" ? [run()] : [] }) });
+    const result = await readRepositoryCi("test-token", REPO, { previous: previous([{ pending: selected(11, { attempt: 2, status: "in_progress", conclusion: null }) }]) });
+    expect(result.kind === "complete" && result.data.streams[0]).toMatchObject({ completed: { id: 11, attempt: 1, conclusion: "failure" }, pending: { id: 11, attempt: 2 } });
+  });
+
   it("lets a newer successful run clear the previous failure", async () => {
     routes({ runs: (_id, trigger) => json({ total_count: trigger === "push" ? 1 : 0,
       workflow_runs: trigger === "push" ? [wireRun(12, { conclusion: "success", created_at: "2026-11-04T09:01:00Z" })] : [] }) });

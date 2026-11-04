@@ -185,6 +185,14 @@ export async function readRepositoryCi(token: string,
       const previousData = options.previous;
       const previous = previousData && previousData.defaultBranch === progress.defaultBranch
         ? previousData.streams.find((stream) => stream.workflowId === workflow.id && stream.trigger === trigger) : undefined;
+      // A delayed API response must not roll a known run back to an older
+      // attempt, whether that newer attempt was completed or still pending.
+      if (previous?.completed && selection.completed?.id === previous.completed.id
+        && selection.completed.attempt < previous.completed.attempt) selection.completed = previous.completed;
+      if (previous?.pending && (selection.completed?.id === previous.pending.id && selection.completed.attempt < previous.pending.attempt
+        || selection.pending?.id === previous.pending.id && selection.pending.attempt < previous.pending.attempt)) {
+        selection.pending = latest(selection.pending, previous.pending);
+      }
       // GitHub lists the latest attempt of a run. Its previous completed
       // attempt remains useful while a rerun of that same run is pending.
       if (selection.pending && previous?.completed?.id === selection.pending.id
