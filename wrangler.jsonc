@@ -1,5 +1,5 @@
 // Worker configuration. Local development and tests read this file; nothing
-// here is deployed until the owner runs a deploy.
+// here is deployed until an authorized site update or main-push CI deployment.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "seshat",
