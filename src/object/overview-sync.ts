@@ -238,7 +238,7 @@ export class OverviewSync {
     }
     if (delivery.refresh) this.refresh(delivery.installationId, now);
     if (delivery.repositoryCi !== undefined) {
-      const repository = this.context.store.repositories(delivery.installationId).find((entry) => entry.id === delivery.repositoryCi);
+      const repository = this.context.store.repository(delivery.repositoryCi, delivery.installationId);
       if (repository?.monitored) this.queueCi(repository, now + 2_000, true);
     }
     for (const mark of delivery.marks) this.mark(mark, now + 2_000, false, now);
@@ -524,7 +524,7 @@ export class OverviewSync {
   }
 
   private ciRepository(job: PendingCi): RepositoryRecord | undefined {
-    const repository = this.context.store.repositories(job.installationId).find((entry) => entry.id === job.repositoryId);
+    const repository = this.context.store.repository(job.repositoryId, job.installationId);
     return this.accepted(job.installationId) && repository?.monitored && repository.ownerAccountId === job.ownerAccountId
       && repository.fullName === job.fullName
       && this.context.store.checkStatus("repository-ci", String(job.repositoryId)).latestAttempt?.id === job.check.id ? repository : undefined;

@@ -21,8 +21,10 @@ export class OverviewStore extends OverviewCheckStore {
   }
 
   /** Missing/legacy CI is unknown; discovery and PR checks never fill it in. */
-  repositoryCi(repositoryId?: number): RepositoryCiRecord[] {
-    return this.repositories().filter((repository) => repository.monitored && (repositoryId === undefined || repository.id === repositoryId))
+  repositoryCi(repositoryId?: number, repositories?: readonly RepositoryRecord[]): RepositoryCiRecord[] {
+    const repository = repositoryId === undefined ? undefined : this.repository(repositoryId);
+    const selected = repositoryId === undefined ? repositories ?? this.repositories() : repository ? [repository] : [];
+    return selected.filter((repository) => repository.monitored)
       .map((repository) => {
         const row = this.storage.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", `repository-ci:${repository.id}`).toArray()[0];
         const data: unknown = row ? JSON.parse(row.value) : null;
@@ -35,7 +37,7 @@ export class OverviewStore extends OverviewCheckStore {
 
   /** Token and current identity must still own this observation after awaits. */
   putRepositoryCi(repository: RepositoryRecord, data: RepositoryCiData, attempt: CheckAttempt, issue: RepositoryCiIssue | null = null): boolean {
-    const current = this.repositories().find((entry) => entry.id === repository.id);
+    const current = this.repository(repository.id, repository.installationId);
     const check = this.checkStatus("repository-ci", String(repository.id));
     if (!current?.monitored || current.installationId !== repository.installationId || current.ownerAccountId !== repository.ownerAccountId
       || current.fullName !== repository.fullName || check.latestAttempt?.id !== attempt.id

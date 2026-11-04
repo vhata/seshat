@@ -7,6 +7,7 @@ import { FIXTURE_REPOSITORY, fixturePr } from "../shared/overview/fixtures";
 import type { PullRequestRecord, RepositoryRecord } from "../shared/overview/protocol";
 import { GithubPrReader } from "../worker/github-pr-reader";
 import { GitHubRepositoryListing } from "../worker/github-repositories";
+import * as ciReader from "../worker/github-repository-ci";
 import { OverviewStore } from "./overview-store";
 import { OverviewSync } from "./overview-sync";
 import { RepositoryDiscoveryStore } from "./repository-discovery-store";
@@ -102,8 +103,8 @@ describe("overview SQL read budgets", () => {
     });
   });
 
-  it("assembles a snapshot without rereading the repository and PR tables for freshness", async () => {
-    const stub = env.INSTANCE.getByName("read-budget-snapshot");
+  it.each([false, true])("assembles a snapshot without rereading tables with populated CI=%s", async (populatedCi) => {
+    const stub = env.INSTANCE.getByName(`read-budget-snapshot-${populatedCi}`);
     await stub.health();
     await runInDurableObject(stub, async (instance, state) => {
       const store = new OverviewStore(state.storage);
@@ -116,13 +117,75 @@ describe("overview SQL read budgets", () => {
         const attempt = store.beginCheck("pr", pr.nodeId, NOW);
         store.finishCheck("pr", pr.nodeId, attempt, "success");
       }
+      if (populatedCi) for (const repository of repositories) {
+        const attempt = store.beginCheck("repository-ci", String(repository.id), NOW);
+        store.putRepositoryCi(repository, { defaultBranch: "main", streams: [], coverage: "complete" }, attempt);
+        store.finishCheck("repository-ci", String(repository.id), attempt, "success");
+      }
       const measured = await reads(state.storage, () => instance.overviewSnapshot(NOW));
       expect(measured.value.repositories).toHaveLength(repositories.length);
       expect(measured.value.buckets.flatMap((bucket) => bucket.rows)).toHaveLength(prs.length);
       expect(measured.value.freshness?.repositories["1"]?.lastSuccessfulCheckAt).toBe(NOW);
       expect(measured.value.freshness?.pullRequests["PR_0"]?.lastSuccessfulCheckAt).toBe(NOW);
-      // One pass over data and one successful-check row for each identity.
-      expect(measured.rowsRead).toBeLessThanOrEqual(2 * (repositories.length + prs.length) + 16);
+      // Preserve the original 416-row no-CI bound. Populated CI adds only its
+      // own data and check rows, without another repository-table pass.
+      expect(measured.rowsRead).toBeLessThanOrEqual(2 * (repositories.length + prs.length) + (populatedCi ? 2 * repositories.length : 0) + 16);
+      expect(measured.value.repositoryCi).toHaveLength(repositories.length);
+      if (populatedCi) expect(measured.value.repositoryCi?.[0]?.check.lastSuccessfulCheckAt).toBe(NOW);
+    });
+  });
+
+  it.each([20, 100])("rearms %i pending CI updates with linear keyed reads", async (count) => {
+    const stub = env.INSTANCE.getByName(`read-budget-ci-rearm-${count}`);
+    await stub.health();
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage);
+      const { repositories } = seed(store, count);
+      const ci = repositories.map((repository) => ({
+        repositoryId: repository.id, installationId: 9, ownerAccountId: 1001, fullName: repository.fullName,
+        due: NOW + 60_000, queuedAt: NOW, revision: 0, retry: 0, visibleOnly: false, continuation: null,
+        check: store.beginCheck("repository-ci", String(repository.id), NOW),
+      }));
+      state.storage.sql.exec("INSERT INTO settings (key,value) VALUES (?,?)", "overview-sync-work-v1", JSON.stringify({
+        marks: [], shas: [], refresh: [], refreshGenerations: {}, observationGenerations: {}, ci,
+        guard: null, nextSweep: null, lastCatchup: null, sweep: null, reread: null,
+        permissions: [], headDates: [], rates: [],
+      }));
+      const sync = new OverviewSync({
+        storage: state.storage, store, selection: null, installations: () => INSTALLATIONS,
+        visible: () => false, guard: async () => true, publish: async () => {},
+      });
+      for (const time of [NOW, NOW + 1]) {
+        const measured = await reads(state.storage, () => sync.rearm(time));
+        // Each eligibility pass reads one keyed repository and check row;
+        // rearming makes two passes regardless of the installation's size.
+        expect(measured.rowsRead).toBeLessThanOrEqual(4 * count + 4);
+        expect(await state.storage.getAlarm()).toBe(NOW + 60_000);
+      }
+      for (const repository of repositories) store.putRepository({ ...repository, ownerAccountId: 2002 });
+      await sync.rearm(NOW + 2);
+      expect(await state.storage.getAlarm()).toBeNull();
+      expect(sync.monitoringStatus(NOW + 600_001).oldestPendingAt).toBeNull();
+    });
+  });
+
+  it.each([20, 100])("reads and applies %i individual CI results without scanning unrelated identities", async (count) => {
+    const stub = env.INSTANCE.getByName(`read-budget-ci-results-${count}`);
+    await stub.health();
+    await runInDurableObject(stub, async (_instance, state) => {
+      const store = new OverviewStore(state.storage);
+      const { repositories } = seed(store, count);
+      const data = { defaultBranch: "main", streams: [], coverage: "complete" as const };
+      const attempts = repositories.map((repository) => store.beginCheck("repository-ci", String(repository.id), NOW));
+      const writes = await reads(state.storage, () => {
+        for (const [index, repository] of repositories.entries()) expect(store.putRepositoryCi(repository, data, attempts[index]!)).toBe(true);
+      });
+      expect(writes.rowsRead).toBeLessThanOrEqual(4 * count);
+      const measured = await reads(state.storage, () => {
+        for (const repository of repositories) expect(store.repositoryCi(repository.id)[0]).toMatchObject({ repositoryId: repository.id, ...data });
+      });
+      expect(measured.rowsRead).toBeLessThanOrEqual(4 * count);
+      expect(store.repositoryCi(1000)).toEqual([]);
     });
   });
 
@@ -146,13 +209,16 @@ describe("overview SQL read budgets", () => {
       vi.spyOn(GithubPrReader.prototype, "readRepositories").mockResolvedValue({
         ...meta, repositories: repositories.map((repository, index) => ({ repositoryId: repository.id, nodeId: repository.nodeId, visibility: repository.visibility, complete: true, prs: [prs[index]!] })),
       });
+      vi.spyOn(ciReader, "readRepositoryCi").mockResolvedValue({ kind: "complete", requestsUsed: 2,
+        data: { defaultBranch: "main", streams: [], coverage: "complete" } });
       const sync = new OverviewSync({
         ownerId: 1001, storage: state.storage, store, selection, installations: () => INSTALLATIONS,
         visible: () => true, guard: async () => true, publish: async () => {},
       });
       const measured = await reads(state.storage, async () => {
         await sync.visibility(NOW, false);
-        for (let index = 0; index < 4; index++) await sync.alarm(NOW + index);
+        // CI and ordinary work alternate while both classes are pending.
+        for (let index = 0; index < 7; index++) await sync.alarm(NOW + index);
       });
       expect(store.syncStatus().latestAttempt?.result).toBe("success");
       expect(store.syncStatus().lastSuccessfulSweepAt).toBe(NOW);
