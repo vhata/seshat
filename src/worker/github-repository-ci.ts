@@ -193,10 +193,10 @@ export async function readRepositoryCi(token: string,
         || selection.pending?.id === previous.pending.id && selection.pending.attempt < previous.pending.attempt)) {
         selection.pending = latest(selection.pending, previous.pending);
       }
-      // GitHub lists the latest attempt of a run. Its previous completed
-      // attempt remains useful while a rerun of that same run is pending.
+      // Keep the known terminal outcome for this run. It dominates pending
+      // replays at older/equal attempts, and remains visible during a newer
+      // rerun. The comparison below discards pending replays it supersedes.
       if (selection.pending && previous?.completed?.id === selection.pending.id
-        && previous.completed.attempt < selection.pending.attempt
         && (!selection.completed || compare(previous.completed, selection.completed) > 0)) selection.completed = previous.completed;
       const pending = selection.pending && (!selection.completed || compare(selection.pending, selection.completed) > 0) ? selection.pending : null;
       progress.streams.push({ workflowId: workflow.id, name: workflow.name, state: workflow.state, trigger, completed: selection.completed, pending });

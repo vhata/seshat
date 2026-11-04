@@ -161,6 +161,22 @@ describe("repository CI reader", () => {
     expect(result.kind === "complete" && result.data.streams[0]).toMatchObject({ completed: { id: 11, attempt: 1, conclusion: "failure" }, pending: { id: 11, attempt: 2 } });
   });
 
+  for (const conclusion of ["success", "failure"]) for (const attempt of [2, 3]) {
+    it(`keeps completed ${conclusion} at attempt 3 over a pending replay at attempt ${attempt}`, async () => {
+      routes({ runs: (_id, trigger) => json({ total_count: trigger === "push" ? 1 : 0,
+        workflow_runs: trigger === "push" ? [run({ run_attempt: attempt, status: attempt === 2 ? "queued" : "in_progress", conclusion: null })] : [] }) });
+      const result = await readRepositoryCi("test-token", REPO, { previous: previous([{ completed: selected(11, { attempt: 3, conclusion }) }]) });
+      expect(result.kind === "complete" && result.data.streams[0]).toMatchObject({ completed: { id: 11, attempt: 3, conclusion }, pending: null });
+    });
+  }
+
+  it("keeps a genuinely newer pending attempt alongside the known completed result", async () => {
+    routes({ runs: (_id, trigger) => json({ total_count: trigger === "push" ? 1 : 0,
+      workflow_runs: trigger === "push" ? [run({ run_attempt: 4, status: "in_progress", conclusion: null })] : [] }) });
+    const result = await readRepositoryCi("test-token", REPO, { previous: previous([{ completed: selected(11, { attempt: 3 }) }]) });
+    expect(result.kind === "complete" && result.data.streams[0]).toMatchObject({ completed: { id: 11, attempt: 3, conclusion: "failure" }, pending: { id: 11, attempt: 4 } });
+  });
+
   it("lets a newer successful run clear the previous failure", async () => {
     routes({ runs: (_id, trigger) => json({ total_count: trigger === "push" ? 1 : 0,
       workflow_runs: trigger === "push" ? [wireRun(12, { conclusion: "success", created_at: "2026-11-04T09:01:00Z" })] : [] }) });
