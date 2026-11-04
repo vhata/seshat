@@ -4,6 +4,7 @@ import type { InstallationRefreshResult, RepositoryRecord } from "../shared/over
 import { canMonitorRepository, REPOSITORIES_PATH, type RepositorySettings } from "../shared/repositories";
 import "./Repositories.css";
 import { setRepositoryMuted } from "./repository-muting";
+import { AppHeader } from "./AppHeader";
 
 async function refreshInstallation(installationId: number): Promise<void> {
   for (;;) {
@@ -89,9 +90,10 @@ export function Repositories() {
 
   const selectedPersonal = settings?.installations.some((installation) => installation.accountType === "User"
     && installation.accountId === settings.ownerId && installation.repositorySelection === "selected");
-  return <main className="repository-page">
-    <header className="repository-header"><a href="/" className="repository-brand">Seshat</a><nav aria-label="Main"><a href="/">PR overview</a><a href="/repositories" aria-current="page">Repositories</a></nav></header>
-    <div className="repository-intro"><div><p className="repository-kicker">YOUR GITHUB APP</p><h1>Repositories</h1><p>Choose where Seshat watches for open pull requests.</p></div>
+  return <>
+    <AppHeader page="repositories" />
+    <main className="repository-page">
+    <div className="repository-intro"><div><h1>Repositories</h1><p>Choose where Seshat watches for open pull requests.</p></div>
       <button type="button" disabled={busy || !settings} onClick={() => void refresh()}>{busy ? "Updating…" : "Refresh listings"}</button></div>
     {error && <p role="alert" className="repository-warning">{error}</p>}
     {!settings && !error && <p role="status">Loading repository settings…</p>}
@@ -107,7 +109,8 @@ export function Repositories() {
       })}
       <p className="repository-footnote">Changes apply to the overview immediately. Switching monitoring off removes that repository’s pull requests. Muting keeps monitoring on at the normal frequency and moves its PRs to the collapsed Muted repositories section. New activity does not unmute it.</p>
     </>}
-  </main>;
+    </main>
+  </>;
 }
 
 export function PendingOrganization({ installation, login, busy, decide }: { installation: StoredInstallation; login?: string | undefined; busy: boolean; decide: (accept: boolean) => void }) {

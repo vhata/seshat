@@ -16,7 +16,7 @@ import {
   type ChangeNote,
   type OverviewState,
 } from "./overview-client";
-import logo from "../../assets/seshat.svg";
+import { AppHeader } from "./AppHeader";
 import { MutedRepositories } from "./MutedRepositories";
 import { RepositoryRefresh } from "./RepositoryRefresh";
 
@@ -241,29 +241,14 @@ export function OverviewPage({
   );
   return (
     <>
-      <header className="app-header">
-        <a className="brand" href="/">
-          <img src={logo} alt="" />
-          Seshat
-        </a>
-        <nav aria-label="Main">
-          <a aria-current="page" href="/">
-            Overview
-          </a>
-          <a href="/repositories">Repositories</a>
-        </nav>
+      <AppHeader page="overview">
         <div
           className={`sync-pill status-${status.toLowerCase().replaceAll(" ", "-")}`}
           role="status"
         >
           ● {status}
         </div>
-        <form method="post" action="/auth/sign-out">
-          <button className="quiet" type="submit">
-            Sign out
-          </button>
-        </form>
-      </header>
+      </AppHeader>
       <div className="last-check">
         {lastSuccess === null ? (
           "Last full check: never"

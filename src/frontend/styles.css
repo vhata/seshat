@@ -15,6 +15,9 @@
   --green: #9addae;
   --amber: #ecc786;
   --coral: #ef9f97;
+  --panel: #16232e;
+  --warning-background: #322b23;
+  --warning-border: #7e6541;
 }
 * {
   box-sizing: border-box;
@@ -35,7 +38,7 @@ button {
   color: inherit;
   cursor: pointer;
   border: 1px solid var(--line);
-  background: #16232e;
+  background: var(--panel);
   border-radius: 6px;
   padding: 6px 10px;
 }
@@ -94,7 +97,7 @@ a:focus-visible {
   gap: 10px 20px;
   align-items: center;
   padding: 9px 16px;
-  background: #16232e;
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
 .brand {
@@ -103,6 +106,9 @@ a:focus-visible {
   align-items: center;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+.app-header nav + form {
+  margin-left: auto;
 }
 .brand img {
   height: 23px;
@@ -160,8 +166,8 @@ form {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: #322b23;
-  border-bottom: 1px solid #7e6541;
+  background: var(--warning-background);
+  border-bottom: 1px solid var(--warning-border);
   padding: 14px 16px;
   color: var(--amber);
 }
@@ -370,7 +376,7 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: visible;
-  background: #16232e;
+  background: var(--panel);
 }
 .check-indicator {
   position: relative;
@@ -560,7 +566,7 @@ button:disabled {
 .all-clear,
 .empty {
   border: 1px solid var(--line);
-  background: #16232e;
+  background: var(--panel);
   border-radius: 8px;
   padding: 22px;
   margin: 12px 16px;

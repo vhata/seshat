@@ -539,7 +539,7 @@ try {
   assert.equal((await command("snapshot")).buckets.flatMap((bucket) => bucket.rows).length, 0);
   await page.getByRole("switch", { name: "Monitor example/observatory" }).click();
   await page.waitForFunction(() => { const input = document.querySelector('input[aria-label="Monitor example/observatory"]'); return input && input.checked && !input.disabled; });
-  await page.getByRole("link", { name: "PR overview" }).click();
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
   await page.waitForTimeout(150);
   await drain();
   await page.locator(".pr-row").first().waitFor();
@@ -561,7 +561,7 @@ try {
     return button && !button.disabled;
   });
   await page.getByRole("button", { name: "Unmute example/observatory", exact: true }).waitFor();
-  await page.getByRole("link", { name: "PR overview", exact: true }).click();
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
   const muted = page.locator("details.muted-repositories");
   const mutedSummary = muted.locator("summary");
   await mutedSummary.waitFor();
@@ -634,7 +634,7 @@ try {
     const input = document.querySelector('input[aria-label="Monitor example/observatory"]');
     return input && input.checked && !input.disabled;
   });
-  await page.getByRole("link", { name: "PR overview", exact: true }).click();
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
   await page.waitForTimeout(150);
   await drain();
   await page.waitForFunction(() => document.querySelectorAll(".muted-repositories .pr-row").length === 7);
@@ -654,7 +654,7 @@ try {
   await page.goto(`${origin}/repositories`);
   await page.getByRole("button", { name: "Mute example/new-repository", exact: true }).click();
   await page.getByRole("button", { name: "Unmute example/new-repository", exact: true }).waitFor();
-  await page.getByRole("link", { name: "PR overview", exact: true }).click();
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
   await mutedSummary.waitFor();
   assert.match(await mutedSummary.textContent(), /1 repositor(?:y|ies).*0 (?:open )?PRs/);
   assert.equal(await page.locator(".buckets .pr-row").count(), 7);
